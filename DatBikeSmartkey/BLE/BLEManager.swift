@@ -631,7 +631,7 @@ extension BLEManager: CBCentralManagerDelegate {
         
         // Check if this is our Dat Bike
         let isDatBike = name.contains(BLEProtocol.deviceNamePrefix) ||
-                        name.contains(BLEProtocol.deviceNameAlt) ||
+                        name.hasPrefix(BLEProtocol.deviceNameAltPrefix) ||
                         hasServiceUUID
                         
         // Just for debugging, log devices with strong signal or Dat Bike name

@@ -216,14 +216,11 @@ enum BLEProtocol {
     /// State restoration identifier for CBCentralManager
     static let centralRestoreID = "DatBikeSmartkeyCentral"
     
-    /// Known BLE MAC address of the bike
-    static let knownMAC = "74:4D:BD:2B:C9:B9"
-    
     /// Device name prefix for scanning
     static let deviceNamePrefix = "Dat Bike"
     
-    /// Alternate device name
-    static let deviceNameAlt = "QT_S3"
+    /// Alternate device name prefix (covers QT_S1, QT_S2, QT_S3, etc.)
+    static let deviceNameAltPrefix = "QT_"
     
     /// Auth sequence timing — exact from btsnoop_hci.log
     static let authConfirmDelay: TimeInterval = 0.12   // 120ms between PIN writes
