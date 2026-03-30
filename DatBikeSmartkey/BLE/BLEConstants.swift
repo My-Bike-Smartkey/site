@@ -208,10 +208,7 @@ enum BLEProtocol {
     /// Default authentication PIN — người dùng set trong Settings
     /// Auth formula: SHA-256( str(challenge_uint32_LE >> 1) + authPIN )
     /// Ví dụ PIN thực tế quan sát: "997812" (cũ), "nguyeanphuactu" (mới)
-    static let authPIN = "997812"
-    
-    /// Legacy numeric pairing code (observed in first-connect flow, session 140947)
-    static let pairingCode = "997812"
+    static let authPIN = "toiyeudatbike"
     
     /// RSSI threshold for auto-unlock (same as ESP32: -65 dBm ≈ 1-2m)
     static let rssiThreshold: Int = -65

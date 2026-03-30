@@ -1,6 +1,7 @@
 // SettingsView.swift — Settings, device info, auto-unlock config, and debug log
 
 import SwiftUI
+import CoreImage.CIFilterBuiltins
 
 struct SettingsView: View {
     @ObservedObject var viewModel: SmartKeyViewModel
@@ -25,37 +26,6 @@ struct SettingsView: View {
                         Spacer()
                     }
                     .padding(.horizontal)
-                    
-                    // Connection section
-                    settingsSection(title: "KẾT NỐI") {
-                        VStack(spacing: 0) {
-                            settingsRow(icon: "antenna.radiowaves.left.and.right",
-                                       iconColor: .blue,
-                                       title: "Trạng thái BLE",
-                                       value: viewModel.connectionState.displayText)
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            if viewModel.isConnected {
-                                settingsRow(icon: "wifi",
-                                           iconColor: viewModel.signalStrength.color,
-                                           title: "Cường độ tín hiệu",
-                                           value: "\(viewModel.rssi) dBm (\(viewModel.signalStrength.label))")
-                                
-                                Divider().background(Color.white.opacity(0.06))
-                            }
-                            
-                            settingsButton(icon: viewModel.isConnected ? "xmark.circle" : "magnifyingglass",
-                                          iconColor: viewModel.isConnected ? .red : .green,
-                                          title: viewModel.isConnected ? "Ngắt kết nối" : "Quét & kết nối") {
-                                if viewModel.isConnected {
-                                    viewModel.disconnect()
-                                } else {
-                                    viewModel.startScan()
-                                }
-                            }
-                        }
-                    }
                     
                     // Auto-unlock section
                     settingsSection(title: "TỰ ĐỘNG MỞ KHÓA") {
@@ -152,24 +122,75 @@ struct SettingsView: View {
                                 showPINEditor = true
                             }
                             Divider().background(Color.white.opacity(0.06))
-                            settingsButton(icon: "trash.fill", iconColor: .red, title: "Quên xe (Xóa kết nối bản sao)") {
+                            settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
                                 showForgetConfirm = true
                             }
                         }
                     }
                     
                     // Debug section
-                    settingsSection(title: "GỠ LỖI") {
-                        VStack(spacing: 0) {
-                            settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log (\(viewModel.logs.count))") {
-                                showLogs = true
-                            }
-                        }
-                    }
+//                    settingsSection(title: "GỠ LỖI") {
+//                        VStack(spacing: 0) {
+//                            settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log (\(viewModel.logs.count))") {
+//                                showLogs = true
+//                            }
+//                        }
+//                    }
                     
+                    // Donate section
+                    settingsSection(title: "ỦNG HỘ DỰ ÁN") {
+                        VStack(spacing: 12) {
+                            Text("Nếu app hữu ích, bạn có thể ủng hộ tác giả 🙏")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 8)
+                                .padding(.top, 12)
+
+                            QRCodeView(content: "00020101021138630010A000000727013300069710250119PSP26089156000002310208QRIBFTTA53037045802VN62190515MOMOW2W3637058263049C27", size: 200)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                )
+
+                            VStack(spacing: 2) {
+                                Text("NGUYỄN PHÚC TÚ")
+                                    .font(.subheadline)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.white)
+                                Text("*******135")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                HStack(spacing: 6) {
+                                    Text("MoMo")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Color(red: 0.87, green: 0.18, blue: 0.49))
+                                    Text("•")
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                    Text("VietQR")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Color(red: 0.87, green: 0.10, blue: 0.14))
+                                    Text("•")
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                    Text("Napas 247")
+                                        .font(.caption2)
+                                        .fontWeight(.bold)
+                                        .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.25))
+                                }
+                            }
+                            .padding(.bottom, 12)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+
                     // App info
                     VStack(spacing: 4) {
-                        Text("Dat Bike Smartkey v1.0 (Build: Mar 30, 12:55)")
+                        Text("MyBike Smartkey v1.0 (Build: Mar 30, 12:55)")
                             .font(.caption)
                             .foregroundColor(.gray)
                         Text("Native iOS • CoreBluetooth • Background Optimized")
@@ -194,7 +215,7 @@ struct SettingsView: View {
         } message: {
             Text("PIN dùng để xác thực BLE với xe. Mặc định: \(BLEProtocol.authPIN)")
         }
-        .alert("Quên xe", isPresented: $showForgetConfirm) {
+        .alert("Bỏ liên kết xe", isPresented: $showForgetConfirm) {
             Button("Quên", role: .destructive) {
                 viewModel.forgetBike()
                 showForgetInstructions = true
@@ -204,12 +225,7 @@ struct SettingsView: View {
             Text("Xóa kết nối App với xe. Bạn có muốn tiếp tục?")
         }
         .alert("⚠️ Hoàn tất bằng tay", isPresented: $showForgetInstructions) {
-            Button("Mở Cài đặt Bluetooth") {
-                if let url = URL(string: "App-Prefs:Bluetooth") {
-                    UIApplication.shared.open(url)
-                }
-            }
-            Button("Bỏ qua", role: .cancel) {}
+            Button("OK", role: .cancel) {}
         } message: {
             Text("iOS không cho phép ứng dụng xóa ghép đôi Bluetooth tự động.\n\nHãy vào Cài đặt → Bluetooth → tìm xe Dat Bike → nhấn ⓘ → chọn \"Quên thiết bị\" để xóa hoàn toàn.")
         }
@@ -289,6 +305,51 @@ struct SettingsView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
+    }
+}
+
+// MARK: - QR Code Generator
+
+struct QRCodeView: View {
+    let content: String
+    let size: CGFloat
+
+    var body: some View {
+        if let image = generateQRCode(from: content) {
+            Image(uiImage: image)
+                .interpolation(.none)
+                .resizable()
+                .scaledToFit()
+                .frame(width: size, height: size)
+        } else {
+            Color.gray.frame(width: size, height: size)
+        }
+    }
+
+    private func generateQRCode(from string: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(string.utf8)
+        filter.correctionLevel = "M"
+        guard let ciImage = filter.outputImage else { return nil }
+        let scale = size / ciImage.extent.width
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        // White QR on white background — invert for dark mode friendliness
+        guard let inverted = CIFilter(name: "CIColorInvert", parameters: [kCIInputImageKey: scaled])?.outputImage,
+              let white = CIFilter(name: "CIMaskToAlpha", parameters: [kCIInputImageKey: inverted])?.outputImage else {
+            let context = CIContext()
+            if let cgImage = context.createCGImage(scaled, from: scaled.extent) {
+                return UIImage(cgImage: cgImage)
+            }
+            return nil
+        }
+        // Compose: black QR on white background
+        let bg = CIImage(color: CIColor.white).cropped(to: scaled.extent)
+        guard let composed = CIFilter(name: "CISourceOverCompositing",
+                                      parameters: [kCIInputImageKey: scaled,
+                                                   kCIInputBackgroundImageKey: bg])?.outputImage else { return nil }
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(composed, from: composed.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
 

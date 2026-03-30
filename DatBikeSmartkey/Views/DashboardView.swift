@@ -93,13 +93,15 @@ struct DashboardView: View {
     private var headerView: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text("Dat Bike")
+                Text("MyBike Smartkey")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(.white)
                 
-                Text("Quantum S3 Smartkey")
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
+                if !viewModel.bikeInfo.name.isEmpty {
+                    Text(viewModel.bikeInfo.name)
+                        .font(.subheadline)
+                        .foregroundColor(.gray)
+                }
             }
             
             Spacer()
@@ -147,7 +149,7 @@ struct DashboardView: View {
                     .foregroundColor(viewModel.connectionState == .pairingRequired ? .orange : .white)
                 
                 Text(viewModel.connectionState == .scanning
-                     ? "Tìm kiếm Dat Bike Quantum S3 trong phạm vi BLE"
+                     ? "Đang tìm xe Dat Bike trong phạm vi BLE..."
                      : (viewModel.connectionState == .pairingRequired
                         ? "Vui lòng quẹt thẻ NFC vào chữ N trên xe và bấm Xác nhận trên bảng hỏi của iPhone."
                         : "Nhấn quét để tìm xe của bạn"))

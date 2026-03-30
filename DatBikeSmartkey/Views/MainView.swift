@@ -93,14 +93,10 @@ struct ConnectingSplashView: View {
                 }
                 
                 VStack(spacing: 12) {
-                    Text("Dat Bike Smartkey")
+                    Text("MyBike Smartkey")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
-                    
-                    Text("Quantum S3")
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
                 }
                 
                 // Status indicator
