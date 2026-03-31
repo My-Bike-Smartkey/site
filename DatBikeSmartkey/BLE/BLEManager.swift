@@ -75,15 +75,20 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         
         log(.info, "BLE Manager khởi tạo (AccessorySetupKit — iOS 18+)")
         
-        // 1. Activate ASAccessorySession FIRST — handles discovery & authorization
+        // ⚠️ CRITICAL: Activate ASAccessorySession BEFORE CBCentralManager.
+        // Creating CBCentralManager first causes "CBManagers active with global permissions" error.
+        // CBCentralManager will be initialized lazily after ASK session activates.
         accessorySession.activate(on: .main) { [weak self] event in
             self?.handleAccessoryEvent(event)
         }
-        
-        // 2. Init CBCentralManager for GATT communication (no scanning)
-        centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: [
-            CBCentralManagerOptionShowPowerAlertKey: true
-        ])
+    }
+    
+    /// Init CBCentralManager ONLY after ASAccessorySession has activated.
+    /// This prevents the "CBManagers active with global permissions" conflict.
+    private func initCentralManagerIfNeeded() {
+        guard centralManager == nil else { return }
+        log(.info, "📡 Khởi tạo CBCentralManager (sau ASK activation)")
+        centralManager = CBCentralManager(delegate: self, queue: bleQueue)
     }
     
     // MARK: - Public API
@@ -134,6 +139,8 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         switch event.eventType {
         case .activated:
             log(.success, "✅ ASAccessorySession activated")
+            // NOW it's safe to init CBCentralManager (after ASK owns the Bluetooth context)
+            initCentralManagerIfNeeded()
             // Check if we already have an authorized accessory
             if let existing = accessorySession.accessories.first {
                 currentAccessory = existing
@@ -153,6 +160,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 currentAccessory = accessory
                 DispatchQueue.main.async { self.hasAuthorizedAccessory = true }
                 log(.success, "🏍️ Xe mới được authorize: \(accessory.displayName ?? "Dat Bike")")
+                initCentralManagerIfNeeded()
                 connectToAccessory(accessory)
             }
             
