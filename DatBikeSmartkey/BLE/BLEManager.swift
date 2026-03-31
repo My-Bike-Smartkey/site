@@ -95,24 +95,23 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     /// Show system AccessorySetupKit picker to discover and authorize a Dat Bike
     func showPicker() {
-        // Descriptor 1: Match by primary scan service UUID
+        // Each descriptor must have bluetoothServiceUUID (name alone is not allowed)
         let desc1 = ASDiscoveryDescriptor()
-        desc1.bluetoothServiceUUID = BLEService.scan  // 0000FCF1...
+        desc1.bluetoothServiceUUID = BLEService.scan       // 0000FCF1...
         
-        // Descriptor 2: Match by auth service UUID
         let desc2 = ASDiscoveryDescriptor()
-        desc2.bluetoothServiceUUID = BLEService.auth  // 10CB0217...
+        desc2.bluetoothServiceUUID = BLEService.auth       // 10CB0217...
         
-        // Descriptor 3: Match by alternate scan service UUID
         let desc3 = ASDiscoveryDescriptor()
-        desc3.bluetoothServiceUUID = BLEService.altScan  // 15111100...
+        desc3.bluetoothServiceUUID = BLEService.altScan    // 15111100...
         
-        // Descriptor 4: Match by device name substring "Dat Bike"
+        // Name + service UUID combo (name alone crashes)
         let desc4 = ASDiscoveryDescriptor()
+        desc4.bluetoothServiceUUID = BLEService.scan
         desc4.bluetoothNameSubstring = BLEProtocol.deviceNamePrefix  // "Dat Bike"
         
-        // Descriptor 5: Match by device name substring "QT_"
         let desc5 = ASDiscoveryDescriptor()
+        desc5.bluetoothServiceUUID = BLEService.scan
         desc5.bluetoothNameSubstring = BLEProtocol.deviceNameAltPrefix  // "QT_"
         
         let bikeImage = UIImage(systemName: "bicycle")!
@@ -125,7 +124,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             ASPickerDisplayItem(name: "Dat Bike (QT)", productImage: bikeImage, descriptor: desc5),
         ]
         
-        log(.info, "📱 Hiện ASK Picker (5 descriptors: scan/auth/altScan/name)...")
+        log(.info, "📱 Hiện ASK Picker (5 descriptors)...")
         DispatchQueue.main.async { self.pickerDismissed = false }
         
         accessorySession.showPicker(for: pickerItems) { [weak self] error in
