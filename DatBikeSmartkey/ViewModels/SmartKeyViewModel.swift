@@ -20,6 +20,8 @@ final class SmartKeyViewModel: ObservableObject {
     @Published var isDebugModeEnabled: Bool = false {
         didSet { UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled") }
     }
+    @Published var hasAuthorizedAccessory = false
+    @Published var pickerDismissed = false
 
     @Published var isProcessing = false
     @Published var showError = false
@@ -105,6 +107,14 @@ final class SmartKeyViewModel: ObservableObject {
         ble.$isAuthenticated
             .receive(on: DispatchQueue.main)
             .assign(to: &$isAuthenticated)
+        
+        ble.$hasAuthorizedAccessory
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$hasAuthorizedAccessory)
+        
+        ble.$pickerDismissed
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$pickerDismissed)
     }
     
     // MARK: - Actions
@@ -112,6 +122,10 @@ final class SmartKeyViewModel: ObservableObject {
     func startScan() {
         selectedBike = nil
         ble.startScan()
+    }
+    
+    func showAccessoryPicker() {
+        ble.showPicker()
     }
     
     func selectBike(_ bike: DiscoveredBike) {

@@ -139,6 +139,12 @@ struct ConnectingSplashView: View {
                             .font(.largeTitle)
                             .foregroundColor(.red)
                         
+                        Text(viewModel.connectionState.displayText)
+                            .font(.subheadline)
+                            .foregroundColor(.red.opacity(0.8))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        
                         Button(action: { viewModel.startScan() }) {
                             Text("Thử lại")
                                 .font(.headline)
@@ -152,70 +158,73 @@ struct ConnectingSplashView: View {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                             .scaleEffect(1.5)
-                    } else if viewModel.connectionState == .bluetoothOff || viewModel.connectionState == .disconnected {
-                        Button(action: { viewModel.startScan() }) {
-                            Text("Quét tìm xe")
+                        
+                        Text(viewModel.connectionState.displayText)
+                            .font(.headline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    } else if viewModel.connectionState == .pairingRequired {
+                        Image(systemName: "wave.3.right")
+                            .font(.system(size: 40))
+                            .foregroundColor(.orange)
+                        
+                        Text("Quẹt thẻ NFC vào đồng hồ xe")
+                            .font(.headline)
+                            .foregroundColor(.orange)
+                        
+                        Text("Đặt thẻ NFC lên mặt đồng hồ và chờ xác thực")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    } else {
+                        // Disconnected / Bluetooth Off — show action buttons
+                        if viewModel.hasAuthorizedAccessory {
+                            // Already has an authorized bike — reconnecting
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                                .scaleEffect(1.2)
+                            
+                            Text("Đang kết nối lại xe...")
                                 .font(.headline)
+                                .foregroundColor(.gray)
+                            
+                            Button(action: { viewModel.startScan() }) {
+                                Text("Kết nối lại")
+                                    .font(.subheadline)
+                                    .foregroundColor(.orange)
+                            }
+                        } else {
+                            // No authorized bike — show picker button
+                            Button(action: { viewModel.showAccessoryPicker() }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title2)
+                                    Text("Thêm xe")
+                                        .font(.headline)
+                                }
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 30)
-                                .padding(.vertical, 12)
-                                .background(Color.orange)
+                                .padding(.vertical, 14)
+                                .background(
+                                    LinearGradient(
+                                        colors: [.orange, .orange.opacity(0.8)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
                                 .clipShape(Capsule())
-                        }
-                    }
-                    
-                    Text(viewModel.connectionState.displayText)
-                        .font(.headline)
-                        .foregroundColor(.gray)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
-                .frame(height: 100)
-                
-                // Discovered Bikes List for First Time Connection
-                if !viewModel.discoveredBikes.isEmpty && viewModel.connectionState == .scanning {
-                    VStack(spacing: 12) {
-                        Text("CHỌN XE ĐỂ KẾT NỐI")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .padding(.top, 10)
-                        
-                        ScrollView {
-                            VStack(spacing: 10) {
-                                ForEach(viewModel.discoveredBikes) { bike in
-                                    Button(action: {
-                                        viewModel.selectBike(bike)
-                                        showingPINPrompt = true
-                                    }) {
-                                        HStack {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text(bike.name)
-                                                    .font(.headline)
-                                                    .foregroundColor(.white)
-                                                Text(bike.id)
-                                                    .font(.caption2)
-                                                    .foregroundColor(.gray)
-                                            }
-                                            Spacer()
-                                            
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "wifi")
-                                                Text("\(bike.rssi)")
-                                            }
-                                            .font(.caption)
-                                            .foregroundColor(.green)
-                                        }
-                                        .padding()
-                                        .background(Color(white: 0.15))
-                                        .cornerRadius(12)
-                                    }
-                                }
+                                .shadow(color: .orange.opacity(0.3), radius: 10, y: 5)
                             }
+                            
+                            Text("Sử dụng AccessorySetupKit để ghép đôi an toàn")
+                                .font(.caption)
+                                .foregroundColor(.gray.opacity(0.6))
                         }
-                        .frame(maxHeight: 200)
                     }
-                    .padding(.horizontal, 30)
                 }
+                .frame(minHeight: 100)
             }
         }
     }

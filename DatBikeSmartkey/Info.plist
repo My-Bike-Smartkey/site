@@ -41,9 +41,26 @@
 	<array>
 		<string>bluetooth-central</string>
 	</array>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Dat Bike Smartkey cần Bluetooth để kết nối và điều khiển xe của bạn, kể cả khi ứng dụng chạy nền.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Dat Bike Smartkey sử dụng Bluetooth Low Energy để giao tiếp với hệ thống khóa thông minh trên xe.</string>
+	<!-- AccessorySetupKit Configuration -->
+	<key>NSAccessorySetupKitSupports</key>
+	<array>
+		<string>Bluetooth</string>
+	</array>
+	<key>NSAccessorySetupBluetoothServices</key>
+	<array>
+		<!-- SERVICE_SCAN — Primary advertisement UUID -->
+		<string>0000FCF1-0000-1000-8000-00805F9B34FB</string>
+		<!-- SERVICE_AUTH — Authentication service -->
+		<string>10CB0217-FF02-4474-A1EF-6FD88B5BDAEA</string>
+		<!-- SERVICE_MAIN — Vehicle control -->
+		<string>D4905F67-8931-4FAA-8C61-86EC7490F3C5</string>
+		<!-- SERVICE_ALT_SCAN — Alternate scan service -->
+		<string>15111100-3023-455B-86CE-615F79EE8ECE</string>
+	</array>
+	<key>NSAccessorySetupBluetoothNames</key>
+	<array>
+		<string>Dat Bike</string>
+		<string>QT_</string>
+	</array>
 </dict>
 </plist>

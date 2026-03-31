@@ -1,7 +1,8 @@
-// BLEManager.swift — Core Bluetooth Manager with Background BLE Optimization
-// Handles scanning, connection, state restoration, and auto-reconnect
+// BLEManager.swift — Core Bluetooth Manager with AccessorySetupKit (iOS 18+)
+// Uses ASAccessorySession for discovery/pairing, CoreBluetooth for GATT communication
 
 @preconcurrency import CoreBluetooth
+import AccessorySetupKit
 import Combine
 import UserNotifications
 import CryptoKit
@@ -24,6 +25,8 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(autoUnlockEnabled, forKey: "autoUnlockEnabled") }
     }
     @Published var isAuthenticated = false
+    @Published var hasAuthorizedAccessory = false
+    @Published var pickerDismissed = false
     
     // MARK: - Private Properties
     
@@ -33,7 +36,6 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     private let bleQueue = DispatchQueue(label: "com.jedix.datbikesmartkey.ble", qos: .userInitiated)
     private var rssiTimer: Timer?
-    private var scanRestartTimer: Timer?
     private var isAuthenticating: Bool = false
     private var pairingRetryCount: Int = 0
     private let maxPairingRetries: Int = 3
@@ -46,12 +48,13 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     private var pendingWriteCallbacks: [CBUUID: CheckedContinuation<Void, Error>] = [:]
     private var pendingReadCallbacks: [CBUUID: CheckedContinuation<Data, Error>] = [:]
     
-    /// True khi session BLE vẫn còn sống (state restoration hoặc retrieveConnectedPeripherals).
+    /// True khi session BLE vẫn còn sống (retrieveConnectedPeripherals).
     /// Ngăn auth sequence chạy lại trên phiên đang hoạt động, tránh bike xóa bonding.
     private var isLiveSessionRestore: Bool = false
     
-    /// Flag set by willRestoreState: cần bật lại background scan khi BT powers on
-    private var shouldResumeScanAfterRestore = false
+    // ─── AccessorySetupKit ───────────────────────────────────
+    private var accessorySession = ASAccessorySession()
+    private var currentAccessory: ASAccessory?
     
     private var proximityToken: String {
         if let saved = UserDefaults.standard.string(forKey: "proximityToken") {
@@ -70,74 +73,144 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         self.autoUnlockEnabled = UserDefaults.standard.bool(forKey: "autoUnlockEnabled")
         super.init()
         
-        // State restoration is only supported on real devices with bluetooth-central background mode
-        #if targetEnvironment(simulator)
-        let options: [String: Any] = [
-            CBCentralManagerOptionShowPowerAlertKey: true
-        ]
-        log(.info, "BLE Manager khởi tạo (Simulator — không có State Restoration)")
-        #else
-        let options: [String: Any] = [
-            CBCentralManagerOptionShowPowerAlertKey: true
-        ]
-        log(.info, "BLE Manager khởi tạo (Không dùng State Restoration để tránh conflict)")
-        #endif
+        log(.info, "BLE Manager khởi tạo (AccessorySetupKit — iOS 18+)")
         
-        centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: options)
+        // 1. Activate ASAccessorySession FIRST — handles discovery & authorization
+        accessorySession.activate(on: .main) { [weak self] event in
+            self?.handleAccessoryEvent(event)
+        }
+        
+        // 2. Init CBCentralManager for GATT communication (no scanning)
+        centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: [
+            CBCentralManagerOptionShowPowerAlertKey: true
+        ])
     }
     
     // MARK: - Public API
     
+    /// Show system AccessorySetupKit picker to discover and authorize a Dat Bike
+    func showPicker() {
+        let descriptor = ASDiscoveryDescriptor()
+        descriptor.bluetoothServiceUUID = BLEService.scan
+        
+        let pickerItem = ASPickerDisplayItem(
+            name: "Dat Bike",
+            productImage: UIImage(systemName: "bicycle")!,
+            descriptor: descriptor
+        )
+        
+        log(.info, "📱 Hiện AccessorySetupKit Picker...")
+        DispatchQueue.main.async { self.pickerDismissed = false }
+        
+        accessorySession.showPicker(for: [pickerItem]) { [weak self] error in
+            if let error {
+                self?.log(.error, "Picker error: \(error.localizedDescription)")
+            }
+            DispatchQueue.main.async { self?.pickerDismissed = true }
+        }
+    }
+    
+    /// Start scan — now just triggers ASK picker or auto-connects authorized accessory
     func startScan() {
-        guard centralManager.state == .poweredOn else {
-            log(.warning, "Bluetooth chưa bật")
-            DispatchQueue.main.async { self.connectionState = .bluetoothOff }
+        // If we already have an authorized accessory, connect directly
+        if let accessory = currentAccessory, accessory.bluetoothIdentifier != nil {
+            log(.info, "🔗 Đã có xe authorized — kết nối trực tiếp...")
+            connectToAccessory(accessory)
             return
         }
         
-        guard connectionState != .scanning else { return }
-        
-        DispatchQueue.main.async {
-            self.connectionState = .scanning
-            self.discoveredBikes.removeAll()
-        }
-        log(.ble, "Bắt đầu quét BLE (service: AUTH + MAIN)...")
-        
-        centralManager.scanForPeripherals(
-            withServices: [BLEService.auth, BLEService.main],
-            options: nil
-        )
-    }
-    
-    /// Quét ngầm cho xe đã lưu — Grab-key mode.
-    /// iOS duy trì scan này ngay cả khi app bị vuốt tắt (kill). Khi phát hiện BLE advertisement
-    /// chứa Service UUID 128-bit độc quyền (10CB0217..., D4905F67...), iOS tự đánh thức app
-    /// qua State Restoration → didDiscover → auto-connect → authenticate → mở khóa xe.
-    /// Cực kỳ tiết kiệm pin vì iOS dùng hardware BLE filter, app không cần chạy liên tục.
-    private func startBackgroundScan() {
-        guard centralManager.state == .poweredOn else { return }
-        guard UserDefaults.standard.string(forKey: "lastPeripheralUUID") != nil else { return }
-        guard !isAuthenticated else { return }
-        
-        log(.info, "📡 Grab-key: bật quét ngầm BLE (Service UUID 128-bit: AUTH + MAIN)")
-        
-        // allowDuplicatesKey = false: bắt buộc cho background scan.
-        // iOS tự bỏ qua key này khi ở background, nhưng set rõ ràng cho chắc chắn.
-        centralManager.scanForPeripherals(
-            withServices: BLEService.backgroundScanUUIDs,
-            options: [CBCentralManagerScanOptionAllowDuplicatesKey: false]
-        )
+        // Otherwise, show the system picker
+        showPicker()
     }
     
     func stopScan() {
-        centralManager.stopScan()
-        scanRestartTimer?.invalidate()
-        scanRestartTimer = nil
-        log(.info, "Đã dừng quét")
+        // No-op with ASK — picker is system-managed
+        log(.info, "Dừng quét (ASK — no-op)")
+    }
+    
+    // MARK: - AccessorySetupKit Event Handler
+    
+    private func handleAccessoryEvent(_ event: ASAccessoryEvent) {
+        switch event.eventType {
+        case .activated:
+            log(.success, "✅ ASAccessorySession activated")
+            // Check if we already have an authorized accessory
+            if let existing = accessorySession.accessories.first {
+                currentAccessory = existing
+                DispatchQueue.main.async { self.hasAuthorizedAccessory = true }
+                log(.info, "🔗 Xe đã authorize: \(existing.displayName ?? "Dat Bike")")
+                // Auto-connect when Bluetooth is ready
+                if centralManager?.state == .poweredOn {
+                    connectToAccessory(existing)
+                }
+            } else {
+                DispatchQueue.main.async { self.hasAuthorizedAccessory = false }
+                log(.info, "📱 Chưa có xe nào — cần showPicker()")
+            }
+            
+        case .accessoryAdded:
+            if let accessory = event.accessory {
+                currentAccessory = accessory
+                DispatchQueue.main.async { self.hasAuthorizedAccessory = true }
+                log(.success, "🏍️ Xe mới được authorize: \(accessory.displayName ?? "Dat Bike")")
+                connectToAccessory(accessory)
+            }
+            
+        case .accessoryRemoved:
+            log(.warning, "🗑️ Xe bị xoá khỏi Accessories: \(event.accessory?.displayName ?? "")")
+            currentAccessory = nil
+            DispatchQueue.main.async { self.hasAuthorizedAccessory = false }
+            disconnect()
+            UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
+            
+        case .accessoryChanged:
+            if let accessory = event.accessory {
+                currentAccessory = accessory
+                log(.info, "🔄 Accessory updated: \(accessory.displayName ?? "")")
+            }
+            
+        case .pickerDidDismiss:
+            log(.info, "📱 Picker đã đóng")
+            DispatchQueue.main.async { self.pickerDismissed = true }
+            
+        default:
+            log(.info, "ASK event: \(event.eventType)")
+        }
+    }
+    
+    /// Connect to an authorized ASAccessory via its bluetoothIdentifier
+    private func connectToAccessory(_ accessory: ASAccessory) {
+        guard let btUUID = accessory.bluetoothIdentifier else {
+            log(.error, "Accessory không có bluetoothIdentifier")
+            return
+        }
+        
+        guard centralManager?.state == .poweredOn else {
+            log(.warning, "Bluetooth chưa bật — chờ poweredOn để kết nối")
+            return
+        }
+        
+        // Retrieve CBPeripheral from ASK identifier — NO SCANNING NEEDED
+        let peripherals = centralManager.retrievePeripherals(withIdentifiers: [btUUID])
+        if let p = peripherals.first {
+            log(.success, "📡 Tìm thấy peripheral từ ASK: \(p.name ?? btUUID.uuidString)")
+            connect(to: p)
+        } else {
+            log(.warning, "Không tìm thấy peripheral cho UUID \(btUUID) — thử pending connect...")
+            // Fallback: connect via saved UUID
+            if let savedID = UserDefaults.standard.string(forKey: "lastPeripheralUUID"),
+               let uuid = UUID(uuidString: savedID) {
+                let known = centralManager.retrievePeripherals(withIdentifiers: [uuid])
+                if let p = known.first {
+                    connect(to: p)
+                    return
+                }
+            }
+            DispatchQueue.main.async { self.connectionState = .disconnected }
+        }
     }
     
     func connect(to peripheral: CBPeripheral) {
-        stopScan()
         self.peripheral = peripheral
         peripheral.delegate = self
         
@@ -185,7 +258,21 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         self.peripheral = nil
         UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
         UserDefaults.standard.removeObject(forKey: "proximityToken")
-        log(.warning, "Đã xóa kết nối với xe trên App. Để xóa hoàn toàn, vui lòng vào Cài đặt Bluetooth của iPhone và chọn 'Quên thiết bị' (Forget This Device).")
+        
+        // Remove from AccessorySetupKit
+        if let accessory = currentAccessory {
+            accessorySession.removeAccessory(accessory) { [weak self] error in
+                if let error {
+                    self?.log(.warning, "ASK removeAccessory error: \(error.localizedDescription)")
+                } else {
+                    self?.log(.info, "✅ Xe đã xoá khỏi AccessorySetupKit")
+                }
+            }
+            currentAccessory = nil
+            DispatchQueue.main.async { self.hasAuthorizedAccessory = false }
+        }
+        
+        log(.warning, "Đã xóa kết nối với xe.")
     }
     
     // MARK: - Vehicle Control
@@ -728,13 +815,11 @@ extension BLEManager: CBCentralManagerDelegate {
                 if self.connectionState == .bluetoothOff {
                     self.connectionState = .disconnected
                 }
-                // Try to reconnect to known peripheral
-                self.tryReconnectKnown()
-                
-                // Nếu state restoration yêu cầu resume scan → bật grab-key
-                if self.shouldResumeScanAfterRestore {
-                    self.shouldResumeScanAfterRestore = false
-                    self.startBackgroundScan()
+                // ASK: auto-connect to authorized accessory
+                if let accessory = self.currentAccessory {
+                    self.connectToAccessory(accessory)
+                } else {
+                    self.tryReconnectKnown()
                 }
                 
             case .poweredOff:
@@ -755,84 +840,29 @@ extension BLEManager: CBCentralManagerDelegate {
         }
     }
     
-    /// State Restoration — critical for background BLE
-    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
-        log(.info, "🔄 State Restoration: iOS đánh thức app — khôi phục phiên BLE")
-        
-        if let restoredPeripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] {
-            for p in restoredPeripherals {
-                log(.info, "  → Khôi phục peripheral: \(p.name ?? p.identifier.uuidString) (state: \(p.state.rawValue))")
-                p.delegate = self
-                self.peripheral = p
-                
-                if p.state == .connected {
-                    // Session BLE vẫn sống — KHÔNG gửi bất kỳ read/write nào.
-                    // Gửi data trên session cũ có thể trigger SMP re-negotiation → xe xóa bonding → Error 14.
-                    self.isLiveSessionRestore = true
-                    self.isAuthenticated = true  // Set đồng bộ để didDiscoverCharacteristics bỏ qua auth
-                    log(.info, "  → OS giữ kết nối BLE, khôi phục session trực tiếp (KHÔNG ping)")
-                    DispatchQueue.main.async {
-                        self.connectionState = .ready
-                        self.isAuthenticated = true
-                    }
-                    // Re-discover services to rebuild the characteristic map (needed for commands)
-                    p.discoverServices(BLEService.allServices)
-                } else {
-                    // Peripheral đã mất kết nối — cần reconnect khi BT powers on
-                    log(.info, "  → Peripheral đã ngắt, sẽ auto-reconnect + grab-key scan khi BT bật")
-                    shouldResumeScanAfterRestore = true
-                }
-            }
-        }
-        
-        // Restore scan state: iOS khôi phục thông tin scan trước khi app bị kill
-        if let scanServices = dict[CBCentralManagerRestoredStateScanServicesKey] as? [CBUUID] {
-            log(.info, "  → Khôi phục background scan cho services: \(scanServices)")
-            shouldResumeScanAfterRestore = true
-        }
-    }
+    // Note: willRestoreState removed — AccessorySetupKit manages discovery/authorization.
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                          advertisementData: [String: Any], rssi RSSI: NSNumber) {
         let name = peripheral.name ?? "Unknown"
         let rssiVal = RSSI.intValue
         
-        let containedUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
-        let hasServiceUUID = containedUUIDs.contains(BLEService.scan) || 
-                             containedUUIDs.contains(BLEService.altScan) ||
-                             containedUUIDs.contains(BLEService.auth)
-        
-        // Check if this is our Dat Bike
-        let isDatBike = name.contains(BLEProtocol.deviceNamePrefix) ||
-                        name.hasPrefix(BLEProtocol.deviceNameAltPrefix) ||
-                        hasServiceUUID
-                        
-        guard isDatBike else { return }
-        
-        // Just for debugging, log Dat Bike info
-        log(.ble, " [\(name)] RSSI: \(rssiVal) dBm | AdvData: \(advertisementData.keys.joined(separator: ", "))")
-        if !containedUUIDs.isEmpty {
-            log(.ble, "   → UUIDs: \(containedUUIDs.map { $0.uuidString }.joined(separator: ", "))")
-        }
+        log(.ble, "📡 didDiscover [\(name)] RSSI: \(rssiVal) dBm")
         
         // Auto-connect ONLY if this is our saved bike
         let savedUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
         if peripheral.identifier.uuidString == savedUUID {
-            log(.success, " Tự động kết nối lại xe đã lưu: \(name)!")
+            log(.success, "🔗 Tự động kết nối lại xe đã lưu: \(name)!")
             connect(to: peripheral)
-        } else if pendingBondRecovery && isDatBike {
-            // Bond recovery: xe đã xóa bond cũ → kết nối như thiết bị mới (PIN pairing flow)
-            // KHÔNG SET false ở đây để didFailToConnect còn biết mà ngừng loop nếu iOS bond quá lỳ
-            log(.info, " Bond recovery: kết nối \(name) như thiết bị mới (sẽ dùng PIN + NFC)...")
-            connect(to: peripheral)
-        } else {
-            // Update discovered list
-            DispatchQueue.main.async {
-                if let index = self.discoveredBikes.firstIndex(where: { $0.id == peripheral.identifier.uuidString }) {
-                    self.discoveredBikes[index].rssi = rssiVal
-                } else {
-                    self.discoveredBikes.append(DiscoveredBike(peripheral: peripheral, name: name, rssi: rssiVal))
-                }
+        } else if pendingBondRecovery {
+            let containedUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
+            let isDatBike = name.contains(BLEProtocol.deviceNamePrefix) ||
+                            name.hasPrefix(BLEProtocol.deviceNameAltPrefix) ||
+                            containedUUIDs.contains(BLEService.scan) ||
+                            containedUUIDs.contains(BLEService.auth)
+            if isDatBike {
+                log(.info, "🔧 Bond recovery: kết nối \(name) như thiết bị mới...")
+                connect(to: peripheral)
             }
         }
     }
@@ -976,18 +1006,10 @@ extension BLEManager: CBCentralManagerDelegate {
             sendLocalNotification(title: "Dat Bike", body: "Đã mất kết nối với xe")
         }
         
-        // If user has a saved bike, try to reconnect automatically
+        // ASK: auto-reconnect via pending connection
         let hasSavedBike = UserDefaults.standard.string(forKey: "lastPeripheralUUID") != nil
-        if hasSavedBike {
-            // Pending connection: iOS duy trì ngay cả khi app bị kill → wake on reconnect
+        if hasSavedBike || currentAccessory != nil {
             scheduleReconnect()
-            // Grab-key background scan: fallback nếu pending connection hết hạn
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                guard let self else { return }
-                if self.connectionState == .disconnected {
-                    self.startBackgroundScan()
-                }
-            }
         }
     }
     
@@ -995,44 +1017,33 @@ extension BLEManager: CBCentralManagerDelegate {
     
     private func tryReconnectKnown() {
         let savedID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
-        guard savedID != nil else {
-            // No saved bike — wait for user to scan manually
-            return
-        }
+        guard savedID != nil else { return }
         
-        // 1. Check if this peripheral is already physically connected to iOS (fast path)
+        // 1. Check if peripheral is already physically connected to iOS
         let connected = centralManager.retrieveConnectedPeripherals(withServices: [BLEService.auth, BLEService.main, BLEService.scan, BLEService.altScan])
         if let p = connected.first(where: { $0.identifier.uuidString == savedID }) {
-            // Xe đang kết nối ở tầng iOS → session có thể còn sống.
-            // Đánh dấu isLiveSessionRestore để didDiscoverCharacteristics bỏ qua auth.
             isLiveSessionRestore = true
-            log(.info, " Phát hiện xe đang kết nối (từ iOS cache): \(p.name ?? "unknown") — khôi phục session, bỏ qua auth")
-            connect(to: p)
-            return
-        } else if let p = connected.first {
-            // Có thiết bị BLE đang kết nối nhưng không phải xe đã lưu → vẫn thử kết nối bình thường
-            log(.info, " Phát hiện thiết bị BLE khác đang kết nối: \(p.name ?? "unknown")")
+            log(.info, "🔗 Xe đang kết nối (iOS cache): \(p.name ?? "unknown") — khôi phục session")
             connect(to: p)
             return
         }
         
-        // 2. Try retrieve from cache (works if app was recently opened)
+        // 2. Retrieve from cache
         if let savedID = savedID, let uuid = UUID(uuidString: savedID) {
             let known = centralManager.retrievePeripherals(withIdentifiers: [uuid])
-            if let p = known.first, p.state == .connected {
-                // Chỉ connect nếu thực sự đang connected — tránh trigger SMP re-encryption trên peripheral đã disconnect
-                isLiveSessionRestore = true
-                log(.info, " Tìm thấy xe đã kết nối (from cache): \(p.name ?? savedID)")
+            if let p = known.first {
+                if p.state == .connected {
+                    isLiveSessionRestore = true
+                }
+                log(.info, "🔗 Tìm thấy xe từ cache: \(p.name ?? savedID)")
                 connect(to: p)
                 return
             }
         }
         
-        // 3. Fallback: Grab-key background scan — didDiscover sẽ auto-connect tới saved UUID
-        // Dùng startBackgroundScan() thay vì startScan() để không ảnh hưởng UI
-        // và hoạt động đúng khi app bị iOS đánh thức ở background
-        log(.info, "🔍 Không tìm thấy xe trong cache, bật grab-key scan...")
-        startBackgroundScan()
+        // 3. Fallback: pending connect (iOS handles reconnection in background)
+        log(.info, "🔍 Không tìm thấy xe, chờ ASK hoặc pending connection...")
+        scheduleReconnect()
     }
 }
 
