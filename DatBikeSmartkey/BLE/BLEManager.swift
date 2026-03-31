@@ -95,19 +95,40 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     /// Show system AccessorySetupKit picker to discover and authorize a Dat Bike
     func showPicker() {
-        let descriptor = ASDiscoveryDescriptor()
-        descriptor.bluetoothServiceUUID = BLEService.scan
+        // Descriptor 1: Match by primary scan service UUID
+        let desc1 = ASDiscoveryDescriptor()
+        desc1.bluetoothServiceUUID = BLEService.scan  // 0000FCF1...
         
-        let pickerItem = ASPickerDisplayItem(
-            name: "Dat Bike",
-            productImage: UIImage(systemName: "bicycle")!,
-            descriptor: descriptor
-        )
+        // Descriptor 2: Match by auth service UUID
+        let desc2 = ASDiscoveryDescriptor()
+        desc2.bluetoothServiceUUID = BLEService.auth  // 10CB0217...
         
-        log(.info, "📱 Hiện AccessorySetupKit Picker...")
+        // Descriptor 3: Match by alternate scan service UUID
+        let desc3 = ASDiscoveryDescriptor()
+        desc3.bluetoothServiceUUID = BLEService.altScan  // 15111100...
+        
+        // Descriptor 4: Match by device name substring "Dat Bike"
+        let desc4 = ASDiscoveryDescriptor()
+        desc4.bluetoothNameSubstring = BLEProtocol.deviceNamePrefix  // "Dat Bike"
+        
+        // Descriptor 5: Match by device name substring "QT_"
+        let desc5 = ASDiscoveryDescriptor()
+        desc5.bluetoothNameSubstring = BLEProtocol.deviceNameAltPrefix  // "QT_"
+        
+        let bikeImage = UIImage(systemName: "bicycle")!
+        
+        let pickerItems = [
+            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc1),
+            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc2),
+            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc3),
+            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc4),
+            ASPickerDisplayItem(name: "Dat Bike (QT)", productImage: bikeImage, descriptor: desc5),
+        ]
+        
+        log(.info, "📱 Hiện ASK Picker (5 descriptors: scan/auth/altScan/name)...")
         DispatchQueue.main.async { self.pickerDismissed = false }
         
-        accessorySession.showPicker(for: [pickerItem]) { [weak self] error in
+        accessorySession.showPicker(for: pickerItems) { [weak self] error in
             if let error {
                 self?.log(.error, "Picker error: \(error.localizedDescription)")
             }
