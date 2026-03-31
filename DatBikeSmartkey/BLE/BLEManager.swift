@@ -52,6 +52,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     /// Ngăn auth sequence chạy lại trên phiên đang hoạt động, tránh bike xóa bonding.
     private var isLiveSessionRestore: Bool = false
     
+    /// Flag set by willRestoreState: cần auto-connect khi BT powers on
+    private var shouldReconnectAfterRestore = false
+    
     // ─── AccessorySetupKit ───────────────────────────────────
     private var accessorySession = ASAccessorySession()
     private var currentAccessory: ASAccessory?
@@ -85,10 +88,13 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     /// Init CBCentralManager ONLY after ASAccessorySession has activated.
     /// This prevents the "CBManagers active with global permissions" conflict.
+    /// Uses State Restoration ID so iOS maintains connection when app is killed.
     private func initCentralManagerIfNeeded() {
         guard centralManager == nil else { return }
-        log(.info, "📡 Khởi tạo CBCentralManager (sau ASK activation)")
-        centralManager = CBCentralManager(delegate: self, queue: bleQueue)
+        log(.info, "📡 Khởi tạo CBCentralManager (sau ASK activation, có State Restoration)")
+        centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: [
+            CBCentralManagerOptionRestoreIdentifierKey: "com.jedix.datbikesmartkey.central"
+        ])
     }
     
     // MARK: - Public API
@@ -851,6 +857,16 @@ extension BLEManager: CBCentralManagerDelegate {
                     self.tryReconnectKnown()
                 }
                 
+                // State Restoration: peripheral bị ngắt → reconnect khi BT bật
+                if self.shouldReconnectAfterRestore {
+                    self.shouldReconnectAfterRestore = false
+                    if let accessory = self.currentAccessory {
+                        self.connectToAccessory(accessory)
+                    } else {
+                        self.scheduleReconnect()
+                    }
+                }
+                
             case .poweredOff:
                 self.log(.warning, "Bluetooth đã tắt")
                 self.connectionState = .bluetoothOff
@@ -869,7 +885,34 @@ extension BLEManager: CBCentralManagerDelegate {
         }
     }
     
-    // Note: willRestoreState removed — AccessorySetupKit manages discovery/authorization.
+    // MARK: - State Restoration (Hybrid: ASK discovery + CB persistence)
+    
+    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        log(.info, "🔄 State Restoration: iOS đánh thức app — khôi phục phiên BLE")
+        
+        if let restoredPeripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] {
+            for p in restoredPeripherals {
+                log(.info, "  → Khôi phục peripheral: \(p.name ?? p.identifier.uuidString) (state: \(p.state.rawValue))")
+                p.delegate = self
+                self.peripheral = p
+                
+                if p.state == .connected {
+                    // Session BLE vẫn sống — KHÔNG gửi bất kỳ read/write nào.
+                    self.isLiveSessionRestore = true
+                    self.isAuthenticated = true
+                    log(.info, "  → OS giữ kết nối BLE, khôi phục session trực tiếp (KHÔNG ping)")
+                    DispatchQueue.main.async {
+                        self.connectionState = .ready
+                        self.isAuthenticated = true
+                    }
+                    p.discoverServices(BLEService.allServices)
+                } else {
+                    log(.info, "  → Peripheral đã ngắt, sẽ auto-reconnect khi BT bật")
+                    shouldReconnectAfterRestore = true
+                }
+            }
+        }
+    }
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                          advertisementData: [String: Any], rssi RSSI: NSNumber) {
