@@ -5,6 +5,7 @@
 import Combine
 import UserNotifications
 import CryptoKit
+import WidgetKit
 
 final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
 
@@ -137,6 +138,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             self.connectionState = .disconnected
             self.isAuthenticated = false
             self.lockStatus = .unknown(Data())
+            self.writeToAppGroup()   // ← notify Widget: disconnected
         }
         log(.info, "Đã ngắt kết nối")
     }
@@ -151,6 +153,28 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     // MARK: - Vehicle Control
     
+    // MARK: - App Group Sync (Widget)
+
+    /// Ghi trạng thái xe vào App Group để Widget Extension đọc.
+    private func writeToAppGroup() {
+        let lockRaw: String
+        switch lockStatus {
+        case .unlocked:  lockRaw = "unlocked"
+        case .armed:     lockRaw = "armed"
+        default:         lockRaw = "locked"
+        }
+        var state = SharedBikeState()
+        state.isConnected = connectionState.isConnected
+        state.lockStatusRaw = lockRaw
+        state.bikeName = bikeInfo.name.isEmpty ? "Dat Bike" : bikeInfo.name
+        state.batteryPercent = Int((batteryTelemetry?.soc?.soc ?? 0) * 100)
+        state.odometerKm = dashboardTelemetry?.odometerKm ?? 0
+        state.lastUpdated = Date()
+        state.save()
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+
     func lock() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.smartkeyEcho] else {
             throw BLEError.characteristicNotFound("smartkeyEcho")
@@ -161,6 +185,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         try await Task.sleep(nanoseconds: 400_000_000)
         try await readLockStatus()
     }
+
     
     func unlock() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.unlockCmd] else {
@@ -224,7 +249,10 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         }
         let data = try await readValue(for: char)
         let status = LockStatus(from: data)
-        DispatchQueue.main.async { self.lockStatus = status }
+        DispatchQueue.main.async {
+            self.lockStatus = status
+            self.writeToAppGroup()   // ← sync Widget
+        }
         log(.info, "Trạng thái: \(status.description) (raw: \(data.hexString))")
         return status
     }
