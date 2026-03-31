@@ -73,7 +73,7 @@ enum BLECharacteristic {
     static let deviceModelAlt  = CBUUID(string: "4AAE98E9-90B5-492F-8180-9538FA2C843D")
     
     /// Session token (handle 0x02e) — Write random 5-digit session ID after auth
-    static let sessionToken    = CBUUID(string: "44E2BDE6-9CD5-4159-9D43-A3E3F4E9C737")
+    static let timeSync         = CBUUID(string: "44E2BDE6-9CD5-4159-9D43-A3E3F4E9C737")  // Seconds since midnight UTC+7
     
     /// Unlock command (handle 0x030) — WRITE '0' (0x30) to unlock
     static let unlockCmd       = CBUUID(string: "7F13FE5C-1971-4FEC-97FD-F90E16CF8C28")

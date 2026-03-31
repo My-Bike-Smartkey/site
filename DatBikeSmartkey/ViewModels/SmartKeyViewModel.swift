@@ -17,11 +17,26 @@ final class SmartKeyViewModel: ObservableObject {
     @Published var selectedBike: DiscoveredBike? = nil
     @Published var autoUnlockEnabled: Bool = false
     @Published var isAuthenticated = false
-    
+
     @Published var isProcessing = false
     @Published var showError = false
     @Published var errorMessage = ""
     @Published var isFinding = false
+
+    // Time Sync
+    @Published var isSyncingTime = false
+    @Published var lastTimeSyncResult: Bool? = nil   // nil = never, true = success, false = error
+    @Published var lastTimeSyncDate: Date? = nil
+
+    var lastTimeSyncDescription: String {
+        guard let date = lastTimeSyncDate else { return "Chưa đồng bộ thủ công" }
+        let formatter = DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = "HH:mm:ss dd/MM"
+        let success = lastTimeSyncResult == true
+        return (success ? "✓ " : "✗ ") + formatter.string(from: date)
+    }
+
     
     // Settings
     @Published var authPIN: String {
@@ -178,6 +193,24 @@ final class SmartKeyViewModel: ObservableObject {
             }
         }
     }
+
+    func syncTime() {
+        guard !isSyncingTime else { return }
+        isSyncingTime = true
+        Task {
+            do {
+                try await ble.syncTime()
+                lastTimeSyncResult = true
+                lastTimeSyncDate = Date()
+            } catch {
+                lastTimeSyncResult = false
+                lastTimeSyncDate = Date()
+                showError("Đồng bộ giờ thất bại: \(error.localizedDescription)")
+            }
+            isSyncingTime = false
+        }
+    }
+
     
     func refreshStatus() {
         Task {

@@ -174,6 +174,23 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
+    // MARK: - Manual Time Sync
+
+    /// Ghi TIME_SYNC (44e2bde6) với giờ hiện tại (UTC+7) theo yêu cầu thủ công từ Settings.
+    func syncTime() async throws {
+        guard let syncChar = discoveredCharacteristics[BLECharacteristic.timeSync] else {
+            throw BLEError.characteristicNotFound("timeSync (44e2bde6)")
+        }
+        let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = vnTZ
+        let comps = cal.dateComponents([.hour, .minute, .second], from: Date())
+        let secs = (comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0)
+        let value = String(secs)
+        log(.ble, "⏱ TIME_SYNC manual: \(value) (\(comps.hour ?? 0):\(String(format: \"%02d\", comps.minute ?? 0)):\(String(format: \"%02d\", comps.second ?? 0)) VN)")
+        try await writeValue(Data(value.utf8), for: syncChar, type: .withResponse)
+    }
+
 
     func lock() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.smartkeyEcho] else {
@@ -421,12 +438,20 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             try await Task.sleep(nanoseconds: UInt64(BLEProtocol.authSessionDelay * 1_000_000_000))
         }
         
-        // ── Step 5: Write session token (BEFORE CCCD — matches btsnoop order)
-        let sessionToken = String(Int.random(in: 10000...99999))
-        log(.ble, " Step 5: Session Token: \(sessionToken)")
-        if let sessChar = discoveredCharacteristics[BLECharacteristic.sessionToken] {
-            try? await writeValue(Data(sessionToken.utf8), for: sessChar, type: .withResponse)
+        // ── Step 5: TIME SYNC (44e2bde6) — seconds since midnight Vietnam time (UTC+7)
+        // Confirmed by ANALYSIS_REPORT §4: not session ID, actual clock sync for vehicle RTC
+        let vnTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = vnTimeZone
+        let now = Date()
+        let comps = cal.dateComponents([.hour, .minute, .second], from: now)
+        let secondsSinceMidnight = (comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0)
+        let timeSyncValue = String(secondsSinceMidnight)
+        log(.ble, "⏱ Step 5: TIME_SYNC = \(timeSyncValue) (\(comps.hour ?? 0):\(String(format: "%02d", comps.minute ?? 0)):\(String(format: "%02d", comps.second ?? 0)) VN)")
+        if let syncChar = discoveredCharacteristics[BLECharacteristic.timeSync] {
+            try? await writeValue(Data(timeSyncValue.utf8), for: syncChar, type: .withResponse)
         }
+
         
         // ── Step 6: Register proximity token (BEFORE CCCD — matches btsnoop order)
         let token = proximityToken

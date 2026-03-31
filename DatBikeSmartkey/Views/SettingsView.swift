@@ -127,6 +127,96 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    // Time Sync section
+                    settingsSection(title: "ĐỒNG BỘ GIỜ XE") {
+                        VStack(spacing: 0) {
+                            // Current device time display
+                            HStack {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "clock.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.blue)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.blue.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Giờ điện thoại (UTC+7)")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                        Text(currentVNTimeString())
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+
+                            Divider().background(Color.white.opacity(0.06))
+
+                            // Last sync status
+                            HStack {
+                                HStack(spacing: 10) {
+                                    Image(systemName: viewModel.lastTimeSyncResult == nil ? "clock.badge.questionmark" :
+                                          viewModel.lastTimeSyncResult == true ? "clock.badge.checkmark.rtl" : "clock.badge.exclamationmark")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(viewModel.lastTimeSyncResult == nil ? .gray :
+                                                         viewModel.lastTimeSyncResult == true ? .green : .red)
+                                        .frame(width: 28, height: 28)
+                                        .background((viewModel.lastTimeSyncResult == nil ? Color.gray :
+                                                     viewModel.lastTimeSyncResult == true ? Color.green : Color.red).opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Lần đồng bộ cuối")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                        Text(viewModel.lastTimeSyncDescription)
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+
+                            Divider().background(Color.white.opacity(0.06))
+
+                            // Sync Now button
+                            Button {
+                                viewModel.syncTime()
+                            } label: {
+                                HStack {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: "arrow.triangle.2.circlepath")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.blue)
+                                            .frame(width: 28, height: 28)
+                                            .background(Color.blue.opacity(0.15))
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        Text(viewModel.isSyncingTime ? "Đang đồng bộ..." : "Đồng bộ ngay")
+                                            .font(.subheadline)
+                                            .foregroundColor(viewModel.isConnected ? .white : .gray)
+                                    }
+                                    Spacer()
+                                    if viewModel.isSyncingTime {
+                                        ProgressView()
+                                            .tint(.blue)
+                                    } else {
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                            }
+                            .disabled(!viewModel.isConnected || viewModel.isSyncingTime)
+                        }
+                    }
+
                     
                     // Debug section
 //                    settingsSection(title: "GỠ LỖI") {
@@ -305,6 +395,14 @@ struct SettingsView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
+    }
+
+    private func currentVNTimeString() -> String {
+        let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let formatter = DateFormatter()
+        formatter.timeZone = vnTZ
+        formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
+        return formatter.string(from: Date())
     }
 }
 
