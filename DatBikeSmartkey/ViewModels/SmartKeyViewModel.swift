@@ -17,6 +17,9 @@ final class SmartKeyViewModel: ObservableObject {
     @Published var selectedBike: DiscoveredBike? = nil
     @Published var autoUnlockEnabled: Bool = false
     @Published var isAuthenticated = false
+    @Published var isDebugModeEnabled: Bool = false {
+        didSet { UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled") }
+    }
 
     @Published var isProcessing = false
     @Published var showError = false
@@ -65,6 +68,7 @@ final class SmartKeyViewModel: ObservableObject {
         self.rssiThreshold = UserDefaults.standard.double(forKey: "rssiThreshold") != 0
             ? UserDefaults.standard.double(forKey: "rssiThreshold")
             : Double(BLEProtocol.rssiThreshold)
+        self.isDebugModeEnabled = UserDefaults.standard.bool(forKey: "isDebugModeEnabled")
         
         setupBindings()
     }

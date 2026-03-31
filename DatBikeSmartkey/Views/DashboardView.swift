@@ -106,12 +106,14 @@ struct DashboardView: View {
             
             Spacer()
             
-            Button(action: { showingLogs = true }) {
-                Image(systemName: "terminal.fill")
-                    .font(.system(size: 14))
-                    .foregroundColor(.cyan)
-                    .padding(10)
-                    .background(Circle().fill(Color.white.opacity(0.1)))
+            if viewModel.isDebugModeEnabled {
+                Button(action: { showingLogs = true }) {
+                    Image(systemName: "terminal.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.cyan)
+                        .padding(10)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                }
             }
             
             Button(action: { showingSettings = true }) {

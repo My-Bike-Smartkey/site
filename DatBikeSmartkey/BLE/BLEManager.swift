@@ -46,6 +46,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     private var pendingWriteCallbacks: [CBUUID: CheckedContinuation<Void, Error>] = [:]
     private var pendingReadCallbacks: [CBUUID: CheckedContinuation<Data, Error>] = [:]
     
+    /// True khi session BLE vẫn còn sống (state restoration hoặc retrieveConnectedPeripherals).
+    /// Ngăn auth sequence chạy lại trên phiên đang hoạt động, tránh bike xóa bonding.
+    private var isLiveSessionRestore: Bool = false
     
     /// Flag set by willRestoreState: cần bật lại background scan khi BT powers on
     private var shouldResumeScanAfterRestore = false
@@ -75,10 +78,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         log(.info, "BLE Manager khởi tạo (Simulator — không có State Restoration)")
         #else
         let options: [String: Any] = [
-            CBCentralManagerOptionRestoreIdentifierKey: BLEProtocol.centralRestoreID,
             CBCentralManagerOptionShowPowerAlertKey: true
         ]
-        log(.info, "BLE Manager khởi tạo với State Restoration")
+        log(.info, "BLE Manager khởi tạo (Không dùng State Restoration để tránh conflict)")
         #endif
         
         centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: options)
@@ -389,91 +391,50 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async { self.connectionState = .authenticating }
         let pinData = Data(pin.utf8)
         let savedUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
-        var isKnownDevice = (savedUUID == peripheral.identifier.uuidString)
-        
-        // ── Pre-auth bond check ──
-        // iOS không expose bondState như Android. Thay vào đó, thử đọc encrypted characteristic.
-        // Nếu bond stale (xe đã xóa LTK) → read fail → chuyển sang new card flow, tránh gửi SHA-256
-        // trên bond hỏng (gây xe wipe bonding → error 14 loop).
-        if isKnownDevice {
-            do {
-                let testData = try await readValue(for: authChar)
-                if testData.count < 4 {
-                    log(.warning, " Pre-auth check: Challenge quá ngắn (\(testData.count)B) → coi như bond stale")
-                    isKnownDevice = false
-                    UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
-                }
-            } catch {
-                log(.warning, " Pre-auth check: Read challenge thất bại (\(error.localizedDescription)) → bond có thể stale, chuyển sang new card flow")
-                isKnownDevice = false
-                UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
-            }
-        }
+        let isKnownDevice = (savedUUID == peripheral.identifier.uuidString)
         
         if isKnownDevice {
             // ── RECONNECT FLOW (SHA-256) with Counter Verification ──
             log(.ble, " Tái kết nối tự động (SHA-256 Mode). Đọc Challenge...")
             
-            // Challenge đã được đọc thành công trong pre-auth check, đọc lại để lấy giá trị mới nhất
-            var currentChallengeData = try await readValue(for: authChar)
+            let currentChallengeData = try await readValue(for: authChar)
             guard currentChallengeData.count >= 4 else {
                 log(.error, " Lỗi: Challenge Data quá ngắn (\(currentChallengeData.count) bytes)")
                 throw BLEError.authFailed("Challenge data too short")
             }
             
-            var authSuccess = false
+            // 1. Chuyển thành UInt32 Little Endian
+            let currentCounter = currentChallengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
             
-            for attempt in 1...BLEProtocol.maxAuthRetries {
-                if attempt > 1 {
-                    // Đợi trước khi retry — giống Dat Bike app (~1.2s giữa các lần)
-                    try await Task.sleep(nanoseconds: UInt64(BLEProtocol.authRetryDelay * 1_000_000_000))
-                    currentChallengeData = try await readValue(for: authChar)
-                    guard currentChallengeData.count >= 4 else {
-                        log(.error, " Retry \(attempt): Challenge data quá ngắn")
-                        continue
-                    }
-                    log(.ble, " Retry \(attempt)/\(BLEProtocol.maxAuthRetries): đọc counter mới...")
-                }
-                
-                // 1. Chuyển thành UInt32 Little Endian
-                let currentCounter = currentChallengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                
-                // 2. Dịch phải (Logical Right Shift) 1 bit
-                let shifted = currentCounter >> 1
-                
-                // 3. Ghép chuỗi Số Nguyên + PIN
-                let mixStr = "\(shifted)\(pin)"
-                
-                // 4. Băm SHA-256 → Hex String
-                let hashed = SHA256.hash(data: Data(mixStr.utf8))
-                let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
-                
-                let challengeHex = currentChallengeData.map { String(format: "%02x", $0) }.joined()
-                log(.ble, " [AUTH] attempt \(attempt) — computing response...")
-                
-                // 5. Ghi hash
-                try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
-                
-                // 6. Đọc lại counter để xác nhận — Dat Bike app kiểm tra counter +1
-                try await Task.sleep(nanoseconds: 200_000_000) // 200ms cho firmware xử lý
-                let verifyData = try await readValue(for: authChar)
-                guard verifyData.count >= 4 else {
-                    log(.warning, " Verify: data quá ngắn (\(verifyData.count) bytes)")
-                    continue
-                }
+            // 2. Dịch phải (Logical Right Shift) 1 bit
+            let shifted = currentCounter >> 1
+            
+            // 3. Ghép chuỗi Số Nguyên + PIN
+            let mixStr = "\(shifted)\(pin)"
+            
+            // 4. Băm SHA-256 → Hex String
+            let hashed = SHA256.hash(data: Data(mixStr.utf8))
+            let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
+            
+            log(.ble, " [AUTH] computing SHA-256 response...")
+            
+            // 5. Ghi hash — CHỈ 1 LẦN, không retry để tránh firmware wipe bonding
+            try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
+            
+            // 6. Đọc lại counter để xác nhận
+            try await Task.sleep(nanoseconds: 200_000_000) // 200ms cho firmware xử lý
+            let verifyData = try await readValue(for: authChar)
+            if verifyData.count >= 4 {
                 let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                
                 if newCounter > currentCounter {
-                    authSuccess = true
                     log(.success, " Counter verified: \(currentCounter) → \(newCounter) (+\(newCounter - currentCounter)). Auth OK!")
-                    break
+                } else {
+                    log(.warning, " Counter không tăng: expected >\(currentCounter), got \(newCounter). Auth có thể thất bại.")
+                    throw BLEError.authFailed("Counter verification failed")
                 }
-                
-                log(.warning, " Counter không tăng (attempt \(attempt)/\(BLEProtocol.maxAuthRetries)): expected >\(currentCounter), got \(newCounter)")
-            }
-            
-            if !authSuccess {
-                throw BLEError.authFailed("Counter verification failed after \(BLEProtocol.maxAuthRetries) attempts")
+            } else {
+                // Counter verify thất bại nhưng write đã ACK → coi như OK (giống bản đầu)
+                log(.warning, " Counter verify: data ngắn (\(verifyData.count) bytes), tiếp tục...")
             }
             
         } else {
@@ -728,9 +689,30 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async {
             self.logs.append(entry)
         }
+        // Persist to file
+        PersistentLogger.shared.append(entry)
         #if DEBUG
         print("[\(level.rawValue)] \(message)")
         #endif
+    }
+    
+    /// Load persisted logs from recent days into memory. Call once on app launch.
+    func loadPersistedLogs(daysBack: Int = 7) {
+        let persisted = PersistentLogger.shared.loadLogs(daysBack: daysBack)
+        if !persisted.isEmpty {
+            DispatchQueue.main.async {
+                self.logs = persisted
+            }
+        }
+    }
+    
+    func clearLogs(clearPersisted: Bool = false) {
+        DispatchQueue.main.async {
+            self.logs.removeAll()
+        }
+        if clearPersisted {
+            PersistentLogger.shared.clearAll()
+        }
     }
 }
 
@@ -784,9 +766,14 @@ extension BLEManager: CBCentralManagerDelegate {
                 self.peripheral = p
                 
                 if p.state == .connected {
-                    log(.info, "  → OS giữ kết nối BLE, tiến hành ping để xác nhận session...")
+                    // Session BLE vẫn sống — KHÔNG gửi bất kỳ read/write nào.
+                    // Gửi data trên session cũ có thể trigger SMP re-negotiation → xe xóa bonding → Error 14.
+                    self.isLiveSessionRestore = true
+                    self.isAuthenticated = true  // Set đồng bộ để didDiscoverCharacteristics bỏ qua auth
+                    log(.info, "  → OS giữ kết nối BLE, khôi phục session trực tiếp (KHÔNG ping)")
                     DispatchQueue.main.async {
-                        self.connectionState = .sessionVerifying
+                        self.connectionState = .ready
+                        self.isAuthenticated = true
                     }
                     // Re-discover services to rebuild the characteristic map (needed for commands)
                     p.discoverServices(BLEService.allServices)
@@ -917,6 +904,9 @@ extension BLEManager: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         log(.warning, " Ngắt kết nối: \(error?.localizedDescription ?? "chủ động")")
         
+        // Reset live session flag
+        isLiveSessionRestore = false
+        
         // Cancel pending read/write continuations to prevent zombie operations
         for (_, continuation) in pendingWriteCallbacks {
             continuation.resume(throwing: BLEError.notConnected)
@@ -1013,7 +1003,10 @@ extension BLEManager: CBCentralManagerDelegate {
         // 1. Check if this peripheral is already physically connected to iOS (fast path)
         let connected = centralManager.retrieveConnectedPeripherals(withServices: [BLEService.auth, BLEService.main, BLEService.scan, BLEService.altScan])
         if let p = connected.first(where: { $0.identifier.uuidString == savedID }) {
-            log(.info, " Phát hiện xe đang kết nối (từ iOS cache): \(p.name ?? "unknown") — sẽ ping session tránh lỗi auth đè.")
+            // Xe đang kết nối ở tầng iOS → session có thể còn sống.
+            // Đánh dấu isLiveSessionRestore để didDiscoverCharacteristics bỏ qua auth.
+            isLiveSessionRestore = true
+            log(.info, " Phát hiện xe đang kết nối (từ iOS cache): \(p.name ?? "unknown") — khôi phục session, bỏ qua auth")
             connect(to: p)
             return
         } else if let p = connected.first {
@@ -1026,8 +1019,10 @@ extension BLEManager: CBCentralManagerDelegate {
         // 2. Try retrieve from cache (works if app was recently opened)
         if let savedID = savedID, let uuid = UUID(uuidString: savedID) {
             let known = centralManager.retrievePeripherals(withIdentifiers: [uuid])
-            if let p = known.first {
-                log(.info, " Tìm thấy xe trong cache (\(p.name ?? "unknown")). Queue lệnh connect...")
+            if let p = known.first, p.state == .connected {
+                // Chỉ connect nếu thực sự đang connected — tránh trigger SMP re-encryption trên peripheral đã disconnect
+                isLiveSessionRestore = true
+                log(.info, " Tìm thấy xe đã kết nối (from cache): \(p.name ?? savedID)")
                 connect(to: p)
                 return
             }
@@ -1079,68 +1074,39 @@ extension BLEManager: CBPeripheralDelegate {
         let hasUnlock = discoveredCharacteristics[BLECharacteristic.unlockCmd] != nil
         
         if hasAuth && hasLock && hasUnlock {
+            // ── Live session restore path (State Restoration hoặc retrieveConnectedPeripherals) ──
+            // Session BLE vẫn còn sống → tuyệt đối không gửi auth lại.
+            // Gửi SHA-256 trên phiên đang active sẽ bị bike hiểu là invalid → XÓA BONDING.
+            if isLiveSessionRestore {
+                isLiveSessionRestore = false
+                log(.success, " Characteristics sẵn sàng (live session). Khôi phục trạng thái, bỏ qua auth.")
+                DispatchQueue.main.async {
+                    self.isAuthenticated = true
+                    self.connectionState = .ready
+                }
+                Task {
+                    _ = try? await readLockStatus()
+                    await readDeviceInfo()
+                    startRSSIMonitoring()
+                }
+                return
+            }
+            
             guard !isAuthenticated && !isAuthenticating else { return }
             
             isAuthenticating = true
+            log(.success, " Tất cả characteristics sẵn sàng. Bắt đầu xác thực...")
             
             Task {
-                // ── BƯỚC 1: PING GHOST CONNECTION ──
-                // Thay vì luôn chạy auth, kiểm tra xe có đang active session không bằng cách đọc 1 characteristic cần mã hóa
-                let savedUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
-                let isKnownDevice = (savedUUID == peripheral.identifier.uuidString)
-                
-                if isKnownDevice {
-                    DispatchQueue.main.async { self.connectionState = .sessionVerifying }
-                    self.log(.ble, "🔍 [PING] Kiểm tra session cũ (Ghost Connection)...")
-                    
-                    if let pingChar = self.discoveredCharacteristics[BLECharacteristic.vehicleStatus] {
-                        do {
-                            // Cần timeout ngắn gọn (2s) để chẩn đoán trạng thái
-                            _ = try await self.readValue(for: pingChar, timeout: 2.0)
-                            
-                            // Nếu thành công -> Session vẫn sống ngoẻo!
-                            self.log(.success, "✅ [PING OK] Trạng thái phiên cũ hợp lệ! Bỏ qua xác thực.")
-                            
-                            // THỬ NGHIỆM TẮT BOND: Không khôi phục CCCD
-                            /*
-                            if let scChar = self.discoveredCharacteristics[BLECharacteristic.serviceChanged] {
-                                if !scChar.isNotifying {
-                                    self.log(.ble, " CCCD (serviceChanged) bị mất auth, tiến hành gửi lại lệnh Notify (0x0100)...")
-                                    peripheral.setNotifyValue(true, for: scChar)
-                                } else {
-                                    self.log(.success, " CCCD (serviceChanged) báo cáo đã được subscribed.")
-                                }
-                            }
-                            */
-                            
-                            DispatchQueue.main.async {
-                                self.isAuthenticated = true
-                                self.connectionState = .ready
-                            }
-                            _ = try? await self.readLockStatus()
-                            await self.readDeviceInfo()
-                            self.startRSSIMonitoring()
-                            self.isAuthenticating = false
-                            return
-                        } catch {
-                            self.log(.warning, "⚠️ [PING FAIL] Phiên bị từ chối hoặc timeout. Máy sẽ chạy lại quy trình xác thực. Lỗi: \(error.localizedDescription)")
-                        }
-                    }
-                }
-                
-                // ── BƯỚC 2: AUTHENTICATE BÌNH THƯỜNG ──
-                self.log(.success, " Bắt đầu luồng xác thực (SHA / New Card)...")
-                DispatchQueue.main.async { self.connectionState = .authenticating }
                 do {
-                    // Start auth sequence
-                    try await self.authenticate()
+                    try await authenticate()
                 } catch {
-                    self.log(.error, "Xác thực thất bại: \(error.localizedDescription)")
+                    log(.error, "Xác thực thất bại: \(error.localizedDescription)")
                     DispatchQueue.main.async {
                         self.connectionState = .error("Xác thực thất bại")
                     }
                 }
-                self.isAuthenticating = false
+                isAuthenticating = false
             }
         }
     }

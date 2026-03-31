@@ -194,13 +194,35 @@ struct SettingsView: View {
 
                     
                     // Debug section
-//                    settingsSection(title: "GỠ LỖI") {
-//                        VStack(spacing: 0) {
-//                            settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log (\(viewModel.logs.count))") {
-//                                showLogs = true
-//                            }
-//                        }
-//                    }
+                    settingsSection(title: "CÀI ĐẶT NHÀ PHÁT TRIỂN") {
+                        VStack(spacing: 0) {
+                            HStack {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "ladybug.fill")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.green)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.green.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    Text("Chế độ Nhà phát triển")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white)
+                                }
+                                Spacer()
+                                Toggle("", isOn: $viewModel.isDebugModeEnabled)
+                                    .tint(.green)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            
+                            if viewModel.isDebugModeEnabled {
+                                Divider().background(Color.white.opacity(0.06))
+                                settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log (\(viewModel.logs.count))") {
+                                    showLogs = true
+                                }
+                            }
+                        }
+                    }
                     
                     // Donate section
                     settingsSection(title: "ỦNG HỘ DỰ ÁN") {

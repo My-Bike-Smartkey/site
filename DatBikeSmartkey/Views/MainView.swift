@@ -95,12 +95,13 @@ struct ConnectingSplashView: View {
             VStack {
                 HStack {
                     Spacer()
-                    Button(action: { showingLogs = true }) {
-                        Image(systemName: "terminal.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.cyan)
-                            .padding(.top)
-                            .padding(.leading)
+                    if viewModel.isDebugModeEnabled {
+                        Button(action: { showingLogs = true }) {
+                            Image(systemName: "terminal.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(.cyan)
+                                .padding()
+                        }
                     }
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
