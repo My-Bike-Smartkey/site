@@ -139,20 +139,21 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         switch event.eventType {
         case .activated:
             log(.success, "✅ ASAccessorySession activated")
-            // NOW it's safe to init CBCentralManager (after ASK owns the Bluetooth context)
-            initCentralManagerIfNeeded()
             // Check if we already have an authorized accessory
             if let existing = accessorySession.accessories.first {
                 currentAccessory = existing
                 DispatchQueue.main.async { self.hasAuthorizedAccessory = true }
                 log(.info, "🔗 Xe đã authorize: \(existing.displayName ?? "Dat Bike")")
-                // Auto-connect when Bluetooth is ready
+                // ONLY init CBCentralManager when we have an authorized accessory
+                // Creating it without authorized accessories = "global permissions" conflict
+                initCentralManagerIfNeeded()
                 if centralManager?.state == .poweredOn {
                     connectToAccessory(existing)
                 }
             } else {
                 DispatchQueue.main.async { self.hasAuthorizedAccessory = false }
                 log(.info, "📱 Chưa có xe nào — cần showPicker()")
+                // ⚠️ Do NOT init CBCentralManager here — no authorized accessory yet
             }
             
         case .accessoryAdded:
