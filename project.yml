@@ -22,9 +22,6 @@ targets:
       - path: DatBikeSmartkey
         excludes:
           - "**/*.entitlements"
-    dependencies:
-      - target: DatBikeWidget
-        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.sloth9695.cygnus4928
@@ -49,29 +46,3 @@ targets:
           SWIFT_COMPILATION_MODE: "wholemodule"
           SWIFT_OPTIMIZATION_LEVEL: "-O"
           GCC_SYMBOLS_PRIVATE_EXTERN: "YES"
-
-  DatBikeWidget:
-    type: app-extension
-    platform: iOS
-    deploymentTarget: "17.0"
-    sources:
-      - path: DatBikeWidget
-        excludes:
-          - "**/*.entitlements"
-      - path: DatBikeSmartkey/Models/SharedBikeState.swift
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.sloth9695.cygnus4928.widget
-        CODE_SIGN_STYLE: Automatic
-        DEVELOPMENT_TEAM: ""
-        TARGETED_DEVICE_FAMILY: "1"
-        SWIFT_EMIT_LOC_STRINGS: "YES"
-        INFOPLIST_FILE: DatBikeWidget/Info.plist
-        CODE_SIGN_ENTITLEMENTS: DatBikeWidget/DatBikeWidget.entitlements
-        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../../Frameworks"
-      configs:
-        Release:
-          DEPLOYMENT_POSTPROCESSING: "YES"
-          STRIP_INSTALLED_PRODUCT: "YES"
-          SWIFT_COMPILATION_MODE: "wholemodule"
-          SWIFT_OPTIMIZATION_LEVEL: "-O"

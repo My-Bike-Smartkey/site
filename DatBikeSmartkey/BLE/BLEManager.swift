@@ -187,7 +187,10 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         let comps = cal.dateComponents([.hour, .minute, .second], from: Date())
         let secs = (comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0)
         let value = String(secs)
-        log(.ble, "⏱ TIME_SYNC manual: \(value) (\(comps.hour ?? 0):\(String(format: \"%02d\", comps.minute ?? 0)):\(String(format: \"%02d\", comps.second ?? 0)) VN)")
+        let h = comps.hour ?? 0
+        let m = String(format: "%02d", comps.minute ?? 0)
+        let s = String(format: "%02d", comps.second ?? 0)
+        log(.ble, "⏱ TIME_SYNC manual: \(value) (\(h):\(m):\(s) VN)")
         try await writeValue(Data(value.utf8), for: syncChar, type: .withResponse)
     }
 
