@@ -81,7 +81,7 @@ struct DashboardView: View {
             Text(viewModel.errorMessage)
         }
         .sheet(isPresented: $showingLogs) {
-            DebugLogView(logs: viewModel.logs)
+            DebugLogView(bleManager: BLEManager.shared)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: viewModel)
@@ -106,6 +106,14 @@ struct DashboardView: View {
             
             Spacer()
             
+            Button(action: { showingLogs = true }) {
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.cyan)
+                    .padding(10)
+                    .background(Circle().fill(Color.white.opacity(0.1)))
+            }
+            
             Button(action: { showingSettings = true }) {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 16))
@@ -113,7 +121,6 @@ struct DashboardView: View {
                     .padding(10)
                     .background(Circle().fill(Color.white.opacity(0.1)))
             }
-            .padding(.trailing, 8)
             
             // BLE status indicator
             Circle()

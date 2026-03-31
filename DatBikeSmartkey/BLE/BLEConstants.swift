@@ -26,6 +26,10 @@ enum BLEService {
     
     /// All services to discover after connection
     static let allServices: [CBUUID] = [auth, config, main, ext]
+    
+    /// UUIDs cho background scan (Grab-key). iOS duy trì scan ngầm với UUID 128-bit
+    /// độc quyền. Khi phát hiện advertising khớp, iOS tự đánh thức app qua State Restoration.
+    static let backgroundScanUUIDs: [CBUUID] = [auth, main]
 }
 
 // MARK: - Characteristic UUIDs
@@ -164,7 +168,7 @@ enum LockStatus: Equatable, CustomStringConvertible {
         switch self {
         case .unlocked:        return "Đang bật"
         case .locked:          return "Đang tắt"
-        case .armed:           return "Đã vũ trang"
+        case .armed:           return "Đã bật chống trộm"
         case .unknown(let d):  return "Không xác định (\(d.hexString))"
         }
     }
@@ -205,10 +209,33 @@ enum AuthState {
 // MARK: - Protocol Constants
 
 enum BLEProtocol {
-    /// Default authentication PIN — người dùng set trong Settings
-    /// Auth formula: SHA-256( str(challenge_uint32_LE >> 1) + authPIN )
-    /// Ví dụ PIN thực tế quan sát: "997812" (cũ), "nguyeanphuactu" (mới)
+    /// Default PIN — chỉ dùng làm fallback khi chưa có PIN tự sinh
+    /// Lần đầu kết nối, app sẽ tự sinh PIN 12 ký tự ngẫu nhiên
     static let authPIN = "toiyeudatbike"
+    
+    /// Sinh PIN ngẫu nhiên 12 ký tự: chữ thường, chữ hoa, số, ký tự đặc biệt
+    static func generateSecurePIN() -> String {
+        let lowercase = "abcdefghijklmnopqrstuvwxyz"
+        let uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        let digits = "0123456789"
+        let special = "!@#$%^&*"
+        let allChars = lowercase + uppercase + digits + special
+        
+        // Đảm bảo có ít nhất 1 ký tự từ mỗi nhóm
+        var pin = ""
+        pin.append(lowercase.randomElement()!)
+        pin.append(uppercase.randomElement()!)
+        pin.append(digits.randomElement()!)
+        pin.append(special.randomElement()!)
+        
+        // 8 ký tự còn lại ngẫu nhiên từ tất cả
+        for _ in 0..<8 {
+            pin.append(allChars.randomElement()!)
+        }
+        
+        // Xao trộn để không biết vị trí cố định
+        return String(pin.shuffled())
+    }
     
     /// RSSI threshold for auto-unlock (same as ESP32: -65 dBm ≈ 1-2m)
     static let rssiThreshold: Int = -65
@@ -227,6 +254,12 @@ enum BLEProtocol {
     static let authSessionDelay: TimeInterval = 0.5    // 500ms before session token
     static let authFinalDelay: TimeInterval = 1.0      // 1s before final PIN confirm
     static let pairingTimeout: TimeInterval = 8.0      // 8s wait for SMP pairing
+    
+    /// Max auth retries with counter verification (như Dat Bike app Phase B: 4-5 lần)
+    static let maxAuthRetries: Int = 5
+    
+    /// Delay giữa các lần retry auth (giây) — Dat Bike app ~1.2s
+    static let authRetryDelay: TimeInterval = 1.2
     
     /// Scan restart interval when in background
     static let backgroundScanInterval: TimeInterval = 10.0

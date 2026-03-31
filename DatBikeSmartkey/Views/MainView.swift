@@ -5,8 +5,10 @@ import SwiftUI
 struct MainView: View {
     @StateObject private var viewModel = SmartKeyViewModel()
     @State private var showingSettings = false
+    @State private var showingLogs = false
     @State private var showingPINPrompt = false
     @State private var showingNFCPrompt = false
+    @State private var showingDisclaimer = false
     @State private var enteredPIN = ""
     
     var body: some View {
@@ -15,14 +17,36 @@ struct MainView: View {
                 DashboardView(viewModel: viewModel)
                     .transition(.opacity)
             } else {
-                ConnectingSplashView(viewModel: viewModel, showingSettings: $showingSettings, showingPINPrompt: $showingPINPrompt)
+                ConnectingSplashView(viewModel: viewModel, showingSettings: $showingSettings, showingLogs: $showingLogs, showingPINPrompt: $showingPINPrompt)
                     .transition(.opacity)
             }
         }
         .animation(.easeInOut, value: viewModel.isAuthenticated)
         .preferredColorScheme(.dark)
+        .onAppear {
+            if !UserDefaults.standard.bool(forKey: "disclaimerAccepted") {
+                showingDisclaimer = true
+            }
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingLogs) {
+            DebugLogView(bleManager: BLEManager.shared)
+        }
+        .alert("Miễn trừ trách nhiệm", isPresented: $showingDisclaimer) {
+            Button("Tôi đã hiểu và đồng ý") {
+                UserDefaults.standard.set(true, forKey: "disclaimerAccepted")
+            }
+        } message: {
+            Text("""
+            Ứng dụng này được phát triển bởi bên thứ ba, KHÔNG liên kết với Dat Bike hoặc bất kỳ nhà sản xuất xe nào.
+
+            Bằng việc sử dụng ứng dụng, bạn chấp nhận:
+            • Tự chịu mọi rủi ro liên quan đến việc điều khiển xe qua Bluetooth.
+            • Nhà phát triển không chịu trách nhiệm về bất kỳ thiệt hại, mất mát hoặc sự cố nào.
+            • Không sử dụng ứng dụng cho mục đích trái pháp luật.
+            """)
         }
         .alert("Mã PIN ghép đôi", isPresented: $showingPINPrompt) {
             TextField("Nhập mã PIN", text: $enteredPIN)
@@ -36,17 +60,17 @@ struct MainView: View {
                 showingNFCPrompt = true
             }
         } message: {
-            Text("Nhập mã PIN cấu hình của xe để xác thực. (Mặc định: \(BLEProtocol.authPIN))")
+            Text("Nhập mã PIN cấu hình của xe để xác thực. Để trống để dùng PIN tự sinh.")
         }
-        .alert("Yêu cầu quẹt thẻ NFC", isPresented: $showingNFCPrompt) {
+        .alert("Xác nhận ghép đôi", isPresented: $showingNFCPrompt) {
             Button("Hủy", role: .cancel) {
                 // Do nothing
             }
-            Button("Đã đặt thẻ (OK)") {
+            Button("Bắt đầu ghép đôi") {
                 viewModel.connectSelectedBike()
             }
         } message: {
-            Text("Vui lòng chạm sát thẻ NFC gốc của bạn vào mặt đồng hồ xe Dat Bike TRƯỚC khi bấm OK để hoàn tất ghép đôi.")
+            Text("Đảm bảo thẻ NFC đã được đặt trên mặt đồng hồ xe. Bấm xác nhận để bắt đầu ghép đôi Bluetooth.")
         }
     }
 }
@@ -56,6 +80,7 @@ struct MainView: View {
 struct ConnectingSplashView: View {
     @ObservedObject var viewModel: SmartKeyViewModel
     @Binding var showingSettings: Bool
+    @Binding var showingLogs: Bool
     @Binding var showingPINPrompt: Bool
     
     var body: some View {
@@ -70,6 +95,13 @@ struct ConnectingSplashView: View {
             VStack {
                 HStack {
                     Spacer()
+                    Button(action: { showingLogs = true }) {
+                        Image(systemName: "terminal.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(.cyan)
+                            .padding(.top)
+                            .padding(.leading)
+                    }
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 24))

@@ -11,6 +11,9 @@ struct SettingsView: View {
     @State private var showForgetConfirm = false
     @State private var showForgetInstructions = false
     
+    @State private var currentTime = Date()
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    
     var body: some View {
         ZStack {
             Color(red: 0.04, green: 0.04, blue: 0.08)
@@ -156,34 +159,6 @@ struct SettingsView: View {
 
                             Divider().background(Color.white.opacity(0.06))
 
-                            // Last sync status
-                            HStack {
-                                HStack(spacing: 10) {
-                                    Image(systemName: viewModel.lastTimeSyncResult == nil ? "clock.badge.questionmark" :
-                                          viewModel.lastTimeSyncResult == true ? "clock.badge.checkmark.rtl" : "clock.badge.exclamationmark")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(viewModel.lastTimeSyncResult == nil ? .gray :
-                                                         viewModel.lastTimeSyncResult == true ? .green : .red)
-                                        .frame(width: 28, height: 28)
-                                        .background((viewModel.lastTimeSyncResult == nil ? Color.gray :
-                                                     viewModel.lastTimeSyncResult == true ? Color.green : Color.red).opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Lần đồng bộ cuối")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Text(viewModel.lastTimeSyncDescription)
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-
-                            Divider().background(Color.white.opacity(0.06))
-
                             // Sync Now button
                             Button {
                                 viewModel.syncTime()
@@ -280,18 +255,23 @@ struct SettingsView: View {
 
                     // App info
                     VStack(spacing: 4) {
-                        Text("MyBike Smartkey v1.0 (Build: Mar 30, 12:55)")
+                        Text("MyBike Smartkey v0.0.1")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        Text("Native iOS • CoreBluetooth • Background Optimized")
+                        Text("Sản phẩm được tạo bởi tình yêu dành cho chiếc xe Datbike của tôi")
                             .font(.caption2)
                             .foregroundColor(.gray.opacity(0.6))
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     }
                     .padding(.top, 12)
                     .padding(.bottom, 40)
                 }
                 .padding(.top, 8)
             }
+        }
+        .onReceive(timer) { input in
+            currentTime = input
         }
         .sheet(isPresented: $showLogs) {
             LogView(logs: viewModel.logs)
@@ -402,7 +382,7 @@ struct SettingsView: View {
         let formatter = DateFormatter()
         formatter.timeZone = vnTZ
         formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
-        return formatter.string(from: Date())
+        return formatter.string(from: currentTime)
     }
 }
 

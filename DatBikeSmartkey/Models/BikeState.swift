@@ -75,6 +75,7 @@ enum ConnectionState: Equatable {
     case disconnected
     case scanning
     case connecting
+    case sessionVerifying
     case authenticating
     case pairingRequired
     case ready
@@ -86,8 +87,9 @@ enum ConnectionState: Equatable {
         case .disconnected:     return "Đã ngắt kết nối"
         case .scanning:         return "Đang quét..."
         case .connecting:       return "Đang kết nối..."
+        case .sessionVerifying: return "Đang khôi phục phiên..."
         case .authenticating:   return "Đang xác thực..."
-        case .pairingRequired:  return "Yêu cầu quẹt thẻ NFC"
+        case .pairingRequired:  return "Đang xác thực bằng thẻ NFC"
         case .ready:            return "Đã kết nối"
         case .error(let msg):   return "Lỗi: \(msg)"
         }
@@ -99,7 +101,7 @@ enum ConnectionState: Equatable {
     
     var isWorking: Bool {
         switch self {
-        case .scanning, .connecting, .authenticating, .pairingRequired: return true
+        case .scanning, .connecting, .sessionVerifying, .authenticating, .pairingRequired: return true
         default: return false
         }
     }
@@ -110,6 +112,7 @@ enum ConnectionState: Equatable {
         case .disconnected:     return "antenna.radiowaves.left.and.right.slash"
         case .scanning:         return "antenna.radiowaves.left.and.right"
         case .connecting:       return "bolt.horizontal.circle"
+        case .sessionVerifying: return "arrow.2.squarepath"
         case .authenticating:   return "lock.shield"
         case .pairingRequired:  return "sensor.tag.radiowaves.forward"
         case .ready:            return "checkmark.circle.fill"

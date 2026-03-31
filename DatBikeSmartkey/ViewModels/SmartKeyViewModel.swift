@@ -54,7 +54,14 @@ final class SmartKeyViewModel: ObservableObject {
     // MARK: - Init
     
     init() {
-        self.authPIN = UserDefaults.standard.string(forKey: "authPIN") ?? BLEProtocol.authPIN
+        if let savedPIN = UserDefaults.standard.string(forKey: "authPIN") {
+            self.authPIN = savedPIN
+        } else {
+            // Lần đầu: tự sinh PIN 12 ký tự ngẫu nhiên, lưu ngay
+            let generatedPIN = BLEProtocol.generateSecurePIN()
+            self.authPIN = generatedPIN
+            UserDefaults.standard.set(generatedPIN, forKey: "authPIN")
+        }
         self.rssiThreshold = UserDefaults.standard.double(forKey: "rssiThreshold") != 0
             ? UserDefaults.standard.double(forKey: "rssiThreshold")
             : Double(BLEProtocol.rssiThreshold)
