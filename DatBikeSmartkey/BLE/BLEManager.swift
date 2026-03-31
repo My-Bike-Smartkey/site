@@ -911,52 +911,42 @@ extension BLEManager: CBCentralManagerDelegate {
         // CBErrorPeerRemovedPairingInformation (code 14):
         // Bonding keys lệch giữa iOS và xe. Xe đã xoá LTK.
         if let cbError = error as? CBError, cbError.code == .peerRemovedPairingInformation {
+            log(.error, "🔧 Error 14: Xe đã xoá bonding. Cần xoá thiết bị trong iOS Settings.")
             
-            // Nếu đang trong bond recovery mode mà connect mới VẪN fail → iOS system bond còn stale
-            if pendingBondRecovery {
-                pendingBondRecovery = false
-                pairingRetryCount = 0
-                log(.error, " Bond recovery thất bại — iOS vẫn giữ bond cũ. Cần xóa thủ công.")
-                UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
-                self.peripheral = nil
-                discoveredCharacteristics.removeAll()
-                DispatchQueue.main.async {
-                    self.connectionState = .error("Xe đã xóa kết nối BLE. Hãy vào Cài đặt iPhone ➔ Bluetooth ➔ chọn xe ➔ Quên thiết bị này. Sau đó quay lại app để ghép đôi lại.")
-                    self.isAuthenticated = false
-                }
-                sendLocalNotification(title: "Cần xóa kết nối cũ", body: "Vào Cài đặt ➔ Bluetooth ➔ Quên thiết bị. Sau đó mở app + quẹt NFC.")
-                return
-            }
-            
-            // Skip retry — mỗi lần retry với bond cũ chỉ làm xe reject thêm.
-            // Vào thẳng bond recovery: xóa saved UUID → scan → connect as new device → NFC pairing.
-            log(.error, " Bonding mất (code 14). Skip retry → bond recovery ngay.")
             pairingRetryCount = 0
-            pendingBondRecovery = true
-            UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
+            pendingBondRecovery = false
             self.peripheral = nil
             discoveredCharacteristics.removeAll()
+            UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
+            
+            // Remove from ASK — user will need to re-pair after forgetting in Settings
+            if let accessory = currentAccessory {
+                accessorySession.removeAccessory(accessory) { [weak self] err in
+                    if let err { self?.log(.warning, "ASK remove error: \(err.localizedDescription)") }
+                }
+                currentAccessory = nil
+            }
             
             DispatchQueue.main.async {
-                self.connectionState = .connecting
+                self.connectionState = .error("Bonding lỗi. Vào Cài đặt ➔ Bluetooth ➔ chọn xe ➔ Quên thiết bị. Sau đó mở lại app bấm Thêm xe.")
                 self.isAuthenticated = false
+                self.hasAuthorizedAccessory = false
             }
             
-            sendLocalNotification(title: "Đang ghép đôi lại", body: "Xe yêu cầu xác thực lại — chuẩn bị thẻ NFC.")
-            
-            // Scan lại → didDiscover sẽ detect pendingBondRecovery → auto-connect as new device
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                self?.startScan()
-            }
+            sendLocalNotification(
+                title: "Cần xóa kết nối cũ",
+                body: "Vào Cài đặt ➔ Bluetooth ➔ Quên thiết bị ➔ mở app ➔ Thêm xe."
+            )
             return
         }
         
         DispatchQueue.main.async {
             self.connectionState = .error(errMsg)
         }
-        // Auto retry for other errors
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.startScan()
+        // Auto retry for other errors — reconnect via ASK accessory
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            guard let self, let accessory = self.currentAccessory else { return }
+            self.connectToAccessory(accessory)
         }
     }
     
@@ -978,46 +968,31 @@ extension BLEManager: CBCentralManagerDelegate {
         
         
         // CBError code 14: Peer Removed Pairing Information.
-        // Một số iOS version fire didDisconnect thay vì didFailToConnect cho error 14.
-        // Dùng cùng retry + bond recovery flow.
         if let cbError = error as? CBError, cbError.code.rawValue == 14 {
-            log(.error, " [didDisconnect] Xe đã xoá Bonding Key (Code 14)")
+            log(.error, "🔧 [didDisconnect] Error 14: Xe đã xoá bonding.")
             rssiTimer?.invalidate()
             rssiTimer = nil
             
-            if pendingBondRecovery {
-                // Recovery mode connect cũng bị disconnect error 14 → iOS bond stale
-                pendingBondRecovery = false
-                pairingRetryCount = 0
-                log(.error, " Bond recovery thất bại → cần xóa thủ công trong Cài đặt.")
-                UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
-                self.peripheral = nil
-                DispatchQueue.main.async {
-                    self.connectionState = .error("Xe đã xóa kết nối BLE. Hãy vào Cài đặt iPhone ➔ Bluetooth ➔ chọn xe ➔ Quên thiết bị này. Sau đó quay lại app để ghép đôi lại.")
-                    self.isAuthenticated = false
-                    self.discoveredCharacteristics.removeAll()
-                }
-                sendLocalNotification(title: "Cần xóa kết nối cũ", body: "Vào Cài đặt ➔ Bluetooth ➔ Quên thiết bị. Sau đó mở app + quẹt NFC.")
-                return
-            }
-            
-            // Skip retry — vào thẳng bond recovery (giống didFailToConnect)
-            log(.error, " [didDisconnect] Bonding mất (code 14). Skip retry → bond recovery ngay.")
             pairingRetryCount = 0
-            pendingBondRecovery = true
-            UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
+            pendingBondRecovery = false
             self.peripheral = nil
             discoveredCharacteristics.removeAll()
+            UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
+            
+            if let accessory = currentAccessory {
+                accessorySession.removeAccessory(accessory) { [weak self] err in
+                    if let err { self?.log(.warning, "ASK remove: \(err.localizedDescription)") }
+                }
+                currentAccessory = nil
+            }
             
             DispatchQueue.main.async {
-                self.connectionState = .connecting
+                self.connectionState = .error("Bonding lỗi. Vào Cài đặt ➔ Bluetooth ➔ Quên thiết bị ➔ mở app ➔ Thêm xe.")
                 self.isAuthenticated = false
+                self.hasAuthorizedAccessory = false
             }
             
-            sendLocalNotification(title: "Đang ghép đôi lại", body: "Xe yêu cầu xác thực lại — chuẩn bị thẻ NFC.")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                self?.startScan()
-            }
+            sendLocalNotification(title: "Cần xóa kết nối cũ", body: "Vào Cài đặt ➔ Bluetooth ➔ Quên thiết bị ➔ mở app ➔ Thêm xe.")
             return
         }
         
