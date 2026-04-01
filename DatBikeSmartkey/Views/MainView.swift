@@ -67,7 +67,7 @@ struct MainView: View {
                 // Do nothing
             }
             Button("Bắt đầu ghép đôi") {
-                viewModel.connectSelectedBike()
+                viewModel.showAccessoryPicker()
             }
         } message: {
             Text("Đảm bảo thẻ NFC đã được đặt trên mặt đồng hồ xe. Bấm xác nhận để bắt đầu ghép đôi Bluetooth.")
@@ -197,7 +197,7 @@ struct ConnectingSplashView: View {
                             }
                         } else {
                             // No authorized bike — show picker button
-                            Button(action: { viewModel.showAccessoryPicker() }) {
+                            Button(action: { showingPINPrompt = true }) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "plus.circle.fill")
                                         .font(.title2)

@@ -120,14 +120,21 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         desc5.bluetoothServiceUUID = BLEService.scan
         desc5.bluetoothNameSubstring = BLEProtocol.deviceNameAltPrefix  // "QT_"
         
-        let bikeImage = UIImage(systemName: "bicycle")!
+        let bikeImage = UIImage(systemName: "motorcycle.fill") ?? UIImage(systemName: "bolt.shield.fill")!
+        
+        func createItem(desc: ASDiscoveryDescriptor) -> ASPickerDisplayItem {
+            let item = ASPickerDisplayItem(name: "Xe Máy Điện Datbike", productImage: bikeImage, descriptor: desc)
+            item.allowsRename = true
+            item.renameOptions = .renameOnConnect
+            return item
+        }
         
         let pickerItems = [
-            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc1),
-            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc2),
-            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc3),
-            ASPickerDisplayItem(name: "Dat Bike", productImage: bikeImage, descriptor: desc4),
-            ASPickerDisplayItem(name: "Dat Bike (QT)", productImage: bikeImage, descriptor: desc5),
+            createItem(desc: desc1),
+            createItem(desc: desc2),
+            createItem(desc: desc3),
+            createItem(desc: desc4),
+            createItem(desc: desc5)
         ]
         
         log(.info, "📱 Hiện ASK Picker (5 descriptors)...")
