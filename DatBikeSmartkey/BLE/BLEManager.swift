@@ -40,6 +40,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     private var pairingRetryCount: Int = 0
     private let maxPairingRetries: Int = 3
     
+    /// Ngăn auto-unlock lặp lại nhiều lần nếu user tự tay tắt xe lúc đang đứng gần
+    private var hasTriggeredAutoUnlockSession = false
+    
     /// Bond recovery mode: sau khi retry error 14 thất bại, scan lại và connect như thiết bị mới
     private var pendingBondRecovery = false
     
@@ -120,10 +123,10 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         desc5.bluetoothServiceUUID = BLEService.scan
         desc5.bluetoothNameSubstring = BLEProtocol.deviceNameAltPrefix  // "QT_"
         
-        let bikeImage = UIImage(systemName: "motorcycle.fill") ?? UIImage(systemName: "bolt.shield.fill")!
+        let bikeImage = UIImage(named: "PickerBike") ?? UIImage(systemName: "motorcycle.fill")!
         
         func createItem(desc: ASDiscoveryDescriptor) -> ASPickerDisplayItem {
-            return ASPickerDisplayItem(name: "Xe Máy Điện Datbike", productImage: bikeImage, descriptor: desc)
+            return ASPickerDisplayItem(name: "Xe máy điện DAT BIKE QUANTUM", productImage: bikeImage, descriptor: desc)
         }
         
         let pickerItems = [
@@ -646,6 +649,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         // Save UUID ONLY NOW -- after full auth success -- so next connect uses SHA flow correctly
         pairingRetryCount = 0
         pendingBondRecovery = false
+        hasTriggeredAutoUnlockSession = false // Reset cờ auto-unlock cho phiên kết nối mới
         UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: "lastPeripheralUUID")
         DispatchQueue.main.async {
             self.isAuthenticated = true
@@ -661,10 +665,11 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         startRSSIMonitoring()
         
         // Grab-key: tự động mở khóa khi app được iOS đánh thức ở background
-        if autoUnlockEnabled && lockStatus.isLocked {
+        if autoUnlockEnabled && lockStatus.isLocked && !hasTriggeredAutoUnlockSession {
             log(.info, "🔓 Grab-key auto-unlock: xe đang khóa, tự động mở...")
             do {
-                try await unlock()
+                try await turnOff() // NOTE: turnOff actually sends 0x31 (Turn On) logic
+                hasTriggeredAutoUnlockSession = true
                 sendLocalNotification(title: "Dat Bike", body: "🔓 Xe đã tự động mở khóa (Grab-key)")
             } catch {
                 log(.error, "Grab-key auto-unlock thất bại: \(error.localizedDescription)")
@@ -1245,11 +1250,12 @@ extension BLEManager: CBPeripheralDelegate {
         DispatchQueue.main.async { self.rssi = rssiVal }
         
         // Auto-unlock logic
-        if autoUnlockEnabled && lockStatus.isLocked && rssiVal > BLEProtocol.rssiThreshold {
+        if autoUnlockEnabled && lockStatus.isLocked && !hasTriggeredAutoUnlockSession && rssiVal > BLEProtocol.rssiThreshold {
+            hasTriggeredAutoUnlockSession = true
             log(.info, " Ở gần xe (RSSI: \(rssiVal) > \(BLEProtocol.rssiThreshold)). Auto-unlock...")
             sendLocalNotification(title: "Auto Unlock", body: "Phát hiện bạn đang ở gần xe. Đang mở khóa...")
             Task {
-                try? await unlock()
+                try? await turnOff() // NOTE: turnOff actually sends 0x31 (Turn On) logic
             }
         }
     }

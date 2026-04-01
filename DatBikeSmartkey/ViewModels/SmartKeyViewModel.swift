@@ -198,7 +198,7 @@ final class SmartKeyViewModel: ObservableObject {
                 if lockStatus.isLocked {
                     try await ble.lock() // If OFF, toggles anti-theft
                 } else {
-                    try await ble.turnOff() // If ON, turns the bike OFF
+                    try await ble.unlock() // If ON, turns the bike OFF
                 }
             } catch {
                 showError(error.localizedDescription)
