@@ -1188,19 +1188,74 @@ extension BLEManager: CBPeripheralDelegate {
         
         if hasAuth && hasLock && hasUnlock {
             // ── Live session restore path (State Restoration hoặc retrieveConnectedPeripherals) ──
-            // Session BLE vẫn còn sống → tuyệt đối không gửi auth lại.
-            // Gửi SHA-256 trên phiên đang active sẽ bị bike hiểu là invalid → XÓA BONDING.
             if isLiveSessionRestore {
                 isLiveSessionRestore = false
-                log(.success, " Characteristics sẵn sàng (live session). Khôi phục trạng thái, bỏ qua auth.")
-                DispatchQueue.main.async {
-                    self.isAuthenticated = true
-                    self.connectionState = .ready
-                }
+                log(.success, " Characteristics sẵn sàng (live session). Kiểm tra link thật...")
+                
                 Task {
-                    _ = try? await readLockStatus()
-                    await readDeviceInfo()
-                    startRSSIMonitoring()
+                    // ── VALIDATION PING ──
+                    // iOS đôi lúc báo state=connected nhưng link layer thực tế đã chết.
+                    // Gửi 1 READ nhẹ với timeout 2s để xác nhận xe có thật sự phản hồi không.
+                    guard let echoChar = discoveredCharacteristics[BLECharacteristic.smartkeyEcho] else {
+                        log(.warning, " ⚠️ echoChar không tìm thấy, bỏ qua ping")
+                        return
+                    }
+                    
+                    // Race giữa read thật và timeout 2s
+                    var pingData: Data? = nil
+                    let pingTask = Task<Data?, Never> {
+                        do {
+                            return try await readValue(for: echoChar)
+                        } catch {
+                            return nil
+                        }
+                    }
+                    let timeoutTask = Task<Data?, Never> {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000)
+                        pingTask.cancel()
+                        return nil
+                    }
+                    
+                    // Chờ cái nào xong trước
+                    pingData = await pingTask.value
+                    timeoutTask.cancel()
+                    
+                    if let data = pingData {
+                        // Link thật sự sống — trust session, bỏ qua auth
+                        let status = LockStatus(from: data)
+                        log(.success, " ✅ Live session xác nhận: xe phản hồi. Trạng thái: \(status.description)")
+                        DispatchQueue.main.async {
+                            self.isAuthenticated = true
+                            self.connectionState = .ready
+                            self.lockStatus = status
+                            self.writeToAppGroup()
+                        }
+                        await readDeviceInfo()
+                        startRSSIMonitoring()
+                    } else {
+                        // Link chết (zombie session) — phải auth lại từ đầu
+                        log(.warning, " ⚠️ Live session ZOMBIE: xe không phản hồi trong 2s. Bắt đầu xác thực lại...")
+                        DispatchQueue.main.async {
+                            self.isAuthenticated = false
+                            self.connectionState = .authenticating
+                        }
+                        do {
+                            try await authenticate()
+                            DispatchQueue.main.async {
+                                self.connectionState = .ready
+                                self.isAuthenticated = true
+                            }
+                            _ = try? await readLockStatus()
+                            await readDeviceInfo()
+                            startRSSIMonitoring()
+                        } catch {
+                            log(.error, " Xác thực thất bại sau zombie session: \(error.localizedDescription)")
+                            DispatchQueue.main.async {
+                                self.connectionState = .error("Xác thực thất bại")
+                                self.isAuthenticated = false
+                            }
+                        }
+                    }
                 }
                 return
             }
