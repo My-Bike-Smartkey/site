@@ -9,7 +9,6 @@ struct SettingsView: View {
     @State private var showPINEditor = false
     @State private var editedPIN = ""
     @State private var showForgetConfirm = false
-    @State private var showForgetInstructions = false
     
     @State private var currentTime = Date()
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -310,16 +309,10 @@ struct SettingsView: View {
         .alert("Bỏ liên kết xe", isPresented: $showForgetConfirm) {
             Button("Quên", role: .destructive) {
                 viewModel.forgetBike()
-                showForgetInstructions = true
             }
             Button("Hủy", role: .cancel) {}
         } message: {
             Text("Xóa kết nối App với xe. Bạn có muốn tiếp tục?")
-        }
-        .alert("⚠️ Hoàn tất bằng tay", isPresented: $showForgetInstructions) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("iOS không cho phép ứng dụng xóa ghép đôi Bluetooth tự động.\n\nHãy vào Cài đặt → Bluetooth → tìm xe Dat Bike → nhấn ⓘ → chọn \"Quên thiết bị\" để xóa hoàn toàn.")
         }
     }
     
