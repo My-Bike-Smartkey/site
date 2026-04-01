@@ -123,10 +123,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         let bikeImage = UIImage(systemName: "motorcycle.fill") ?? UIImage(systemName: "bolt.shield.fill")!
         
         func createItem(desc: ASDiscoveryDescriptor) -> ASPickerDisplayItem {
-            let item = ASPickerDisplayItem(name: "Xe Máy Điện Datbike", productImage: bikeImage, descriptor: desc)
-            item.allowsRename = true
-            item.renameOptions = .renameOnConnect
-            return item
+            return ASPickerDisplayItem(name: "Xe Máy Điện Datbike", productImage: bikeImage, descriptor: desc)
         }
         
         let pickerItems = [
