@@ -526,48 +526,59 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             // ── RECONNECT FLOW (SHA-256) with Counter Verification ──
             log(.ble, " Tái kết nối tự động (SHA-256 Mode). Đọc Challenge...")
             
-            let currentChallengeData = try await readValue(for: authChar)
-            guard currentChallengeData.count >= 4 else {
-                log(.error, " Lỗi: Challenge Data quá ngắn (\(currentChallengeData.count) bytes)")
-                throw BLEError.authFailed("Challenge data too short")
+            var authSuccess = false
+            for attempt in 1...3 {
+                let currentChallengeData = try await readValue(for: authChar)
+                guard currentChallengeData.count >= 4 else {
+                    log(.error, " Lỗi: Challenge Data quá ngắn (\(currentChallengeData.count) bytes)")
+                    throw BLEError.authFailed("Challenge data too short")
+                }
+                
+                // 1. Chuyển thành UInt32 Little Endian
+                let currentCounter = currentChallengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                
+                // 2. Dịch phải (Logical Right Shift) 1 bit
+                let shifted = currentCounter >> 1
+                
+                // 3. Ghép chuỗi Số Nguyên + PIN
+                let mixStr = "\(shifted)\(pin)"
+                
+                // 4. Băm SHA-256 → Hex String
+                let hashed = SHA256.hash(data: Data(mixStr.utf8))
+                let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
+                
+                log(.ble, " [AUTH] computing SHA-256 response (lần \(attempt))...")
+                
+                // 5. Ghi hash — CHỈ 1 LẦN CỦA MỖI ATTEMPT
+                try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
+                
+                // 6. Đọc lại counter để xác nhận
+                try await Task.sleep(nanoseconds: 200_000_000) // 200ms cho firmware xử lý
+                let verifyData = try await readValue(for: authChar)
+                if verifyData.count >= 4 {
+                    let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                    if newCounter > currentCounter {
+                        log(.success, " Counter verified: \(currentCounter) → \(newCounter) (+\(newCounter - currentCounter)). Auth OK!")
+                        authSuccess = true
+                        break
+                    } else if newCounter == currentCounter {
+                        log(.warning, " ⚠️ Counter không tăng (\(newCounter)). OS cache hoặc xe chưa xử lý kịp. Thử đọc lại challenge...")
+                        try await Task.sleep(nanoseconds: 300_000_000)
+                        continue
+                    } else {
+                        log(.error, " Counter bị lỗi (giảm): expected > \(currentCounter), got \(newCounter). Xác thực thất bại!")
+                        throw BLEError.authFailed("Counter verification failed")
+                    }
+                } else {
+                    // Counter verify thất bại nhưng write đã ACK → coi như OK (giống bản đầu)
+                    log(.warning, " Counter verify: data ngắn (\(verifyData.count) bytes), tiếp tục...")
+                    authSuccess = true
+                    break
+                }
             }
             
-            // 1. Chuyển thành UInt32 Little Endian
-            let currentCounter = currentChallengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            
-            // 2. Dịch phải (Logical Right Shift) 1 bit
-            let shifted = currentCounter >> 1
-            
-            // 3. Ghép chuỗi Số Nguyên + PIN
-            let mixStr = "\(shifted)\(pin)"
-            
-            // 4. Băm SHA-256 → Hex String
-            let hashed = SHA256.hash(data: Data(mixStr.utf8))
-            let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
-            
-            log(.ble, " [AUTH] computing SHA-256 response...")
-            
-            // 5. Ghi hash — CHỈ 1 LẦN, không retry để tránh firmware wipe bonding
-            try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
-            
-            // 6. Đọc lại counter để xác nhận
-            try await Task.sleep(nanoseconds: 200_000_000) // 200ms cho firmware xử lý
-            let verifyData = try await readValue(for: authChar)
-            if verifyData.count >= 4 {
-                let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                if newCounter > currentCounter {
-                    log(.success, " Counter verified: \(currentCounter) → \(newCounter) (+\(newCounter - currentCounter)). Auth OK!")
-                } else if newCounter == currentCounter {
-                    // Xảy ra khi: iOS cache giá trị do auto-reconnect ngầm (đi ra xa rồi lại gần), hoặc firmware xe giữ nguyên counter cũ.
-                    // Miễn là lệnh ghi hash được báo thành công từ BLE writeValue, ta vẫn coi là pass.
-                    log(.warning, " Counter không tăng (bằng cũ): \(newCounter). Vẫn tiếp tục vì lệnh ghi SHA-256 đã báo thành công.")
-                } else {
-                    log(.error, " Counter bị giảm hoặc lỗi: expected >=\(currentCounter), got \(newCounter). Auth có thể thất bại.")
-                    throw BLEError.authFailed("Counter verification failed")
-                }
-            } else {
-                // Counter verify thất bại nhưng write đã ACK → coi như OK (giống bản đầu)
-                log(.warning, " Counter verify: data ngắn (\(verifyData.count) bytes), tiếp tục...")
+            if !authSuccess {
+                throw BLEError.authFailed("Xác thực thất bại sau 3 lần thử (Counter không tăng)")
             }
             
         } else {
@@ -674,13 +685,13 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             do {
                 try await turnOff() // NOTE: turnOff actually sends 0x31 (Turn On) logic
                 hasTriggeredAutoUnlockSession = true
-                sendLocalNotification(title: "Dat Bike", body: "🔓 Xe đã tự động mở khóa (Grab-key)")
+                sendLocalNotification(title: "MyBike Smartkey", body: "🔓 Xe đã tự động mở khóa (Grab-key)")
             } catch {
                 log(.error, "Grab-key auto-unlock thất bại: \(error.localizedDescription)")
-                sendLocalNotification(title: "Dat Bike Connected", body: "Đã kết nối nhưng không thể tự mở khóa")
+                sendLocalNotification(title: "MyBike Smartkey", body: "Đã kết nối nhưng không thể tự mở khóa")
             }
         } else {
-            sendLocalNotification(title: "Dat Bike Connected", body: "Đã kết nối thành công với xe \(bikeInfo.name)")
+            sendLocalNotification(title: "MyBike Smartkey", body: "Đã kết nối thành công với xe \(bikeInfo.name)")
         }
     }
     
@@ -964,6 +975,28 @@ extension BLEManager: CBCentralManagerDelegate {
         let errMsg = error?.localizedDescription ?? "Khong ro loi"
         log(.error, " Ket noi that bai: \(errMsg)")
         
+        // ── iOS Encryption Timeout Deadlock Workaround ──
+        // Lỗi này xảy ra khi iOS cố re-encrypt connection đã ngắt hoặc xe reset link layer.
+        // Cache của bluetoothd bị kẹt, gọi connect() lại sẽ tiếp tục fail indefinitely.
+        if errMsg.contains("encrypt the connection") || errMsg.contains("timed out unexpectedly") {
+            log(.warning, "♻️ Phát hiện lỗi mã hoá (Encryption Timeout). Xoá cache iOS Bluetooth session...")
+            
+            // Xoá mọi tham chiếu tới kết nối cũ
+            central.cancelPeripheralConnection(peripheral)
+            self.peripheral = nil
+            self.discoveredCharacteristics.removeAll()
+            
+            // Ép deinit XPC session với bluetoothd
+            self.centralManager = nil 
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self else { return }
+                self.initCentralManagerIfNeeded()
+                // Central Manager khởi tạo xong sẽ báo .poweredOn và tự connect lại
+            }
+            return
+        }
+        
         // CBErrorPeerRemovedPairingInformation (code 14):
         // Bonding keys lệch giữa iOS và xe. Xe đã xoá LTK.
         if let cbError = error as? CBError, cbError.code == .peerRemovedPairingInformation {
@@ -999,10 +1032,13 @@ extension BLEManager: CBCentralManagerDelegate {
         DispatchQueue.main.async {
             self.connectionState = .error(errMsg)
         }
+        
         // Auto retry for other errors — reconnect via ASK accessory
         DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
             guard let self, let accessory = self.currentAccessory else { return }
-            self.connectToAccessory(accessory)
+            if self.centralManager != nil { // Đề phòng đang reset
+                self.connectToAccessory(accessory)
+            }
         }
     }
     
@@ -1063,7 +1099,7 @@ extension BLEManager: CBCentralManagerDelegate {
         
         // Only notify and auto-reconnect if this was an unexpected drop (not user-initiated)
         if error != nil {
-            sendLocalNotification(title: "Dat Bike", body: "Đã mất kết nối với xe")
+            sendLocalNotification(title: "MyBike Smartkey", body: "Đã mất kết nối với xe")
         }
         
         // ASK: auto-reconnect via pending connection
