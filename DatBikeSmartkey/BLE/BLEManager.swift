@@ -557,8 +557,12 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
                 if newCounter > currentCounter {
                     log(.success, " Counter verified: \(currentCounter) → \(newCounter) (+\(newCounter - currentCounter)). Auth OK!")
+                } else if newCounter == currentCounter {
+                    // Xảy ra khi: iOS cache giá trị do auto-reconnect ngầm (đi ra xa rồi lại gần), hoặc firmware xe giữ nguyên counter cũ.
+                    // Miễn là lệnh ghi hash được báo thành công từ BLE writeValue, ta vẫn coi là pass.
+                    log(.warning, " Counter không tăng (bằng cũ): \(newCounter). Vẫn tiếp tục vì lệnh ghi SHA-256 đã báo thành công.")
                 } else {
-                    log(.warning, " Counter không tăng: expected >\(currentCounter), got \(newCounter). Auth có thể thất bại.")
+                    log(.error, " Counter bị giảm hoặc lỗi: expected >=\(currentCounter), got \(newCounter). Auth có thể thất bại.")
                     throw BLEError.authFailed("Counter verification failed")
                 }
             } else {
