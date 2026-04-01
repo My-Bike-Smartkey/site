@@ -240,6 +240,11 @@ enum BLEProtocol {
     /// RSSI threshold for auto-unlock (same as ESP32: -65 dBm ≈ 1-2m)
     static let rssiThreshold: Int = -65
     
+    /// RSSI minimum to START authentication. Below this, connection is too unstable
+    /// to reliably complete the SHA-256 challenge-response (read/write may timeout).
+    /// -80 dBm ≈ edge of comfortable range (~5-8m open space).
+    static let rssiAuthMinimum: Int = -80
+    
     /// State restoration identifier for CBCentralManager
     static let centralRestoreID = "DatBikeSmartkeyCentral"
     

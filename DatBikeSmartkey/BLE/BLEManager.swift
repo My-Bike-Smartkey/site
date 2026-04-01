@@ -59,10 +59,15 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     private var authContinuation: CheckedContinuation<Bool, Never>?
     private var pendingWriteCallbacks: [CBUUID: CheckedContinuation<Void, Error>] = [:]
     private var pendingReadCallbacks: [CBUUID: CheckedContinuation<Data, Error>] = [:]
+    private var pendingRSSIContinuation: CheckedContinuation<Int?, Never>? = nil
     
     /// True khi session BLE vẫn còn sống (retrieveConnectedPeripherals).
     /// Ngăn auth sequence chạy lại trên phiên đang hoạt động, tránh bike xóa bonding.
     private var isLiveSessionRestore: Bool = false
+    
+    /// Thời điểm đọc RSSI lần cuối — dùng để phát hiện RSSI stale trong didFailToConnect.
+    /// rssiTimer dừng khi disconnect, nên RSSI có thể là giá trị từ nhiều phút trước.
+    private var lastRSSIDate: Date? = nil
     
     /// Flag set by willRestoreState: cần auto-connect khi BT powers on
     private var shouldReconnectAfterRestore = false
@@ -1042,6 +1047,14 @@ extension BLEManager: CBCentralManagerDelegate {
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         isConnecting = false
+        isAuthenticating = false
+        // Cancel pending RSSI gate (defensive — in practice chars discovery requires prior successful
+        // didConnect, so drops during RSSI read go through didDisconnectPeripheral;
+        // included here for safety against any edge case ordering).
+        if let cont = pendingRSSIContinuation {
+            pendingRSSIContinuation = nil
+            cont.resume(returning: nil)
+        }
         let errMsg = error?.localizedDescription ?? "Không rõ lỗi"
         let nsError = error as NSError?
         let cbCode  = (error as? CBError)?.code.rawValue ?? -1
@@ -1067,9 +1080,16 @@ extension BLEManager: CBCentralManagerDelegate {
             isConnecting = false
             log(.warning, "🔐 [ENCRYPT] Phát hiện lỗi mã hoá BLE — bắt đầu phân tích...")
 
-            // Nếu RSSI rất yếu → xe đang ngoài tầm, không phải lỗi encryption thật
-            if self.rssi < -85 {
-                log(.warning, "📡 [ENCRYPT → OUT-OF-RANGE] RSSI \(self.rssi) dBm < -85 → Xe ngoài tầm, KHÔNG phải encryption stale")
+            // RSSI stale check: rssiTimer dừng khi disconnect, nên self.rssi có thể là
+            // giá trị từ nhiều phút trước (khi còn đứng gần xe). Nếu stale → không tin được
+            // → an toàn hơn là dùng path out-of-range (chỉ scheduleReconnect, không reset CM).
+            let rssiAgeSec = lastRSSIDate.map { Date().timeIntervalSince($0) } ?? 999
+            let rssiIsStale = rssiAgeSec > 5.0
+            log(.info, "   • RSSI age: \(String(format: "%.1f", rssiAgeSec))s (\(rssiIsStale ? "STALE — không đáng tin" : "fresh"))")
+
+            // Nếu RSSI rất yếu HOẶC đọc quá lâu rồi → xe đang ngoài tầm, không phải stale encryption
+            if self.rssi < -85 || rssiIsStale {
+                log(.warning, "📡 [ENCRYPT → OUT-OF-RANGE] RSSI \(self.rssi) dBm\(rssiIsStale ? " (stale \(String(format: "%.0f", rssiAgeSec))s)" : "") → Xe ngoài tầm, KHÔNG phải encryption stale")
                 log(.warning, "   → Bỏ qua CBManager reset, đăng ký pending connection chờ xe quay lại...")
                 log(.warning, "   → discoveredCharacteristics.removeAll() + scheduleReconnect()")
                 // KHÔNG nil peripheral — scheduleReconnect() cần nó để đăng ký pending connection
@@ -1179,6 +1199,14 @@ extension BLEManager: CBCentralManagerDelegate {
         }
         pendingReadCallbacks.removeAll()
         
+        // Cancel pending RSSI gate continuation.
+        // Nếu không cancel, timeout 1.5s sẽ resume với RSSI stale → Task gọi disconnect()
+        // → hủy iOS pending connection → phone không bao giờ tự reconnect lại!
+        if let cont = pendingRSSIContinuation {
+            pendingRSSIContinuation = nil
+            cont.resume(returning: nil)  // nil = cancelled, Task sẽ thoát mà không gọi disconnect()
+        }
+        
         
         // CBError code 14: Peer Removed Pairing Information.
         if let cbError = error as? CBError, cbError.code.rawValue == 14 {
@@ -1222,6 +1250,7 @@ extension BLEManager: CBCentralManagerDelegate {
         
         rssiTimer?.invalidate()
         rssiTimer = nil
+        lastRSSIDate = nil   // xoá để didFailToConnect biết RSSI đã stale
         
         isConnecting = false
         
@@ -1359,6 +1388,7 @@ extension BLEManager: CBPeripheralDelegate {
                         }
                         await readDeviceInfo()
                         startRSSIMonitoring()
+                        startKeepAlive()  // ← BUG FIX: keep-alive bị thiếu trong live session path
                     } else {
                         // Link chết (zombie session) — phải auth lại từ đầu
                         log(.warning, " ⚠️ Live session ZOMBIE: xe không phản hồi trong 2s. Bắt đầu xác thực lại...")
@@ -1375,12 +1405,15 @@ extension BLEManager: CBPeripheralDelegate {
                             _ = try? await readLockStatus()
                             await readDeviceInfo()
                             startRSSIMonitoring()
+                            startKeepAlive()
                         } catch {
                             log(.error, " Xác thực thất bại sau zombie session: \(error.localizedDescription)")
+                            log(.info, "   → Ngắt kết nối để kích hoạt scheduleReconnect...")
                             DispatchQueue.main.async {
-                                self.connectionState = .error("Xác thực thất bại")
+                                self.connectionState = .error("Xác thực thất bại — đang thử lại...")
                                 self.isAuthenticated = false
                             }
+                            self.disconnect()
                         }
                     }
                 }
@@ -1390,16 +1423,63 @@ extension BLEManager: CBPeripheralDelegate {
             guard !isAuthenticated && !isAuthenticating else { return }
             
             isAuthenticating = true
-            log(.success, " Tất cả characteristics sẵn sàng. Bắt đầu xác thực...")
+            log(.success, " Tất cả characteristics sẵn sàng. Kiểm tra tín hiệu trước khi xác thực...")
             
             Task {
+                // ── RSSI GATE: đọc RSSI trước khi auth ──
+                // Khi ở xa, connection unstable → challenge-response timeout → auth fail lặp vô tận.
+                // Chỉ auth khi RSSI đủ mạnh; nếu yếu → ngắt ngay, iOS pending connection
+                // sẽ tự reconnect khi xe vào gần hơn, lúc đó auth mới thành công.
+                // nil = RSSI read bị cancel vì kết nối ngắt (didDisconnectPeripheral cancel continuation).
+                // Không dùng Int fallback để tránh gọi disconnect() trên connection đã mất.
+                let rssiOptional: Int?
+                if let p = self.peripheral, p.state == .connected {
+                    rssiOptional = await withCheckedContinuation { (cont: CheckedContinuation<Int?, Never>) in
+                        self.bleQueue.async {
+                            self.pendingRSSIContinuation = cont
+                            p.readRSSI()
+                        }
+                        // Timeout 1.5s: nếu BLE không trả RSSI (hiếm), dùng giá trị cache
+                        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+                            if let cont = self.pendingRSSIContinuation {
+                                self.pendingRSSIContinuation = nil
+                                cont.resume(returning: self.rssi)  // Int auto-coerces to Int?
+                            }
+                        }
+                    }
+                } else {
+                    rssiOptional = nil  // không còn connected — hủy xác thực ngay
+                }
+                
+                // Nếu nil: kết nối đã ngắt trong khi đọc RSSI → thoát sạch,
+                // KHÔNG gọi disconnect() để tránh hủy iOS pending connection.
+                guard let rssiNow = rssiOptional else {
+                    log(.info, "📶 RSSI read bị hủy (kết nối ngắt trong khi đọc RSSI) — thoát xác thực")
+                    isAuthenticating = false
+                    return
+                }
+                
+                let authMin = BLEProtocol.rssiAuthMinimum
+                guard rssiNow >= authMin else {
+                    log(.warning, "📶 RSSI \(rssiNow) dBm < \(authMin) dBm — tín hiệu quá yếu, hoãn xác thực")
+                    log(.info, "   → Ngắt kết nối, chờ iOS reconnect khi xe vào gần hơn...")
+                    isAuthenticating = false
+                    self.disconnect()  // → scheduleReconnect() tự động trong didDisconnect
+                    return
+                }
+                
+                log(.info, "📶 RSSI \(rssiNow) dBm ≥ \(authMin) dBm — tín hiệu OK, bắt đầu xác thực")
+                
                 do {
                     try await authenticate()
                 } catch {
                     log(.error, "Xác thực thất bại: \(error.localizedDescription)")
+                    log(.info, "   → Ngắt kết nối để kích hoạt scheduleReconnect tự động...")
                     DispatchQueue.main.async {
-                        self.connectionState = .error("Xác thực thất bại")
+                        self.connectionState = .error("Xác thực thất bại — đang thử lại...")
                     }
+                    // disconnect() → didDisconnectPeripheral → scheduleReconnect()
+                    self.disconnect()
                 }
                 isAuthenticating = false
             }
@@ -1475,7 +1555,14 @@ extension BLEManager: CBPeripheralDelegate {
     
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
         let rssiVal = RSSI.intValue
+        lastRSSIDate = Date()
         DispatchQueue.main.async { self.rssi = rssiVal }
+        
+        // Resume any pending one-shot RSSI read (used by RSSI gate before auth)
+        if let cont = pendingRSSIContinuation {
+            pendingRSSIContinuation = nil
+            cont.resume(returning: rssiVal)
+        }
         
         // Auto-unlock logic
         if autoUnlockEnabled && lockStatus.isLocked && !hasTriggeredAutoUnlockSession && rssiVal > BLEProtocol.rssiThreshold {
