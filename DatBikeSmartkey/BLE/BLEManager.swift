@@ -79,6 +79,12 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         self.autoUnlockEnabled = UserDefaults.standard.bool(forKey: "autoUnlockEnabled")
         super.init()
         
+        // ── Persistent Log Restore ──
+        // Load log history từ file (7 ngày gần nhất) vào bộ nhớ để hiển thị UI ngay
+        loadPersistedLogs(daysBack: 7)
+        // Ghi dấu phiên mới vào file log để phân biệt giữa các lần mở app
+        PersistentLogger.shared.markSessionStart()
+        
         log(.info, "BLE Manager khởi tạo (AccessorySetupKit — iOS 18+)")
         
         // ⚠️ CRITICAL: Activate ASAccessorySession BEFORE CBCentralManager.
