@@ -181,7 +181,7 @@ struct ConnectingSplashView: View {
                     } else {
                         // Disconnected / Bluetooth Off — show action buttons
                         if viewModel.hasAuthorizedAccessory {
-                            // Already has an authorized bike — reconnecting
+                            // Already has an authorized bike — auto-reconnecting silently
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                                 .scaleEffect(1.2)
@@ -189,12 +189,6 @@ struct ConnectingSplashView: View {
                             Text("Đang kết nối lại xe...")
                                 .font(.headline)
                                 .foregroundColor(.gray)
-                            
-                            Button(action: { viewModel.startScan() }) {
-                                Text("Kết nối lại")
-                                    .font(.subheadline)
-                                    .foregroundColor(.orange)
-                            }
                         } else {
                             // No authorized bike — show picker button
                             Button(action: { showingPINPrompt = true }) {

@@ -168,7 +168,7 @@ struct DashboardView: View {
                     .padding(.horizontal, 20)
             }
             
-            if viewModel.connectionState != .scanning && viewModel.connectionState != .connecting && viewModel.connectionState != .pairingRequired && viewModel.connectionState != .authenticating {
+            if viewModel.connectionState != .scanning && viewModel.connectionState != .connecting && viewModel.connectionState != .pairingRequired && viewModel.connectionState != .authenticating && !viewModel.hasAuthorizedAccessory {
                 Button(action: { viewModel.startScan() }) {
                     // Start Scan Button Code... (kept intact below)
                     HStack(spacing: 8) {

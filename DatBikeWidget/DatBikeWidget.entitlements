@@ -4,7 +4,7 @@
 <dict>
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>group.app.sloth9695.cygnus4928</string>
+        <string>group.app.mybike.smartkey</string>
     </array>
 </dict>
 </plist>

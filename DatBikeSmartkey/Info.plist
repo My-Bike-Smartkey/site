@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>UIUserInterfaceStyle</key>
-	<string>Dark</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -24,45 +24,45 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-	</dict>
-	<key>UILaunchScreen</key>
-	<dict/>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>bluetooth-le</string>
-	</array>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>bluetooth-central</string>
-	</array>
-	<!-- AccessorySetupKit Configuration -->
-	<key>NSAccessorySetupKitSupports</key>
-	<array>
-		<string>Bluetooth</string>
-	</array>
-	<key>NSAccessorySetupBluetoothServices</key>
-	<array>
-		<!-- SERVICE_SCAN — Primary advertisement UUID -->
-		<string>0000FCF1-0000-1000-8000-00805F9B34FB</string>
-		<!-- SERVICE_AUTH — Authentication service -->
-		<string>10CB0217-FF02-4474-A1EF-6FD88B5BDAEA</string>
-		<!-- SERVICE_MAIN — Vehicle control -->
-		<string>D4905F67-8931-4FAA-8C61-86EC7490F3C5</string>
-		<!-- SERVICE_ALT_SCAN — Alternate scan service -->
-		<string>15111100-3023-455B-86CE-615F79EE8ECE</string>
-	</array>
 	<key>NSAccessorySetupBluetoothNames</key>
 	<array>
 		<string>Dat Bike</string>
 		<string>QT_</string>
 	</array>
+	<key>NSAccessorySetupBluetoothServices</key>
+	<array>
+		<string>0000FCF1-0000-1000-8000-00805F9B34FB</string>
+		<string>10CB0217-FF02-4474-A1EF-6FD88B5BDAEA</string>
+		<string>D4905F67-8931-4FAA-8C61-86EC7490F3C5</string>
+		<string>15111100-3023-455B-86CE-615F79EE8ECE</string>
+	</array>
+	<key>NSAccessorySetupKitSupports</key>
+	<array>
+		<string>Bluetooth</string>
+	</array>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+		<string>bluetooth-peripheral</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>bluetooth-le</string>
+	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Ứng dụng cần Bluetooth để kết nối và mở khóa xe MyBike của bạn.</string>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 </dict>
 </plist>

@@ -1,12 +1,12 @@
 // SharedBikeState.swift
 // Shared between Main App and Widget Extension via App Group UserDefaults.
-// Both targets must have the App Group entitlement: group.app.sloth9695.cygnus4928
+// Both targets must have the App Group entitlement: group.app.mybike.smartkey
 
 import Foundation
 
 // MARK: - App Group ID
 
-let appGroupID = "group.app.sloth9695.cygnus4928"
+let appGroupID = "group.app.mybike.smartkey"
 
 // MARK: - Shared State
 

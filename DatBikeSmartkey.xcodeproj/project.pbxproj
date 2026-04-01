@@ -17,6 +17,7 @@
 		459F8C6F5265D4DBDC8E7D92 /* BikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388B85BD6205C62981FA7651 /* BikeState.swift */; };
 		47F181759EB61BCF60800366 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05562CDF9B9DBFC719F257D /* SettingsView.swift */; };
 		4D228EFFF0B70777C0A72B42 /* SharedBikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679D91488371B0C05358E180 /* SharedBikeState.swift */; };
+		58B3D9B852EFF01CC3F12346 /* development.cer in Resources */ = {isa = PBXBuildFile; fileRef = 98B051524C38E044099EA58A /* development.cer */; };
 		8CD08588268786D9762D1DCC /* DatBikeSmartKeyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */; };
 		9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52 /* Assets.xcassets */; };
 		F364707A10511F67495BC75D /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */; };
@@ -35,6 +36,7 @@
 		7F6857C002FB8A3BACA43625 /* BLEConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEConstants.swift; sourceTree = "<group>"; };
 		8D8A4DD9F679F79F85EBCC1E /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		97A617757174092E8071FDE5 /* LockButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockButton.swift; sourceTree = "<group>"; };
+		98B051524C38E044099EA58A /* development.cer */ = {isa = PBXFileReference; lastKnownFileType = file; path = development.cer; sourceTree = "<group>"; };
 		9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatBikeSmartKeyApp.swift; sourceTree = "<group>"; };
 		B1C12AC83C26941D4927CCA1 /* SignalIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalIndicator.swift; sourceTree = "<group>"; };
 		C05562CDF9B9DBFC719F257D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 			children = (
 				21050B43FC72C8A173A4EF52 /* Assets.xcassets */,
 				9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */,
+				98B051524C38E044099EA58A /* development.cer */,
 				16CBCE3CABCBDE15A8ECC284 /* Info.plist */,
 				F6139BC99B813739C4693248 /* BLE */,
 				122EB9B16032F4204D7D1785 /* Models */,
@@ -149,7 +152,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 2620;
 			};
 			buildConfigurationList = 7676589F9D8971D9AFD23A8D /* Build configuration list for PBXProject "DatBikeSmartkey" */;
 			developmentRegion = en;
@@ -160,9 +163,6 @@
 			);
 			mainGroup = 4BD6485E6CF67053584E3F21;
 			minimizedProjectReferenceProxies = 1;
-			packageReferences = (
-				F05772A42F7D15BD0006B02A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
-			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = A955552598C6EF2BC152D444 /* Products */;
 			projectDirPath = "";
@@ -179,6 +179,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */,
+				58B3D9B852EFF01CC3F12346 /* development.cer in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -214,11 +215,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = DatBikeSmartkey/DatBikeSmartkey.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = UDSKULSZ4V;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DatBikeSmartkey/Info.plist;
@@ -227,9 +225,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = app.sloth9695.cygnus4928;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mybike.smartkey;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "00008140-001C5D8A1EF3001CWIKSOD";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
@@ -244,12 +241,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = DatBikeSmartkey/DatBikeSmartkey.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Distribution";
-				CODE_SIGN_STYLE = Manual;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				DEPLOYMENT_POSTPROCESSING = YES;
-				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=iphoneos*]" = UDSKULSZ4V;
 				ENABLE_PREVIEWS = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -259,12 +253,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = app.sloth9695.cygnus4928;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mybike.smartkey;
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "00008140-001C5D8A1EF3001CWIKSOD";
 				SDKROOT = iphoneos;
-				STRIP_INSTALLED_PRODUCT = YES;
-				STRIP_SWIFT_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -310,8 +301,10 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -333,6 +326,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.9;
@@ -375,8 +369,10 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -391,6 +387,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.9;
@@ -419,17 +416,6 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		F05772A42F7D15BD0006B02A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 12.11.0;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 382E459A4399B373ED6A1E41 /* Project object */;
 }
