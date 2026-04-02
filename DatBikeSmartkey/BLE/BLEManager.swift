@@ -1120,102 +1120,102 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             let currentCounter = currentChallengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
             log(.ble, " [AUTH] Challenge counter: \(currentCounter) (raw: \(currentChallengeData.prefix(4).hexString))")
             
-            // 2. Dịch phải (Logical Right Shift) 1 bit — theo bytecode JS app gốc: counter_raw >>> 1
-            let shifted = currentCounter >> 1
-            
-            // 3. Ghép chuỗi Số Nguyên + PIN (JavaScript string concat: Number + String)
-            let mixStr = "\(shifted)\(pin)"
-            
-            // 4. Băm SHA-256 → Hex String
-            let hashed = SHA256.hash(data: Data(mixStr.utf8))
-            let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
-            
-            log(.ble, " [AUTH] SHA-256(\(shifted) + PIN) = \(String(hashHexStr.prefix(16)))...")
-            log(.info, "[AUTH] peripheral state trước khi ghi: \(peripheral.state.rawValue)")
-            
-            // 5. Đợi firmware ổn định trước khi ghi — tránh ghi quá nhanh sau read challenge
-            let preWriteDelaySec = 2
-            log(.ble, "[AUTH] ⏳ Đợi \(preWriteDelaySec)s để firmware ổn định trước khi ghi hash...")
-            try await Task.sleep(nanoseconds: UInt64(preWriteDelaySec) * 1_000_000_000)
-            
-            // Kiểm tra peripheral vẫn còn kết nối sau khi chờ
-            guard peripheral.state == .connected else {
-                log(.error, "[AUTH] ❌ Peripheral ngắt kết nối TRONG KHI đợi pre-write delay! state=\(peripheral.state.rawValue)")
-                throw BLEError.authFailed("Peripheral disconnected during pre-write delay")
-            }
-            log(.info, "[AUTH] peripheral state sau delay: \(peripheral.state.rawValue) — ghi hash ngay bây giờ")
-            
-            // 6. Ghi hash, chờ ACK
-            try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
-            log(.ble, " [AUTH] Write ACK nhận được. peripheral.state=\(peripheral.state.rawValue). Chờ firmware verify và tăng counter...")
-            
-            // 6. Verify counter tăng — retry với delay tăng dần
-            // Lý do cần retry: firmware cần thời gian (NVRAM write, SHA-256 verify) trước khi
-            // cập nhật characteristic. Delay: 400ms, 700ms, 1200ms (tổng max ~2.3s)
-            let retryDelays: [UInt64] = [400, 700, 1200, 2000]
-            var authVerified = false
-            
-            for (attempt, delayMs) in retryDelays.enumerated() {
-                try await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            // ── PARITY CHECK ──
+            // Firmware dùng counter để track auth state:
+            //   counter CHẴN (even) = chưa xác thực → app cần ghi SHA-256
+            //   counter LẺ  (odd)  = đã xác thực    → app có thể gửi lệnh ngay
+            //
+            // Nếu counter đã LẺ khi reconnect (firmware nhớ auth từ session trước
+            // hoặc internal tick qua ranh giới chẵn→lẻ), bỏ qua SHA write để
+            // tránh ghi vào state đã authed → counter quay về chẵn (de-auth).
+            if currentCounter % 2 == 1 {
+                log(.success, " [AUTH] Counter \(currentCounter) là SỐ LẺ → Đã xác thực, bỏ qua SHA write")
+                raceReconnectCount = 0
+            } else {
+                // Counter CHẴN → cần ghi SHA-256
                 
-                let verifyData = try await readValue(for: authChar)
-                guard verifyData.count >= 4 else {
-                    // Data ngắn bất thường — ionic state, tiếp tục retry
-                    log(.warning, " [AUTH] Verify \(attempt+1): response ngắn (\(verifyData.count)b), retry...")
-                    continue
+                // 2. Dịch phải (Logical Right Shift) 1 bit — theo bytecode JS app gốc: counter_raw >>> 1
+                let shifted = currentCounter >> 1
+                
+                // 3. Ghép chuỗi Số Nguyên + PIN (JavaScript string concat: Number + String)
+                let mixStr = "\(shifted)\(pin)"
+                
+                // 4. Băm SHA-256 → Hex String
+                let hashed = SHA256.hash(data: Data(mixStr.utf8))
+                let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
+                
+                log(.ble, " [AUTH] SHA-256(\(shifted) + PIN) = \(String(hashHexStr.prefix(16)))...")
+                log(.info, "[AUTH] peripheral state trước khi ghi: \(peripheral.state.rawValue)")
+                
+                // 5. Delay ngắn trước khi ghi — đủ để BLE stack flush buffer,
+                //    nhưng KHÔNG được dài (2s cũ gây race: firmware tick chẵn→lẻ trong lúc chờ,
+                //    rồi app ghi SHA vào counter đang LẺ → firmware tăng thêm 1 → CHẴN lại = de-auth).
+                let preWriteDelayMs: UInt64 = 300
+                log(.ble, "[AUTH] ⏳ Đợi \(preWriteDelayMs)ms trước khi ghi hash...")
+                try await Task.sleep(nanoseconds: preWriteDelayMs * 1_000_000)
+                
+                // Kiểm tra peripheral vẫn còn kết nối sau khi chờ
+                guard peripheral.state == .connected else {
+                    log(.error, "[AUTH] ❌ Peripheral ngắt kết nối TRONG KHI đợi pre-write delay! state=\(peripheral.state.rawValue)")
+                    throw BLEError.authFailed("Peripheral disconnected during pre-write delay")
                 }
+                log(.info, "[AUTH] peripheral state sau delay: \(peripheral.state.rawValue) — ghi hash ngay bây giờ")
                 
-                let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                log(.ble, " [AUTH] Verify \(attempt+1): counter \(currentCounter) → \(newCounter)")
+                // 6. Ghi hash, chờ ACK
+                try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
+                log(.ble, " [AUTH] Write ACK nhận được. peripheral.state=\(peripheral.state.rawValue). Chờ firmware verify và tăng counter...")
                 
-                if newCounter > currentCounter {
-                    // Counter tăng = firmware đã verify hash thành công = application-layer auth OK
-                    let increment = newCounter - currentCounter
-                    if increment == 1 {
-                        log(.success, " [AUTH] Counter tăng (+1). Xác thực sạch ở application layer!")
-                        raceReconnectCount = 0  // Reset: auth sạch
+                // 7. Verify bằng PARITY — firmware phải chuyển counter từ CHẴN sang LẺ.
+                // KHÔNG dùng increment == 1: firmware có thể tick thêm trong lúc verify,
+                // counter có thể là +1, +3, +5... (bất kỳ số lẻ nào đều hợp lệ).
+                // CHẴN sau write = SHA bị firmware reject (sai PIN, timing, hoặc duplicate write).
+                let retryDelays: [UInt64] = [400, 700, 1200, 2000]
+                var authVerified = false
+                
+                for (attempt, delayMs) in retryDelays.enumerated() {
+                    try await Task.sleep(nanoseconds: delayMs * 1_000_000)
+                    
+                    let verifyData = try await readValue(for: authChar)
+                    guard verifyData.count >= 4 else {
+                        log(.warning, " [AUTH] Verify \(attempt+1): response ngắn (\(verifyData.count)b), retry...")
+                        continue
+                    }
+                    
+                    let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                    let increment = Int(newCounter) - Int(currentCounter)
+                    log(.ble, " [AUTH] Verify \(attempt+1): counter \(currentCounter) → \(newCounter) (\(increment >= 0 ? "+" : "")\(increment))")
+                    
+                    if newCounter % 2 == 1 {
+                        // Counter LẺ = firmware đã verify SHA = application-layer auth OK
+                        log(.success, " [AUTH] Counter lẻ (\(newCounter)) — Xác thực thành công!")
+                        raceReconnectCount = 0
                         authVerified = true
                         break
-                    } else {
-                        // Counter +2: firmware verify thành công ở GATT layer nhưng xe từ chối
-                        // tất cả lệnh ở application layer (confirmed qua nhiều lần test).
-                        // Fix: disconnect → reconnect → re-auth để lấy fresh challenge → +1.
-                        log(.warning, " [AUTH] ⚠️ Counter +\(increment) — firmware race condition (internal tick hoặc duplicate write).")
+                    } else if newCounter > currentCounter {
+                        // Counter tăng nhưng vẫn CHẴN = SHA bị firmware reject
+                        // (firmware internal tick chẵn→lẻ→chẵn trong lúc đợi pre-write,
+                        //  hoặc duplicate write gây de-auth)
+                        log(.warning, " [AUTH] ⚠️ Counter +\(increment) nhưng vẫn CHẴN — SHA bị firmware reject.")
                         if raceReconnectCount < maxRaceReconnects {
                             raceReconnectCount += 1
                             log(.warning, " [AUTH] Auto-reconnect để lấy fresh auth (lần \(raceReconnectCount)/\(maxRaceReconnects))...")
-                            throw BLEError.authFailed("Counter +\(increment) — race condition, reconnect để lấy fresh auth")
+                            throw BLEError.authFailed("Counter vẫn chẵn (+\(increment)) — SHA bị reject, reconnect để lấy fresh auth")
                         } else {
-                            // Đã retry đủ lần, chấp nhận +2 để tránh loop vô tận
-                            log(.warning, " [AUTH] Đã retry \(maxRaceReconnects) lần, tiếp tục với counter +\(increment) (có thể lệnh bị từ chối)")
+                            log(.warning, " [AUTH] Đã retry \(maxRaceReconnects) lần, tiếp tục (lệnh có thể bị từ chối)")
                             authVerified = true
                             break
                         }
+                    } else {
+                        let hint = newCounter < currentCounter ? "giảm — có thể read race" : "chưa tăng"
+                        log(.warning, " [AUTH] Verify \(attempt+1): counter \(hint) (\(newCounter)), chờ lâu hơn...")
                     }
                 }
-                // Counter bằng hoặc giảm (đọc cũ / chưa kịp update) → retry tiếp
-                let hint = newCounter < currentCounter ? "giảm — có thể read race" : "chưa tăng"
-                log(.warning, " [AUTH] Verify \(attempt+1): counter \(hint) (\(newCounter)), chờ lâu hơn...")
-            }
-            
-            if !authVerified {
-                // Sau tất cả retry: counter vẫn không tăng.
-                //
-                // KHÔNG THỂ phân biệt "counter lag" vs "ghost connection" bằng READ:
-                //   - Read GATT characteristic thành công ở cả 2 trường hợp vì ATT Read Request
-                //     hoạt động ở link-layer, firmware trả về cached value bất kể auth state.
-                //   - WRITE được ACK ở GATT level trong cả 2 trường hợp, nhưng firmware chỉ
-                //     thực thi command nếu đã xác thực application-layer.
-                //   → Chỉ có counter tăng là bằng chứng duy nhất firmware đã verify hash.
-                //
-                // CHIẾN LƯỢC: throw unconditionally → disconnect → scheduleReconnect → fresh challenge.
-                //   - "Counter lag" case: reconnect ngay sau (1-2s) × firmware đã init xong → counter tăng.
-                //   - Ghost connection case: reconnect → firmware cấp counter mới → auth fresh.
-                //   - Cả 2 đều giải quyết được bằng reconnect, không cần phân biệt.
-                log(.error, " [AUTH] Counter không tăng sau \(retryDelays.count) lần verify.")
-                log(.error, "   → Không thể xác nhận application-layer auth (GATT read không phân biệt được).")
-                log(.error, "   → Disconnect → reconnect để lấy fresh challenge...")
-                throw BLEError.authFailed("Counter không tăng — disconnect để lấy fresh challenge")
+                
+                if !authVerified {
+                    log(.error, " [AUTH] Counter vẫn chưa chuyển sang LẺ sau \(retryDelays.count) lần verify.")
+                    log(.error, "   → Disconnect → reconnect để lấy fresh challenge...")
+                    throw BLEError.authFailed("Counter không chuyển thành số lẻ — disconnect để lấy fresh challenge")
+                }
             }
             
         } else {
