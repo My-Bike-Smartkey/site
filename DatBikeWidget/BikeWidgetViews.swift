@@ -3,15 +3,13 @@
 import WidgetKit
 import SwiftUI
 
-// MARK: - Colors (matching main app dark theme)
+// MARK: - Design tokens
 
-private let bgColor     = Color(red: 0.06, green: 0.06, blue: 0.10)  // #0F0F1A
-private let cardColor   = Color(red: 0.13, green: 0.13, blue: 0.20)  // #212233
-private let accentOrange = Color(red: 1.0, green: 0.62, blue: 0.04)  // #FF9E0A
-private let accentGreen  = Color(red: 0.20, green: 0.78, blue: 0.35) // #34C759
-private let accentRed    = Color(red: 1.0,  green: 0.27, blue: 0.23) // #FF453A
-private let accentBlue   = Color(red: 0.04, green: 0.52, blue: 1.0)  // #0A84FF
-private let textSecondary = Color.white.opacity(0.5)
+private let accentOrange = Color(red: 1.0,  green: 0.62, blue: 0.04)
+private let accentGreen  = Color(red: 0.20, green: 0.78, blue: 0.35)
+private let accentRed    = Color(red: 1.0,  green: 0.27, blue: 0.23)
+private let accentBlue   = Color(red: 0.04, green: 0.52, blue: 1.0)
+private let textSecondary = Color.secondary
 
 // MARK: - Shared subviews
 
@@ -25,24 +23,53 @@ private func lockColor(_ raw: String) -> Color {
 
 private struct BatteryView: View {
     let percent: Int
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: percent > 20 ? "battery.75" : "battery.25")
-                .font(.caption2)
-                .foregroundStyle(percent > 20 ? accentGreen : accentRed)
-            Text("\(percent)%")
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(Color.white.opacity(0.8))
+    var color: Color { percent <= 20 ? accentRed : percent <= 40 ? accentOrange : accentGreen }
+    var icon: String {
+        switch percent {
+        case ...20:  return "battery.25"
+        case ...50:  return "battery.50"
+        case ...75:  return "battery.75"
+        default:     return "battery.100"
         }
+    }
+    var body: some View {
+        Label("\(percent)%", systemImage: icon)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(color)
+            .labelStyle(.titleAndIcon)
     }
 }
 
-private struct ConnectionDot: View {
-    let isConnected: Bool
+private struct PhaseBadge: View {
+    let phase: String
+    var label: String {
+        switch phase {
+        case "connecting":     return "Đang kết nối"
+        case "authenticating": return "Đang xác thực"
+        case "ready":          return "Đã kết nối"
+        default:               return "Mất kết nối"
+        }
+    }
+    var icon: String {
+        switch phase {
+        case "connecting":     return "antenna.radiowaves.left.and.right"
+        case "authenticating": return "key.fill"
+        case "ready":          return "checkmark.circle.fill"
+        default:               return "wifi.slash"
+        }
+    }
+    var color: Color {
+        switch phase {
+        case "ready":      return accentGreen
+        case "disconnected": return .secondary
+        default:           return accentOrange
+        }
+    }
     var body: some View {
-        Circle()
-            .fill(isConnected ? accentGreen : accentRed)
-            .frame(width: 7, height: 7)
+        Label(label, systemImage: icon)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(color)
+            .labelStyle(.titleAndIcon)
     }
 }
 
@@ -53,64 +80,54 @@ struct SmallWidgetView: View {
     private var state: SharedBikeState { entry.state }
 
     var body: some View {
-        ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [Color(red: 0.06, green: 0.06, blue: 0.12),
-                         Color(red: 0.10, green: 0.08, blue: 0.18)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
+        VStack(alignment: .leading, spacing: 0) {
 
-            VStack(alignment: .leading, spacing: 0) {
-                // Top row: bike name + connection dot
-                HStack {
-                    Text(state.bikeName.isEmpty ? "Dat Bike" : state.bikeName)
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(textSecondary)
-                        .lineLimit(1)
-                    Spacer()
-                    ConnectionDot(isConnected: state.isConnected)
-                }
-
+            // ─ Top bar: bicycle icon + name + connection dot
+            HStack(spacing: 4) {
+                Image(systemName: "bicycle")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(state.bikeName.isEmpty ? "Dat Bike" : state.bikeName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Spacer()
-
-                // Lock icon — big, centered
-                Image(systemName: state.lockIcon)
-                    .font(.system(size: 38, weight: .medium))
-                    .foregroundStyle(lockColor(state.lockStatusRaw))
-                    .shadow(color: lockColor(state.lockStatusRaw).opacity(0.5), radius: 12)
-
-                Spacer()
-
-                // Lock label
-                Text(state.isConnected ? state.lockLabel : state.phaseLabel)
-                    .font(.callout.weight(.bold))
-                    .foregroundStyle(.white)
-
-                // Auth / battery status
-                if state.connectionPhase == "ready" && state.batteryPercent > 0 {
-                    BatteryView(percent: state.batteryPercent)
-                        .padding(.top, 2)
-                } else if state.connectionPhase == "authenticating" || state.connectionPhase == "connecting" {
-                    HStack(spacing: 3) {
-                        Image(systemName: state.phaseIcon)
-                            .font(.caption2)
-                            .foregroundStyle(accentOrange)
-                        Text(state.phaseLabel)
-                            .font(.caption2)
-                            .foregroundStyle(accentOrange)
-                    }
-                    .padding(.top, 2)
-                } else if !state.isConnected {
-                    Text(state.isStale ? "Nhấn để kết nối" : "Mất kết nối")
-                        .font(.caption2)
-                        .foregroundStyle(textSecondary)
-                        .padding(.top, 2)
-                }
+                Circle()
+                    .fill(state.connectionPhase == "ready" ? accentGreen :
+                          state.connectionPhase == "disconnected" ? accentRed.opacity(0.7) : accentOrange)
+                    .frame(width: 7, height: 7)
             }
-            .padding(14)
+
+            Spacer()
+
+            // ─ Lock icon (centered)
+            Image(systemName: state.lockIcon)
+                .font(.system(size: 40, weight: .medium))
+                .foregroundStyle(state.isConnected ? lockColor(state.lockStatusRaw) : Color.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .shadow(color: state.isConnected ? lockColor(state.lockStatusRaw).opacity(0.3) : .clear,
+                        radius: 8, x: 0, y: 3)
+
+            Spacer()
+
+            // ─ Status text
+            Text(state.isConnected ? state.lockLabel : state.phaseLabel)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.primary)
+
+            // ─ Battery or phase badge
+            if state.connectionPhase == "ready" && state.batteryPercent > 0 {
+                BatteryView(percent: state.batteryPercent)
+                    .padding(.top, 3)
+            } else if state.connectionPhase != "ready" {
+                PhaseBadge(phase: state.connectionPhase)
+                    .padding(.top, 3)
+            }
         }
-        .widgetURL(URL(string: "mybikesmartkey://dashboard"))
+        .padding(14)
+        .widgetURL(URL(string: state.isConnected
+            ? "mybikesmartkey://dashboard"
+            : "mybikesmartkey://connect"))
     }
 }
 
@@ -120,7 +137,9 @@ struct BikeSmallWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: BikeWidgetProvider()) { entry in
             SmallWidgetView(entry: entry)
-                .containerBackground(.clear, for: .widget)
+                .containerBackground(for: .widget) {
+                    Color(uiColor: .systemBackground)
+                }
         }
         .configurationDisplayName("Dat Bike — Trạng thái")
         .description("Xem nhanh trạng thái khoá và pin xe.")
@@ -135,125 +154,122 @@ struct MediumWidgetView: View {
     private var state: SharedBikeState { entry.state }
 
     var body: some View {
-        ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.06, green: 0.06, blue: 0.12),
-                         Color(red: 0.10, green: 0.08, blue: 0.18)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
+        HStack(spacing: 14) {
 
-            VStack(spacing: 10) {
-                // ── Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(state.bikeName.isEmpty ? "Dat Bike" : state.bikeName)
-                            .font(.footnote.weight(.bold))
-                            .foregroundStyle(.white)
-                        HStack(spacing: 4) {
-                            Image(systemName: state.phaseIcon)
-                                .font(.system(size: 9))
-                                .foregroundStyle(state.connectionPhase == "ready" ? accentGreen :
-                                                 state.connectionPhase == "disconnected" ? textSecondary : accentOrange)
-                            Text(state.phaseLabel)
+            // ─── LEFT: lock icon + name + status
+            VStack(alignment: .leading, spacing: 6) {
+                // Lock icon in a rounded background
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(lockColor(state.lockStatusRaw).opacity(state.isConnected ? 0.15 : 0.07))
+                        .frame(width: 52, height: 52)
+                    Image(systemName: state.lockIcon)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(state.isConnected ? lockColor(state.lockStatusRaw) : Color.secondary)
+                }
+
+                Text(state.bikeName.isEmpty ? "Dat Bike" : state.bikeName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(state.isConnected ? state.lockLabel : "—")
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                PhaseBadge(phase: state.connectionPhase)
+            }
+
+            Divider().padding(.vertical, 6)
+
+            // ─── RIGHT: battery + odometer + action buttons
+            VStack(alignment: .leading, spacing: 0) {
+
+                // Stats row
+                HStack(alignment: .top) {
+                    if state.batteryPercent > 0 {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Pin")
                                 .font(.caption2)
-                                .foregroundStyle(state.connectionPhase == "ready" ? accentGreen :
-                                                 state.connectionPhase == "disconnected" ? textSecondary : accentOrange)
-                        }
-                    }
-                    Spacer()
-                    HStack(spacing: 6) {
-                        if state.connectionPhase == "ready" && state.batteryPercent > 0 {
+                                .foregroundStyle(.secondary)
                             BatteryView(percent: state.batteryPercent)
                         }
-                        ConnectionDot(isConnected: state.isConnected)
                     }
-                }
-
-                // ── Status row
-                HStack(spacing: 16) {
-                    // Lock status chip
-                    HStack(spacing: 6) {
-                        Image(systemName: state.lockIcon)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(lockColor(state.lockStatusRaw))
-                        Text(state.lockLabel)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(lockColor(state.lockStatusRaw).opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
 
                     Spacer()
 
-                    // Odometer
-                    if state.isConnected && state.odometerKm > 0 {
-                        VStack(alignment: .trailing, spacing: 1) {
-                            Text(String(format: "%.0f km", state.odometerKm))
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.white)
+                    if state.odometerKm > 0 {
+                        VStack(alignment: .trailing, spacing: 2) {
                             Text("Odometer")
                                 .font(.caption2)
-                                .foregroundStyle(textSecondary)
+                                .foregroundStyle(.secondary)
+                            Text(String(format: "%.0f km", state.odometerKm))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.primary)
                         }
                     }
                 }
 
-                // ── Action buttons (iOS 17 Interactive)
+                Spacer()
+
+                // Action buttons
                 if state.isConnected {
-                    HStack(spacing: 10) {
-                        // Khoá / Mở khoá
+                    HStack(spacing: 8) {
                         if state.lockStatusRaw == "unlocked" {
                             Button(intent: LockBikeIntent()) {
                                 Label("Khoá xe", systemImage: "lock.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.white)
+                                    .font(.caption2.weight(.semibold))
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(accentOrange.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                                    .padding(.vertical, 7)
+                                    .background(accentOrange.opacity(0.18),
+                                                in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                    .foregroundStyle(accentOrange)
                             }
                             .buttonStyle(.plain)
                             .disabled(state.connectionPhase != "ready")
                         } else {
                             Button(intent: UnlockBikeIntent()) {
                                 Label("Mở khoá", systemImage: "lock.open.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.white)
+                                    .font(.caption2.weight(.semibold))
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 8)
-                                    .background(accentGreen.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                                    .padding(.vertical, 7)
+                                    .background(accentGreen.opacity(0.18),
+                                                in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                    .foregroundStyle(accentGreen)
                             }
                             .buttonStyle(.plain)
                             .disabled(state.connectionPhase != "ready")
                         }
 
-                        // Tìm xe
                         Button(intent: FindBikeIntent()) {
-                            Label("Tìm xe", systemImage: "speaker.wave.2.fill")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white)
+                            Label("Tìm xe", systemImage: "location.fill")
+                                .font(.caption2.weight(.semibold))
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(accentBlue.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                                .padding(.vertical, 7)
+                                .background(accentBlue.opacity(0.18),
+                                            in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .foregroundStyle(accentBlue)
                         }
                         .buttonStyle(.plain)
                         .disabled(state.connectionPhase != "ready")
                     }
                 } else {
-                    // Không kết nối — hiện nút Kết nối
                     Button(intent: ConnectBikeIntent()) {
                         Label("Kết nối xe", systemImage: "antenna.radiowaves.left.and.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .font(.caption2.weight(.semibold))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(accentBlue.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                            .padding(.vertical, 7)
+                            .background(accentBlue.opacity(0.18),
+                                        in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .foregroundStyle(accentBlue)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(14)
         }
+        .padding(14)
     }
 }
 
@@ -263,7 +279,9 @@ struct BikeMediumWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: BikeWidgetProvider()) { entry in
             MediumWidgetView(entry: entry)
-                .containerBackground(.clear, for: .widget)
+                .containerBackground(for: .widget) {
+                    Color(uiColor: .systemBackground)
+                }
         }
         .configurationDisplayName("Dat Bike — Điều khiển")
         .description("Khoá / mở khoá và tìm xe trực tiếp từ màn hình chính.")

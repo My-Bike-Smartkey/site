@@ -26,8 +26,9 @@ struct BikeWidgetProvider: TimelineProvider {
         let state = SharedBikeState.load()
         let entry = BikeEntry(date: .now, state: state)
 
-        // Refresh sau 15 phút, hoặc sớm hơn nếu connected
-        let refreshInterval: TimeInterval = state.isConnected ? 5 * 60 : 15 * 60
+        // Khi connected: refresh 5 phút (BLEManager cũng gọi reloadAllTimelines sau mỗi thay đổi)
+        // Khi mất kết nối: refresh 2 phút để cập nhật nhanh sau khi app reconnect
+        let refreshInterval: TimeInterval = state.isConnected ? 5 * 60 : 2 * 60
         let nextUpdate = Date().addingTimeInterval(refreshInterval)
 
         let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
