@@ -6,10 +6,8 @@ struct MainView: View {
     @StateObject private var viewModel = SmartKeyViewModel()
     @State private var showingSettings = false
     @State private var showingLogs = false
-    @State private var showingPINPrompt = false
     @State private var showingNFCPrompt = false
     @State private var showingDisclaimer = false
-    @State private var enteredPIN = ""
     
     var body: some View {
         Group {
@@ -17,7 +15,7 @@ struct MainView: View {
                 DashboardView(viewModel: viewModel)
                     .transition(.opacity)
             } else {
-                ConnectingSplashView(viewModel: viewModel, showingSettings: $showingSettings, showingLogs: $showingLogs, showingPINPrompt: $showingPINPrompt)
+                ConnectingSplashView(viewModel: viewModel, showingSettings: $showingSettings, showingLogs: $showingLogs, showingNFCPrompt: $showingNFCPrompt)
                     .transition(.opacity)
             }
         }
@@ -48,20 +46,6 @@ struct MainView: View {
             • Không sử dụng ứng dụng cho mục đích trái pháp luật.
             """)
         }
-        .alert("Mã PIN ghép đôi", isPresented: $showingPINPrompt) {
-            TextField("Nhập mã PIN", text: $enteredPIN)
-                .textInputAutocapitalization(.never)
-                .disableAutocorrection(true)
-            Button("Hủy", role: .cancel) { }
-            Button("Tiếp tục") {
-                if !enteredPIN.isEmpty {
-                    viewModel.authPIN = enteredPIN
-                }
-                showingNFCPrompt = true
-            }
-        } message: {
-            Text("Nhập mã PIN cấu hình của xe để xác thực. Để trống để dùng PIN tự sinh.")
-        }
         .alert("Xác nhận ghép đôi", isPresented: $showingNFCPrompt) {
             Button("Hủy", role: .cancel) {
                 // Do nothing
@@ -81,7 +65,7 @@ struct ConnectingSplashView: View {
     @ObservedObject var viewModel: SmartKeyViewModel
     @Binding var showingSettings: Bool
     @Binding var showingLogs: Bool
-    @Binding var showingPINPrompt: Bool
+    @Binding var showingNFCPrompt: Bool
     
     var body: some View {
         ZStack {
@@ -191,7 +175,7 @@ struct ConnectingSplashView: View {
                                 .foregroundColor(.gray)
                         } else {
                             // No authorized bike — show picker button
-                            Button(action: { showingPINPrompt = true }) {
+                            Button(action: { showingNFCPrompt = true }) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "plus.circle.fill")
                                         .font(.title2)

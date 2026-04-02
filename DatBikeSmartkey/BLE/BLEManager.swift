@@ -24,6 +24,12 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     @Published var autoUnlockEnabled: Bool {
         didSet { UserDefaults.standard.set(autoUnlockEnabled, forKey: "autoUnlockEnabled") }
     }
+    @Published var autoConnectEnabled: Bool {
+        didSet { UserDefaults.standard.set(autoConnectEnabled, forKey: "autoConnectEnabled") }
+    }
+    @Published var autoConnectRSSIThreshold: Int {
+        didSet { UserDefaults.standard.set(autoConnectRSSIThreshold, forKey: "autoConnectRSSIThreshold") }
+    }
     @Published var isAuthenticated = false
     @Published var hasAuthorizedAccessory = false
     @Published var pickerDismissed = false
@@ -34,7 +40,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     private var peripheral: CBPeripheral?
     private var discoveredCharacteristics: [CBUUID: CBCharacteristic] = [:]
     
-    private let bleQueue = DispatchQueue(label: "com.jedix.datbikesmartkey.ble", qos: .userInitiated)
+    private let bleQueue = DispatchQueue(label: "app.mybike.smartkey.ble", qos: .userInitiated)
     private var rssiTimer: Timer?
     private var isAuthenticating: Bool = false
     private var isConnecting: Bool = false
@@ -55,11 +61,56 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     /// Bond recovery mode: sau khi retry error 14 thất bại, scan lại và connect như thiết bị mới
     private var pendingBondRecovery = false
     
+    /// Set by testForceDisconnect — ngăn didDisconnectPeripheral gọi scheduleReconnect
+    private var suppressNextReconnect = false
+
+    /// Set trước khi gọi disconnect() từ auth failure — đảm bảo scheduleReconnect luôn chạy
+    /// bất kể cài đặt autoBackgroundReconnectEnabled của người dùng.
+    private var forceNextReconnect: Bool = false
+
+    /// Cho phép tự kết nối lại sau khi mất tầm phủ sóng.
+    /// false = sau khi mất kết nối phải mở app mới kết nối lại được.
+    var autoBackgroundReconnectEnabled: Bool = true
+
+    /// Cho phép hiển thị thông báo local (mất kết nối, kết nối thành công, v.v.)
+    var notificationsEnabled: Bool = true
+    
+    /// Số lần đã reconnect do counter +2 race condition — giới hạn vòng lặp
+    private var raceReconnectCount: Int = 0
+    private let maxRaceReconnects: Int = 2
+    
     // Auth sequence state
     private var authContinuation: CheckedContinuation<Bool, Never>?
     private var pendingWriteCallbacks: [CBUUID: CheckedContinuation<Void, Error>] = [:]
     private var pendingReadCallbacks: [CBUUID: CheckedContinuation<Data, Error>] = [:]
     private var pendingRSSIContinuation: CheckedContinuation<Int?, Never>? = nil
+    
+    /// Mirror của `rssi` chỉ được truy cập từ bleQueue (không có data race).
+    /// Dùng làm fallback trong RSSI-gate timeout để tránh cross-thread access vào
+    /// @Published `rssi` (được ghi từ main thread).
+    private var rssiRaw: Int = -100
+
+    /// Timeout đọc/ghi BLE thích ứng theo tín hiệu (seconds).
+    /// Tín hiệu yếu → retry nhiều lần hơn trong firmware → cần thêm thời gian.
+    private var bleAdaptiveTimeout: TimeInterval {
+        switch rssiRaw {
+        case -65...0:    return 3.0   // tốt  (≥ -65 dBm)
+        case -75...(-66): return 5.0  // khá  (-66 → -75 dBm)
+        case -85...(-76): return 8.0  // yếu  (-76 → -85 dBm)
+        default:          return 12.0 // rất yếu (< -85 dBm)
+        }
+    }
+
+    /// Initial delay trước lần poll đầu tiên sau lệnh bật/tắt (ms).
+    /// Tín hiệu yếu → firmware nhận lệnh chậm hơn → delay dài hơn.
+    private var cmdInitialDelayMs: UInt64 {
+        switch rssiRaw {
+        case -65...0:    return 400   // tốt
+        case -75...(-66): return 600  // khá
+        case -85...(-76): return 900  // yếu
+        default:          return 1200 // rất yếu
+        }
+    }
     
     /// True khi session BLE vẫn còn sống (retrieveConnectedPeripherals).
     /// Ngăn auth sequence chạy lại trên phiên đang hoạt động, tránh bike xóa bonding.
@@ -91,6 +142,12 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     override init() {
         self.autoUnlockEnabled = UserDefaults.standard.bool(forKey: "autoUnlockEnabled")
+        // autoConnectEnabled mặc định true (hành vi hiện tại)
+        let storedAutoConnect = UserDefaults.standard.object(forKey: "autoConnectEnabled") as? Bool
+        self.autoConnectEnabled = storedAutoConnect ?? true
+        // autoConnectRSSIThreshold mặc định -80 dBm (xa hơn -65 của auto-unlock)
+        let storedRSSI = UserDefaults.standard.object(forKey: "autoConnectRSSIThreshold") as? Int
+        self.autoConnectRSSIThreshold = storedRSSI ?? -80
         super.init()
         
         // ── Persistent Log Restore ──
@@ -116,7 +173,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         guard centralManager == nil else { return }
         log(.info, "📡 Khởi tạo CBCentralManager (sau ASK activation, có State Restoration)")
         centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: [
-            CBCentralManagerOptionRestoreIdentifierKey: "com.jedix.datbikesmartkey.central"
+            CBCentralManagerOptionRestoreIdentifierKey: "app.mybike.smartkey.central"
         ])
     }
     
@@ -200,9 +257,15 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 // ONLY init CBCentralManager when we have an authorized accessory
                 // Creating it without authorized accessories = "global permissions" conflict
                 initCentralManagerIfNeeded()
-                if centralManager?.state == .poweredOn {
-                    connectToAccessory(existing)
-                }
+                // ⚠️ KHÔNG gọi connectToAccessory ở đây.
+                // centralManagerDidUpdateState(.poweredOn) sẽ luôn là người gọi connection
+                // (qua shouldReconnectAfterRestore, isLiveSessionRestore, hoặc fallback).
+                // Nếu gọi ở đây, didDisconnectPeripheral (từ pending connection timeout trong
+                // State Restoration) sẽ reset isConnecting = false ở giữa, cho phép
+                // centralManagerDidUpdateState(.poweredOn) gọi connectToAccessory LẦN NỮA
+                // → double connect → double discoverServices → double auth Task.
+                // Log xác nhận: "📡 Tìm thấy peripheral" xuất hiện 2 lần cùng timestamp
+                // tại 13:25:42, 13:31:42, 14:28:17 trong datbike_ble_log.
             } else {
                 DispatchQueue.main.async { self.hasAuthorizedAccessory = false }
                 log(.info, "📱 Chưa có xe nào — cần showPicker()")
@@ -268,7 +331,18 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                     return
                 }
             }
+            // Cả 2 retrieval đều thất bại — iOS peripheral cache có thể chưa được populate
+            // (xảy ra sau khi BT tắt/bật qua đêm). Retry sau 5s để CB stack kịp khởi tạo.
+            log(.warning, "📡 Không tìm thấy peripheral trong cache — retry sau 5s...")
             DispatchQueue.main.async { self.connectionState = .disconnected }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+                guard let self else { return }
+                guard let accessory = self.currentAccessory else { return }
+                guard self.peripheral?.state != .connected,
+                      self.peripheral?.state != .connecting else { return }
+                self.log(.info, "🔄 Retry connectToAccessory (peripheral cache rỗng trước đó)...")
+                self.connectToAccessory(accessory)
+            }
         }
     }
     
@@ -392,11 +466,189 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     }
 
 
+    // MARK: - BLE Test Panel
+
+    /// Đọc challenge counter hiện tại (không ghi gì). Dùng để quan sát counter raw trước/sau auth.
+    func testReadCounter() async -> String {
+        guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
+            log(.error, "[TEST] authChallenge characteristic not found")
+            return "ERR: char not found"
+        }
+        do {
+            let data = try await readValue(for: authChar)
+            guard data.count >= 4 else { return "ERR: data too short (\(data.count)b)" }
+            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+            log(.info, "[TEST] readCounter: \(counter) (raw: \(data.prefix(4).hexString))")
+            return "counter=\(counter) raw=\(data.prefix(4).hexString)"
+        } catch {
+            log(.error, "[TEST] readCounter error: \(error.localizedDescription)")
+            return "ERR: \(error.localizedDescription)"
+        }
+    }
+
+    /// Ghi SHA-256 auth response rồi đọc lại counter — giống luồng reconnect thật.
+    /// - Parameter preWriteDelay: thời gian chờ trước khi ghi (giây), để test race condition.
+    func testAuthAndVerify(preWriteDelay: Double = 0) async -> String {
+        let pin: String
+        if let k = KeychainHelper.load(key: "authPIN") { pin = k }
+        else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
+        else { return "ERR: no PIN" }
+
+        guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
+            return "ERR: authChallenge not found"
+        }
+        do {
+            // Read challenge
+            let data = try await readValue(for: authChar)
+            guard data.count >= 4 else { return "ERR: data too short" }
+            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+            let shifted = counter >> 1
+            let hash = SHA256.hash(data: Data("\(shifted)\(pin)".utf8))
+            let hashHex = hash.compactMap { String(format: "%02x", $0) }.joined()
+            log(.info, "[TEST] challenge=\(counter) shifted=\(shifted) hash=\(String(hashHex.prefix(16)))...")
+
+            if preWriteDelay > 0 {
+                log(.info, "[TEST] ⏳ Chờ \(preWriteDelay)s trước khi ghi...")
+                try await Task.sleep(nanoseconds: UInt64(preWriteDelay * 1_000_000_000))
+            }
+
+            // Write
+            try await writeValue(Data(hashHex.utf8), for: authChar, type: .withResponse)
+            log(.info, "[TEST] Write ACK OK. Đọc lại counter...")
+
+            // Verify loop
+            for attempt in 1...4 {
+                let delay: UInt64 = [400, 700, 1200, 2000][attempt - 1]
+                try await Task.sleep(nanoseconds: delay * 1_000_000)
+                let verify = try await readValue(for: authChar)
+                guard verify.count >= 4 else { continue }
+                let newCounter = verify.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                log(.info, "[TEST] Verify \(attempt): \(counter) → \(newCounter) (+\(Int(newCounter) - Int(counter)))")
+                if newCounter > counter {
+                    log(.success, "[TEST] ✅ Counter tăng +\(newCounter - counter) sau \(attempt) lần verify")
+                    return "✅ counter \(counter)→\(newCounter) (+\(newCounter - counter)) sau \(attempt) verify"
+                }
+            }
+            log(.error, "[TEST] ❌ Counter không tăng sau 4 lần verify")
+            return "❌ counter không tăng (vẫn \(counter))"
+        } catch {
+            log(.error, "[TEST] error: \(error.localizedDescription)")
+            return "ERR: \(error.localizedDescription)"
+        }
+    }
+
+    /// Auth liên tục cho đến khi counter tăng đúng +1 (không phải +2 do race).
+    /// Mỗi vòng: đọc counter baseline → ghi SHA-256 → verify tăng bao nhiêu.
+    /// - Parameters:
+    ///   - preWriteDelay: thời gian chờ trước khi ghi (giây)
+    ///   - maxAttempts: số lần auth tối đa; nếu vượt quá → báo lỗi
+    func testRetryUntilPlusOne(preWriteDelay: Double, maxAttempts: Int) async -> String {
+        let pin: String
+        if let k = KeychainHelper.load(key: "authPIN") { pin = k }
+        else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
+        else { return "ERR: no PIN" }
+
+        guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
+            return "ERR: authChallenge not found"
+        }
+
+        var history: [(attempt: Int, increment: Int)] = []
+
+        for attempt in 1...max(1, maxAttempts) {
+            guard peripheral?.state == .connected else {
+                return "ERR: ngắt kết nối giữa chừng (attempt \(attempt))"
+            }
+            do {
+                // 1. Đọc counter baseline
+                let data = try await readValue(for: authChar)
+                guard data.count >= 4 else { return "ERR: data too short" }
+                let baseline = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                let shifted = baseline >> 1
+                let hash = SHA256.hash(data: Data("\(shifted)\(pin)".utf8))
+                let hashHex = hash.compactMap { String(format: "%02x", $0) }.joined()
+                log(.info, "[RETRY-\(attempt)/\(maxAttempts)] baseline=\(baseline) shifted=\(shifted)")
+
+                if preWriteDelay > 0 {
+                    log(.info, "[RETRY-\(attempt)] ⏳ delay \(preWriteDelay)s...")
+                    try await Task.sleep(nanoseconds: UInt64(preWriteDelay * 1_000_000_000))
+                }
+
+                // 2. Ghi hash
+                try await writeValue(Data(hashHex.utf8), for: authChar, type: .withResponse)
+                log(.info, "[RETRY-\(attempt)] Write ACK OK. Verify...")
+
+                // 3. Verify counter
+                var increment: Int = 0
+                for v in 1...4 {
+                    let delay: UInt64 = [400, 700, 1200, 2000][v - 1]
+                    try await Task.sleep(nanoseconds: delay * 1_000_000)
+                    let verify = try await readValue(for: authChar)
+                    guard verify.count >= 4 else { continue }
+                    let newCounter = verify.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                    increment = Int(newCounter) - Int(baseline)
+                    log(.info, "[RETRY-\(attempt)] verify \(v): \(baseline)→\(newCounter) (+\(increment))")
+                    if increment > 0 { break }
+                }
+
+                history.append((attempt: attempt, increment: increment))
+
+                if increment == 1 {
+                    let trace = history.map { "#\($0.attempt):+\($0.increment)" }.joined(separator: ", ")
+                    log(.success, "[RETRY] ✅ +1 đạt được ở lần \(attempt). Trace: \(trace)")
+                    return "✅ +1 đạt lần \(attempt)/\(maxAttempts) | " + trace
+                } else if increment == 0 {
+                    log(.warning, "[RETRY-\(attempt)] ⚠️ counter không tăng — dừng")
+                    return "❌ counter không tăng ở lần \(attempt)"
+                } else {
+                    // +2 hoặc lớn hơn → thử lại
+                    log(.warning, "[RETRY-\(attempt)] +\(increment) — cần thêm lần nữa...")
+                    // pause nhỏ trước lần tiếp theo để xe xử lý xong
+                    try await Task.sleep(nanoseconds: 300_000_000)
+                }
+            } catch {
+                log(.error, "[RETRY-\(attempt)] error: \(error.localizedDescription)")
+                return "ERR (attempt \(attempt)): \(error.localizedDescription)"
+            }
+        }
+
+        let trace = history.map { "#\($0.attempt):+\($0.increment)" }.joined(separator: ", ")
+        log(.error, "[RETRY] ❌ Không đạt +1 sau \(maxAttempts) lần. Trace: \(trace)")
+        return "❌ vượt \(maxAttempts) lần, không +1 | " + trace
+    }
+
+    /// Ngắt kết nối chủ động (không scheduleReconnect). Dùng để test cold reconnect.
+    func testForceDisconnect() {
+        log(.info, "[TEST] Force disconnect (không auto-reconnect)")
+        guard let p = peripheral else {
+            log(.warning, "[TEST] Không có peripheral để ngắt")
+            return
+        }
+        suppressNextReconnect = true
+        centralManager?.cancelPeripheralConnection(p)
+    }
+
+    /// Ngắt kết nối + lập tức trigger scheduleReconnect. Test toàn bộ reconnect flow.
+    func testDisconnectAndReconnect() {
+        log(.info, "[TEST] Disconnect + scheduleReconnect")
+        disconnect()
+    }
+
+    /// Đọc trạng thái khoá và log kết quả raw. Không ảnh hưởng state.
+    func testReadStatus() async -> String {
+        do {
+            let status = try await readLockStatus(timeout: 8)
+            return "✅ \(status.description)"
+        } catch {
+            return "ERR: \(error.localizedDescription)"
+        }
+    }
+
     func lock() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.smartkeyEcho] else {
             throw BLEError.characteristicNotFound("smartkeyEcho")
         }
-        log(.ble, " Gửi lệnh KHÓA (0x31 → smartkeyEcho)")
+        log(.ble, " Gửi lệnh KHÓA (0x31 → smartkeyEcho char=\(char.uuid.uuidString.prefix(8)))")
+        log(.info, "[CMD] peripheral.state=\(peripheral?.state.rawValue ?? -1)")
         try await writeValue(BLECommand.lock, for: char, type: .withResponse)
         
         try await Task.sleep(nanoseconds: 400_000_000)
@@ -409,37 +661,56 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             throw BLEError.characteristicNotFound("unlockCmd")
         }
         // Confirmed: write ASCII '0' (0x30) = tắt xe — REPORT.md §4.2 Step 9
-        log(.ble, "⚡ Gửi lệnh TẮT XE (0x30 → unlockCmd)")
+        log(.ble, "⚡ Gửi lệnh TẮT XE (0x30 → unlockCmd char=\(char.uuid.uuidString.prefix(8)))")
+        log(.info, "[CMD] peripheral.state=\(peripheral?.state.rawValue ?? -1) isAuthenticated=\(isAuthenticated)")
         try await writeValue(BLECommand.unlock, for: char, type: .withResponse)
-        // Poll đến khi bike xác nhận đã tắt (isLocked = true / raw 0000)
-        // Bike cần >400ms để đổi state sau lệnh 0x30 — thực tế ~1s
-        try await pollLockStatus(until: { $0.isLocked }, attempts: 8, intervalMs: 400)
+        // Chờ firmware xử lý lệnh trước khi bắt đầu poll — delay tăng khi tín hiệu yếu
+        let delay1 = cmdInitialDelayMs
+        log(.info, "[CMD] RSSI \(rssiRaw) dBm → initial poll delay \(delay1)ms")
+        try await pollLockStatus(until: { $0.isLocked }, attempts: 8, initialDelayMs: delay1, intervalMs: 400)
     }
     
     func turnOff() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.unlockCmd] else {
             throw BLEError.characteristicNotFound("unlockCmd")
         }
-        log(.ble, " Gửi lệnh BẬT XE (0x31 → unlockCmd)")
+        log(.ble, " Gửi lệnh BẬT XE (0x31 → unlockCmd char=\(char.uuid.uuidString.prefix(8)))")
+        log(.info, "[CMD] peripheral.state=\(peripheral?.state.rawValue ?? -1) isAuthenticated=\(isAuthenticated)")
         try await writeValue(BLECommand.powerOff, for: char, type: .withResponse)
-        // Poll đến khi bike xác nhận đã bật (isLocked = false / raw 0200)
-        try await pollLockStatus(until: { !$0.isLocked }, attempts: 8, intervalMs: 400)
+        // Chờ firmware xử lý lệnh trước khi bắt đầu poll — delay tăng khi tín hiệu yếu
+        let delay2 = cmdInitialDelayMs
+        log(.info, "[CMD] RSSI \(rssiRaw) dBm → initial poll delay \(delay2)ms")
+        try await pollLockStatus(until: { !$0.isLocked }, attempts: 8, initialDelayMs: delay2, intervalMs: 400)
     }
     
     /// Poll readLockStatus mỗi `intervalMs` ms cho đến khi predicate đúng hoặc hết attempts.
+    /// `initialDelayMs`: delay trước lần poll đầu tiên để firmware kịp xử lý lệnh.
     private func pollLockStatus(
         until predicate: @escaping (LockStatus) -> Bool,
         attempts: Int,
+        initialDelayMs: UInt64 = 0,
         intervalMs: UInt64
     ) async throws {
-        for i in 0..<attempts {
-            try await Task.sleep(nanoseconds: intervalMs * 1_000_000)
-            let status = try await readLockStatus()
-            if predicate(status) { return }
-            if i < attempts - 1 {
-                log(.info, "Chờ bike đổi trạng thái... (\(i + 1)/\(attempts))")
-            }
+        if initialDelayMs > 0 {
+            log(.info, "[POLL] Chờ \(initialDelayMs)ms để firmware xử lý lệnh...")
+            try await Task.sleep(nanoseconds: initialDelayMs * 1_000_000)
         }
+        for i in 0..<attempts {
+            if i > 0 {
+                try await Task.sleep(nanoseconds: intervalMs * 1_000_000)
+            }
+            guard let p = peripheral, p.state == .connected else {
+                log(.error, "[POLL] peripheral ngắt kết nối (state=\(peripheral?.state.rawValue ?? -1)) — dừng poll")
+                throw BLEError.notConnected
+            }
+            let status = try await readLockStatus()
+            if predicate(status) {
+                log(.info, "[POLL] Xe xác nhận trạng thái sau \(i + 1) lần poll")
+                return
+            }
+            log(.info, "[POLL] Chờ bike đổi trạng thái... (\(i + 1)/\(attempts)) hiện tại=\(status.description)")
+        }
+        log(.warning, "[POLL] Hết \(attempts) lần poll — bike chưa đổi trạng thái, tiếp tục")
     }
     
     func toggleLock() async throws {
@@ -553,63 +824,140 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         let savedUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
         let isKnownDevice = (savedUUID == peripheral.identifier.uuidString)
         
+        log(.info, "[AUTH] ─── Bắt đầu xác thực ───")
+        log(.info, "[AUTH] peripheral : \(peripheral.identifier.uuidString.prefix(8))... state=\(peripheral.state.rawValue) (0=dc,1=connecting,2=connected,3=disconnecting)")
+        log(.info, "[AUTH] savedUUID  : \(savedUUID?.prefix(8) ?? "nil")...")
+        log(.info, "[AUTH] isKnownDevice=\(isKnownDevice) → \(isKnownDevice ? "SHA-256 reconnect mode" : "Pairing mode (PIN plain-text)")")
+        log(.info, "[AUTH] PIN length =\(pin.count) chars | isAuthenticating=\(isAuthenticating)")
+        
         if isKnownDevice {
-            // ── RECONNECT FLOW (SHA-256) with Counter Verification ──
+            // ── RECONNECT FLOW (SHA-256) với Counter Verification ──
+            //
+            // CÓ 2 LOẠI "CONNECTED" khác nhau:
+            //   1. BLE link-layer connected (iOS Settings báo Connected): encrypted link up, SMP bonded.
+            //      Xe chưa chắc show icon Bluetooth, chưa chắc nhận lệnh.
+            //   2. Application-layer authenticated (xe show icon BT, nhận lệnh được):
+            //      Firmware xe đã verify SHA-256 hash và tăng counter.
+            //
+            // Counter KHÔNG TĂNG = firmware xe chưa authenticate app ở application layer,
+            // dù BLE link vẫn connected. Đây là dấu hiệu thực sự của auth failure.
+            //
+            // NGUYÊN NHÂN counter không tăng:
+            //   a) PIN sai → hash sai → xe reject (counter không tăng là đúng)
+            //   b) Firmware chưa xử lý kịp → cần chờ lâu hơn (120–800ms tăng dần)
+            //   c) Xe ở trạng thái "ghost connected": iOS giữ link nhưng xe đã reset firmware
+            //      → counter sẽ không bao giờ tăng dù hash đúng → phải disconnect + reconnect
+            //
+            // CHIẾN LƯỢC: retry với delay tăng dần; nếu sau N lần vẫn không tăng → throw
+            // → catch ở didDiscoverCharacteristics → disconnect() → scheduleReconnect() → fresh challenge
             log(.ble, " Tái kết nối tự động (SHA-256 Mode). Đọc Challenge...")
             
-            var authSuccess = false
-            for attempt in 1...3 {
-                let currentChallengeData = try await readValue(for: authChar)
-                guard currentChallengeData.count >= 4 else {
-                    log(.error, " Lỗi: Challenge Data quá ngắn (\(currentChallengeData.count) bytes)")
-                    throw BLEError.authFailed("Challenge data too short")
-                }
-                
-                // 1. Chuyển thành UInt32 Little Endian
-                let currentCounter = currentChallengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                
-                // 2. Dịch phải (Logical Right Shift) 1 bit
-                let shifted = currentCounter >> 1
-                
-                // 3. Ghép chuỗi Số Nguyên + PIN
-                let mixStr = "\(shifted)\(pin)"
-                
-                // 4. Băm SHA-256 → Hex String
-                let hashed = SHA256.hash(data: Data(mixStr.utf8))
-                let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
-                
-                log(.ble, " [AUTH] computing SHA-256 response (lần \(attempt))...")
-                
-                // 5. Ghi hash — CHỈ 1 LẦN CỦA MỖI ATTEMPT
-                try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
-                
-                // 6. Đọc lại counter để xác nhận
-                try await Task.sleep(nanoseconds: 200_000_000) // 200ms cho firmware xử lý
-                let verifyData = try await readValue(for: authChar)
-                if verifyData.count >= 4 {
-                    let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                    if newCounter > currentCounter {
-                        log(.success, " Counter verified: \(currentCounter) → \(newCounter) (+\(newCounter - currentCounter)). Auth OK!")
-                        authSuccess = true
-                        break
-                    } else if newCounter == currentCounter {
-                        log(.warning, " ⚠️ Counter không tăng (\(newCounter)). OS cache hoặc xe chưa xử lý kịp. Thử đọc lại challenge...")
-                        try await Task.sleep(nanoseconds: 300_000_000)
-                        continue
-                    } else {
-                        log(.error, " Counter bị lỗi (giảm): expected > \(currentCounter), got \(newCounter). Xác thực thất bại!")
-                        throw BLEError.authFailed("Counter verification failed")
-                    }
-                } else {
-                    // Counter verify thất bại nhưng write đã ACK → coi như OK (giống bản đầu)
-                    log(.warning, " Counter verify: data ngắn (\(verifyData.count) bytes), tiếp tục...")
-                    authSuccess = true
-                    break
-                }
+            let currentChallengeData = try await readValue(for: authChar)
+            guard currentChallengeData.count >= 4 else {
+                log(.error, " Lỗi: Challenge Data quá ngắn (\(currentChallengeData.count) bytes)")
+                throw BLEError.authFailed("Challenge data too short")
             }
             
-            if !authSuccess {
-                throw BLEError.authFailed("Xác thực thất bại sau 3 lần thử (Counter không tăng)")
+            // 1. Chuyển thành UInt32 Little Endian
+            let currentCounter = currentChallengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+            log(.ble, " [AUTH] Challenge counter: \(currentCounter) (raw: \(currentChallengeData.prefix(4).hexString))")
+            
+            // 2. Dịch phải (Logical Right Shift) 1 bit — theo bytecode JS app gốc: counter_raw >>> 1
+            let shifted = currentCounter >> 1
+            
+            // 3. Ghép chuỗi Số Nguyên + PIN (JavaScript string concat: Number + String)
+            let mixStr = "\(shifted)\(pin)"
+            
+            // 4. Băm SHA-256 → Hex String
+            let hashed = SHA256.hash(data: Data(mixStr.utf8))
+            let hashHexStr = hashed.compactMap { String(format: "%02x", $0) }.joined()
+            
+            log(.ble, " [AUTH] SHA-256(\(shifted) + PIN) = \(String(hashHexStr.prefix(16)))...")
+            log(.info, "[AUTH] peripheral state trước khi ghi: \(peripheral.state.rawValue)")
+            
+            // 5. Đợi firmware ổn định trước khi ghi — tránh ghi quá nhanh sau read challenge
+            let preWriteDelaySec = 2
+            log(.ble, "[AUTH] ⏳ Đợi \(preWriteDelaySec)s để firmware ổn định trước khi ghi hash...")
+            try await Task.sleep(nanoseconds: UInt64(preWriteDelaySec) * 1_000_000_000)
+            
+            // Kiểm tra peripheral vẫn còn kết nối sau khi chờ
+            guard peripheral.state == .connected else {
+                log(.error, "[AUTH] ❌ Peripheral ngắt kết nối TRONG KHI đợi pre-write delay! state=\(peripheral.state.rawValue)")
+                throw BLEError.authFailed("Peripheral disconnected during pre-write delay")
+            }
+            log(.info, "[AUTH] peripheral state sau delay: \(peripheral.state.rawValue) — ghi hash ngay bây giờ")
+            
+            // 6. Ghi hash, chờ ACK
+            try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
+            log(.ble, " [AUTH] Write ACK nhận được. peripheral.state=\(peripheral.state.rawValue). Chờ firmware verify và tăng counter...")
+            
+            // 6. Verify counter tăng — retry với delay tăng dần
+            // Lý do cần retry: firmware cần thời gian (NVRAM write, SHA-256 verify) trước khi
+            // cập nhật characteristic. Delay: 400ms, 700ms, 1200ms (tổng max ~2.3s)
+            let retryDelays: [UInt64] = [400, 700, 1200, 2000]
+            var authVerified = false
+            
+            for (attempt, delayMs) in retryDelays.enumerated() {
+                try await Task.sleep(nanoseconds: delayMs * 1_000_000)
+                
+                let verifyData = try await readValue(for: authChar)
+                guard verifyData.count >= 4 else {
+                    // Data ngắn bất thường — ionic state, tiếp tục retry
+                    log(.warning, " [AUTH] Verify \(attempt+1): response ngắn (\(verifyData.count)b), retry...")
+                    continue
+                }
+                
+                let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                log(.ble, " [AUTH] Verify \(attempt+1): counter \(currentCounter) → \(newCounter)")
+                
+                if newCounter > currentCounter {
+                    // Counter tăng = firmware đã verify hash thành công = application-layer auth OK
+                    let increment = newCounter - currentCounter
+                    if increment == 1 {
+                        log(.success, " [AUTH] Counter tăng (+1). Xác thực sạch ở application layer!")
+                        raceReconnectCount = 0  // Reset: auth sạch
+                        authVerified = true
+                        break
+                    } else {
+                        // Counter +2: firmware verify thành công ở GATT layer nhưng xe từ chối
+                        // tất cả lệnh ở application layer (confirmed qua nhiều lần test).
+                        // Fix: disconnect → reconnect → re-auth để lấy fresh challenge → +1.
+                        log(.warning, " [AUTH] ⚠️ Counter +\(increment) — firmware race condition (internal tick hoặc duplicate write).")
+                        if raceReconnectCount < maxRaceReconnects {
+                            raceReconnectCount += 1
+                            log(.warning, " [AUTH] Auto-reconnect để lấy fresh auth (lần \(raceReconnectCount)/\(maxRaceReconnects))...")
+                            throw BLEError.authFailed("Counter +\(increment) — race condition, reconnect để lấy fresh auth")
+                        } else {
+                            // Đã retry đủ lần, chấp nhận +2 để tránh loop vô tận
+                            log(.warning, " [AUTH] Đã retry \(maxRaceReconnects) lần, tiếp tục với counter +\(increment) (có thể lệnh bị từ chối)")
+                            authVerified = true
+                            break
+                        }
+                    }
+                }
+                // Counter bằng hoặc giảm (đọc cũ / chưa kịp update) → retry tiếp
+                let hint = newCounter < currentCounter ? "giảm — có thể read race" : "chưa tăng"
+                log(.warning, " [AUTH] Verify \(attempt+1): counter \(hint) (\(newCounter)), chờ lâu hơn...")
+            }
+            
+            if !authVerified {
+                // Sau tất cả retry: counter vẫn không tăng.
+                //
+                // KHÔNG THỂ phân biệt "counter lag" vs "ghost connection" bằng READ:
+                //   - Read GATT characteristic thành công ở cả 2 trường hợp vì ATT Read Request
+                //     hoạt động ở link-layer, firmware trả về cached value bất kể auth state.
+                //   - WRITE được ACK ở GATT level trong cả 2 trường hợp, nhưng firmware chỉ
+                //     thực thi command nếu đã xác thực application-layer.
+                //   → Chỉ có counter tăng là bằng chứng duy nhất firmware đã verify hash.
+                //
+                // CHIẾN LƯỢC: throw unconditionally → disconnect → scheduleReconnect → fresh challenge.
+                //   - "Counter lag" case: reconnect ngay sau (1-2s) × firmware đã init xong → counter tăng.
+                //   - Ghost connection case: reconnect → firmware cấp counter mới → auth fresh.
+                //   - Cả 2 đều giải quyết được bằng reconnect, không cần phân biệt.
+                log(.error, " [AUTH] Counter không tăng sau \(retryDelays.count) lần verify.")
+                log(.error, "   → Không thể xác nhận application-layer auth (GATT read không phân biệt được).")
+                log(.error, "   → Disconnect → reconnect để lấy fresh challenge...")
+                throw BLEError.authFailed("Counter không tăng — disconnect để lấy fresh challenge")
             }
             
         } else {
@@ -656,6 +1004,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         // ── Step 5: TIME SYNC (44e2bde6) — seconds since midnight Vietnam time (UTC+7)
         // Chỉ ghi lần kết nối đầu tiên (giống Android) — không cần sync mỗi lần reconnect
         let isFirstConnection = (savedUUID != peripheral.identifier.uuidString)
+        log(.info, "[AUTH] Step 5: isFirstConnection=\(isFirstConnection) (savedUUID \(isFirstConnection ? "≠" : "=") peripheral UUID)")
         if isFirstConnection {
             let vnTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
             var cal = Calendar(identifier: .gregorian)
@@ -680,16 +1029,20 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             try? await writeValue(Data(token.utf8), for: autoChar, type: .withResponse)
         }
         
-        // THỬ NGHIỆM TẮT BOND: Tạm thời Không Đăng Ký CCCD (serviceChanged)
-        // Nếu việc đăng ký CCCD này ép iOS phải tạo mã hóa / lưu Bond, tắt nó đi sẽ tránh Error 14
-        /*
-        log(.ble, " Step 7: Dang ky CCCD (serviceChanged) de xe hien icon Bluetooth...")
+        // Step 7: CCCD cho serviceChanged (2A05)
+        // NOTE: iOS CoreBluetooth không expose service 0x1801 (Generic Attribute Profile)
+        // — nó được iOS host stack quản lý nội bộ, không accessible qua CB.
+        // Confirmed từ logs: icon BT xe sáng lên khi auth sạch (counter +1),
+        // không phụ thuộc vào CCCD write. Nếu có tìm thấy thì vẫn ghi; nếu không → bỏ qua.
+        log(.ble, " Step 7: Kiểm tra serviceChanged (2A05)...")
         if let scChar = discoveredCharacteristics[BLECharacteristic.serviceChanged] {
+            log(.ble, " Step 7: Tìm thấy 2A05 — ghi CCCD...")
             peripheral.setNotifyValue(true, for: scChar)
-            try await Task.sleep(nanoseconds: 200_000_000) // Wait for CCCD Write Response from vehicle
-            log(.ble, " Step 7: Da gui CCCD Write -  cho xe phan hoi...")
+            try await Task.sleep(nanoseconds: 200_000_000)
+            log(.ble, " Step 7: CCCD Write gửi xong")
+        } else {
+            log(.info, "[AUTH] Step 7: 2A05 không accessible (iOS quản lý 0x1801 nội bộ) — bỏ qua, icon BT do firmware sau auth")
         }
-        */
         
         // ── Done
         // Save UUID ONLY NOW -- after full auth success -- so next connect uses SHA flow correctly
@@ -776,7 +1129,25 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     // MARK: - Background Auto-Reconnect
     
     private func scheduleReconnect() {
-        guard let peripheral = peripheral else { return }
+        guard autoConnectEnabled else {
+            log(.info, "⚡ autoConnect tắt — bỏ qua pending reconnect")
+            return
+        }
+        // Nếu peripheral nil (hiếm — sau stale-cache reset hoặc error 14),
+        // thử khôi phục peripheral từ ASK bluetoothIdentifier trước khi bỏ cuộc.
+        if peripheral == nil, let askUUID = currentAccessory?.bluetoothIdentifier,
+           centralManager?.state == .poweredOn {
+            if let p = centralManager.retrievePeripherals(withIdentifiers: [askUUID]).first {
+                log(.info, "♻️ scheduleReconnect: khôi phục peripheral từ ASK UUID")
+                self.peripheral = p
+                p.delegate = self
+            }
+        }
+        
+        guard let peripheral = peripheral else {
+            log(.warning, "⚠️ scheduleReconnect: peripheral nil — không đăng ký được pending connection")
+            return
+        }
         
         log(.info, " Đăng ký auto-reconnect (pending connection)...")
         
@@ -789,59 +1160,26 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         ])
     }
     
-    /// Kết nối lại trực tiếp khi gặp error 14 — không scan, không tạo kết nối mới hoàn toàn.
-    /// Dùng peripheral reference có sẵn hoặc retrieve từ UUID đã lưu.
-    private func reconnectDirectly() {
-        // Delay ngắn để iOS xử lý xong disconnect trước khi connect lại
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            guard let self else { return }
-            
-            // Cách 1: Đã có peripheral reference → connect thẳng
-            if let p = self.peripheral {
-                self.log(.info, " → Connect trực tiếp (có peripheral reference)")
-                self.centralManager.connect(p, options: nil)
-                return
-            }
-            
-            // Cách 2: Reference mất → retrieve từ UUID cache
-            if let savedID = UserDefaults.standard.string(forKey: "lastPeripheralUUID"),
-               let uuid = UUID(uuidString: savedID) {
-                let known = self.centralManager.retrievePeripherals(withIdentifiers: [uuid])
-                if let p = known.first {
-                    self.log(.info, " → Connect qua retrievePeripherals (UUID cache)")
-                    self.peripheral = p
-                    p.delegate = self
-                    self.centralManager.connect(p, options: nil)
-                    return
-                }
-            }
-            
-            // Cách 3: Fallback cuối — scan (trường hợp hiếm)
-            self.log(.warning, " → Không tìm được peripheral, fallback sang scan...")
-            self.startScan()
-        }
-    }
-    
     // MARK: - GATT Read/Write Helpers
     
     private func writeValue(_ data: Data, for characteristic: CBCharacteristic, type: CBCharacteristicWriteType) async throws {
         guard let peripheral = peripheral, peripheral.state == .connected else { throw BLEError.notConnected }
         
-        let hexData = data.map { String(format: "%02x", $0) }.joined()
         let charPrefix = characteristic.uuid.uuidString.prefix(8)
         log(.ble, "[TX] WRITE (\(type == .withResponse ? "REQ" : "CMD")) \(charPrefix) (\(data.count) bytes)")
         
         if type == .withResponse {
+            let timeoutSec = bleAdaptiveTimeout
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 bleQueue.async {
                     self.pendingWriteCallbacks[characteristic.uuid] = continuation
                     peripheral.writeValue(data, for: characteristic, type: type)
                 }
-                
-                // Timeout after 20 seconds to allow for iOS pairing UI and slow SMP handshakes
-                DispatchQueue.global().asyncAfter(deadline: .now() + 20.0) { [weak self] in
+                // QUAN TRỌNG: phải dispatch về bleQueue (không phải global()) để tránh data race
+                // trên pendingWriteCallbacks Dictionary — CB delegate cũng chạy trên bleQueue.
+                bleQueue.asyncAfter(deadline: .now() + timeoutSec) { [weak self] in
                     if let cont = self?.pendingWriteCallbacks.removeValue(forKey: characteristic.uuid) {
-                        self?.log(.error, "[RX] TIMEOUT \(charPrefix)")
+                        self?.log(.error, "[RX] TIMEOUT WRITE \(charPrefix) (\(timeoutSec)s, RSSI \(self?.rssiRaw ?? -999) dBm)")
                         cont.resume(throwing: BLEError.timeout)
                     }
                 }
@@ -852,21 +1190,22 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
     
-    private func readValue(for characteristic: CBCharacteristic, timeout: TimeInterval = 20.0) async throws -> Data {
+    private func readValue(for characteristic: CBCharacteristic, timeout: TimeInterval? = nil) async throws -> Data {
         guard let peripheral = peripheral, peripheral.state == .connected else { throw BLEError.notConnected }
         let charPrefix = characteristic.uuid.uuidString.prefix(8)
         log(.ble, "[TX] READ REQ \(charPrefix)")
+        let timeoutSec = timeout ?? bleAdaptiveTimeout
         
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
             bleQueue.async {
                 self.pendingReadCallbacks[characteristic.uuid] = continuation
                 peripheral.readValue(for: characteristic)
             }
-            
-            // Timeout after specified interval
-            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
+            // QUAN TRỌNG: phải dispatch về bleQueue (không phải global()) để tránh data race
+            // trên pendingReadCallbacks Dictionary — CB delegate cũng chạy trên bleQueue.
+            bleQueue.asyncAfter(deadline: .now() + timeoutSec) { [weak self] in
                 if let cont = self?.pendingReadCallbacks.removeValue(forKey: characteristic.uuid) {
-                    self?.log(.error, "[RX] TIMEOUT READ \(charPrefix)")
+                    self?.log(.error, "[RX] TIMEOUT READ \(charPrefix) (\(timeoutSec)s, RSSI \(self?.rssiRaw ?? -999) dBm)")
                     cont.resume(throwing: BLEError.timeout)
                 }
             }
@@ -876,6 +1215,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     // MARK: - Notifications
     
     func sendLocalNotification(title: String, body: String) {
+        guard notificationsEnabled else { return }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -935,6 +1275,10 @@ extension BLEManager: CBCentralManagerDelegate {
                 // Xử lý State Restoration trước (ưu tiên cao hơn)
                 if self.shouldReconnectAfterRestore {
                     self.shouldReconnectAfterRestore = false
+                    guard self.autoConnectEnabled else {
+                        self.log(.info, "⚡ autoConnect tắt — bỏ qua state restoration reconnect")
+                        return
+                    }
                     if let accessory = self.currentAccessory {
                         self.connectToAccessory(accessory)
                     } else {
@@ -953,6 +1297,10 @@ extension BLEManager: CBCentralManagerDelegate {
                 }
                 
                 // ASK: auto-connect to authorized accessory
+                guard self.autoConnectEnabled else {
+                    self.log(.info, "⚡ autoConnect tắt — bỏ qua auto-connect khi BT bật")
+                    return
+                }
                 if let accessory = self.currentAccessory {
                     self.connectToAccessory(accessory)
                 } else {
@@ -1016,9 +1364,17 @@ extension BLEManager: CBCentralManagerDelegate {
         // Auto-connect ONLY if this is our saved bike
         let savedUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
         if peripheral.identifier.uuidString == savedUUID {
+            guard autoConnectEnabled else {
+                log(.info, "⚡ autoConnect tắt — bỏ qua kết nối với \(name)")
+                return
+            }
+            if rssiVal < autoConnectRSSIThreshold {
+                log(.info, "📶 RSSI \(rssiVal) < ngưỡng \(autoConnectRSSIThreshold) dBm — bỏ qua auto-connect")
+                return
+            }
             log(.success, "🔗 Tự động kết nối lại xe đã lưu: \(name)!")
             connect(to: peripheral)
-        } else if pendingBondRecovery {
+        } else if pendingBondRecovery { // note: bond-recovery ignores autoConnectEnabled intentionally
             let containedUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
             let isDatBike = name.contains(BLEProtocol.deviceNamePrefix) ||
                             name.hasPrefix(BLEProtocol.deviceNameAltPrefix) ||
@@ -1242,6 +1598,7 @@ extension BLEManager: CBCentralManagerDelegate {
         // characteristics đã discovered xong → removeAll() xoá giữa chừng → "not found".
         discoveredCharacteristics.removeAll()
         isAuthenticating = false
+        raceReconnectCount = 0  // Reset: fresh connection, counter race counter cũng reset
         
         DispatchQueue.main.async {
             self.connectionState = .disconnected
@@ -1265,6 +1622,28 @@ extension BLEManager: CBCentralManagerDelegate {
         }
         
         // ASK: auto-reconnect via pending connection
+
+        // Auth retry (counter +2 / auth failure) — luôn reconnect bất kể cài đặt
+        if forceNextReconnect {
+            forceNextReconnect = false
+            log(.info, "♻️ forceNextReconnect — auth retry, reconnect bất kể cài đặt backgroundReconnect")
+            let hasSavedBike = UserDefaults.standard.string(forKey: "lastPeripheralUUID") != nil
+            if hasSavedBike || currentAccessory != nil { scheduleReconnect() }
+            return
+        }
+
+        if suppressNextReconnect {
+            suppressNextReconnect = false
+            log(.info, "[TEST] suppressNextReconnect=true — bỏ qua scheduleReconnect (force disconnect test)")
+            DispatchQueue.main.async { self.connectionState = .disconnected }
+            return
+        }
+
+        if !autoBackgroundReconnectEnabled {
+            log(.info, "⛔ autoBackgroundReconnect=off — giữ disconnected, người dùng mở app để kết nối lại")
+            return
+        }
+
         let hasSavedBike = UserDefaults.standard.string(forKey: "lastPeripheralUUID") != nil
         if hasSavedBike || currentAccessory != nil {
             scheduleReconnect()
@@ -1274,6 +1653,10 @@ extension BLEManager: CBCentralManagerDelegate {
     // MARK: - Known Device Reconnect
     
     private func tryReconnectKnown() {
+        guard autoConnectEnabled else {
+            log(.info, "⚡ autoConnect tắt — bỏ qua tryReconnectKnown")
+            return
+        }
         let savedID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
         guard savedID != nil else { return }
         
@@ -1348,6 +1731,10 @@ extension BLEManager: CBPeripheralDelegate {
                 isLiveSessionRestore = false
                 log(.success, " Characteristics sẵn sàng (live session). Kiểm tra link thật...")
                 
+                DispatchQueue.main.async {
+                    self.connectionState = .sessionVerifying  // hiển thị "Đang khôi phục phiên..."
+                }
+                
                 Task {
                     // ── VALIDATION PING ──
                     // iOS đôi lúc báo state=connected nhưng link layer thực tế đã chết.
@@ -1392,12 +1779,18 @@ extension BLEManager: CBPeripheralDelegate {
                     } else {
                         // Link chết (zombie session) — phải auth lại từ đầu
                         log(.warning, " ⚠️ Live session ZOMBIE: xe không phản hồi trong 2s. Bắt đầu xác thực lại...")
+                        // QUAN TRỌNG: phải set isAuthenticating = true TRƯỚC khi gọi authenticate().
+                        // Nếu không, didDiscoverCharacteristics từ service khác có thể fire và
+                        // khởi động thêm 1 authenticate() concurrently → double auth race →
+                        // continuation bị ghi đè → Task 1 treo vĩnh viễn.
+                        self.isAuthenticating = true
                         DispatchQueue.main.async {
                             self.isAuthenticated = false
                             self.connectionState = .authenticating
                         }
                         do {
                             try await authenticate()
+                            self.isAuthenticating = false
                             DispatchQueue.main.async {
                                 self.connectionState = .ready
                                 self.isAuthenticated = true
@@ -1407,6 +1800,7 @@ extension BLEManager: CBPeripheralDelegate {
                             startRSSIMonitoring()
                             startKeepAlive()
                         } catch {
+                            self.isAuthenticating = false
                             log(.error, " Xác thực thất bại sau zombie session: \(error.localizedDescription)")
                             log(.info, "   → Ngắt kết nối để kích hoạt scheduleReconnect...")
                             DispatchQueue.main.async {
@@ -1439,11 +1833,13 @@ extension BLEManager: CBPeripheralDelegate {
                             self.pendingRSSIContinuation = cont
                             p.readRSSI()
                         }
-                        // Timeout 1.5s: nếu BLE không trả RSSI (hiếm), dùng giá trị cache
-                        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+                        // Timeout 1.5s: nếu BLE không trả RSSI (hiếm), dùng rssiRaw mirror.
+                        // KHÔNG dùng self.rssi vì đó là @Published (main thread) — data race.
+                        // rssiRaw được cập nhật trong didReadRSSI (bleQueue) nên an toàn ở đây.
+                        self.bleQueue.asyncAfter(deadline: .now() + 1.5) {
                             if let cont = self.pendingRSSIContinuation {
                                 self.pendingRSSIContinuation = nil
-                                cont.resume(returning: self.rssi)  // Int auto-coerces to Int?
+                                cont.resume(returning: self.rssiRaw)  // bleQueue-local mirror
                             }
                         }
                     }
@@ -1479,6 +1875,7 @@ extension BLEManager: CBPeripheralDelegate {
                         self.connectionState = .error("Xác thực thất bại — đang thử lại...")
                     }
                     // disconnect() → didDisconnectPeripheral → scheduleReconnect()
+                    self.forceNextReconnect = true
                     self.disconnect()
                 }
                 isAuthenticating = false
@@ -1556,6 +1953,7 @@ extension BLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
         let rssiVal = RSSI.intValue
         lastRSSIDate = Date()
+        rssiRaw = rssiVal  // cập nhật bleQueue mirror trước khi dispatch sang main
         DispatchQueue.main.async { self.rssi = rssiVal }
         
         // Resume any pending one-shot RSSI read (used by RSSI gate before auth)
@@ -1564,8 +1962,11 @@ extension BLEManager: CBPeripheralDelegate {
             cont.resume(returning: rssiVal)
         }
         
-        // Auto-unlock logic
-        if autoUnlockEnabled && lockStatus.isLocked && !hasTriggeredAutoUnlockSession && rssiVal > BLEProtocol.rssiThreshold {
+        // Auto-unlock: dùng ngưỡng do user cài trong Settings (UserDefaults),
+        // fallback về constant nếu chưa cài (slider chưa được kéo).
+        let savedThreshold = UserDefaults.standard.double(forKey: "rssiThreshold")
+        let autoUnlockThreshold = savedThreshold != 0 ? Int(savedThreshold) : BLEProtocol.rssiThreshold
+        if autoUnlockEnabled && lockStatus.isLocked && !hasTriggeredAutoUnlockSession && rssiVal > autoUnlockThreshold {
             hasTriggeredAutoUnlockSession = true
             log(.info, " Ở gần xe (RSSI: \(rssiVal) > \(BLEProtocol.rssiThreshold)). Auto-unlock...")
             sendLocalNotification(title: "Auto Unlock", body: "Phát hiện bạn đang ở gần xe. Đang mở khóa...")
@@ -1596,8 +1997,9 @@ enum BLEError: LocalizedError {
 
 // MARK: - Keychain Helper
 
-private enum KeychainHelper {
-    private static let serviceName = "com.jedix.datbikesmartkey"
+/// Internal so SmartKeyViewModel can read/write the auth PIN via the same Keychain slot.
+enum KeychainHelper {
+    private static let serviceName = "app.mybike.smartkey"
     
     static func save(key: String, value: String) {
         guard let data = value.data(using: .utf8) else { return }

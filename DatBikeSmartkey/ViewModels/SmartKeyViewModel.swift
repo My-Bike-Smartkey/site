@@ -44,11 +44,24 @@ final class SmartKeyViewModel: ObservableObject {
 
     
     // Settings
-    @Published var authPIN: String {
-        didSet { UserDefaults.standard.set(authPIN, forKey: "authPIN") }
-    }
     @Published var rssiThreshold: Double {
         didSet { UserDefaults.standard.set(rssiThreshold, forKey: "rssiThreshold") }
+    }
+    @Published var autoConnectEnabled: Bool = true
+    @Published var autoConnectRSSIThreshold: Double {
+        didSet { BLEManager.shared.autoConnectRSSIThreshold = Int(autoConnectRSSIThreshold) }
+    }
+    @Published var autoBackgroundReconnectEnabled: Bool = true {
+        didSet {
+            UserDefaults.standard.set(autoBackgroundReconnectEnabled, forKey: "autoBackgroundReconnectEnabled")
+            BLEManager.shared.autoBackgroundReconnectEnabled = autoBackgroundReconnectEnabled
+        }
+    }
+    @Published var notificationsEnabled: Bool = true {
+        didSet {
+            UserDefaults.standard.set(notificationsEnabled, forKey: "notificationsEnabled")
+            BLEManager.shared.notificationsEnabled = notificationsEnabled
+        }
     }
     
     // MARK: - Private
@@ -59,17 +72,17 @@ final class SmartKeyViewModel: ObservableObject {
     // MARK: - Init
     
     init() {
-        if let savedPIN = UserDefaults.standard.string(forKey: "authPIN") {
-            self.authPIN = savedPIN
-        } else {
-            // Lần đầu: tự sinh PIN 12 ký tự ngẫu nhiên, lưu ngay
-            let generatedPIN = BLEProtocol.generateSecurePIN()
-            self.authPIN = generatedPIN
-            UserDefaults.standard.set(generatedPIN, forKey: "authPIN")
-        }
         self.rssiThreshold = UserDefaults.standard.double(forKey: "rssiThreshold") != 0
             ? UserDefaults.standard.double(forKey: "rssiThreshold")
             : Double(BLEProtocol.rssiThreshold)
+        let storedConnRSSI = UserDefaults.standard.object(forKey: "autoConnectRSSIThreshold") as? Int
+        self.autoConnectRSSIThreshold = Double(storedConnRSSI ?? -80)
+        let storedBgReconnect = UserDefaults.standard.object(forKey: "autoBackgroundReconnectEnabled") as? Bool ?? true
+        self.autoBackgroundReconnectEnabled = storedBgReconnect
+        BLEManager.shared.autoBackgroundReconnectEnabled = storedBgReconnect
+        let storedNotif = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
+        self.notificationsEnabled = storedNotif
+        BLEManager.shared.notificationsEnabled = storedNotif
         self.isDebugModeEnabled = UserDefaults.standard.bool(forKey: "isDebugModeEnabled")
         
         setupBindings()
@@ -103,6 +116,15 @@ final class SmartKeyViewModel: ObservableObject {
         ble.$autoUnlockEnabled
             .receive(on: DispatchQueue.main)
             .assign(to: &$autoUnlockEnabled)
+        
+        ble.$autoConnectEnabled
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$autoConnectEnabled)
+        
+        ble.$autoConnectRSSIThreshold
+            .receive(on: DispatchQueue.main)
+            .map { Double($0) }
+            .assign(to: &$autoConnectRSSIThreshold)
         
         ble.$isAuthenticated
             .receive(on: DispatchQueue.main)
@@ -253,6 +275,114 @@ final class SmartKeyViewModel: ObservableObject {
         ble.autoUnlockEnabled = enabled
     }
     
+    func setAutoConnect(_ enabled: Bool) {
+        ble.autoConnectEnabled = enabled
+    }
+
+    // MARK: - BLE Test Panel
+
+    @Published var testResult: String = ""
+    @Published var isTestRunning: Bool = false
+    @Published var testPreWriteDelay: Double = 2.0
+    @Published var currentTestName: String = ""
+    @Published var lastTestLogURL: URL?
+
+    /// Index into ble.logs where the current test started — used by exportCurrentTestLog()
+    private var testLogStartIndex: Int = 0
+
+    func testReadCounter() {
+        guard !isTestRunning else { return }
+        currentTestName = "read_counter"
+        testLogStartIndex = ble.logs.count
+        isTestRunning = true
+        testResult = "Đang đọc..."
+        Task {
+            let result = await ble.testReadCounter()
+            testResult = result
+            isTestRunning = false
+        }
+    }
+
+    func testAuthAndVerify() {
+        guard !isTestRunning else { return }
+        currentTestName = "auth_verify_\(String(format: "%.1f", testPreWriteDelay))s"
+        testLogStartIndex = ble.logs.count
+        isTestRunning = true
+        testResult = "Đang xác thực (\(testPreWriteDelay)s delay)..."
+        Task {
+            let result = await ble.testAuthAndVerify(preWriteDelay: testPreWriteDelay)
+            testResult = result
+            isTestRunning = false
+        }
+    }
+
+    func testReadStatus() {
+        guard !isTestRunning else { return }
+        currentTestName = "read_status"
+        testLogStartIndex = ble.logs.count
+        isTestRunning = true
+        testResult = "Đang đọc trạng thái..."
+        Task {
+            let result = await ble.testReadStatus()
+            testResult = result
+            isTestRunning = false
+        }
+    }
+
+    func testForceDisconnect() {
+        currentTestName = "force_disconnect"
+        testLogStartIndex = ble.logs.count
+        ble.testForceDisconnect()
+        testResult = "Force disconnected (không reconnect)"
+    }
+
+    func testDisconnectAndReconnect() {
+        currentTestName = "disconnect_reconnect"
+        testLogStartIndex = ble.logs.count
+        ble.testDisconnectAndReconnect()
+        testResult = "Disconnect + scheduleReconnect triggered"
+    }
+
+    @Published var testMaxRetries: Int = 5
+
+    func testRetryUntilPlusOne() {
+        guard !isTestRunning else { return }
+        currentTestName = "retry_plus1_max\(testMaxRetries)"
+        testLogStartIndex = ble.logs.count
+        isTestRunning = true
+        testResult = "Retry auth → chờ +1 (max \(testMaxRetries) lần, delay \(testPreWriteDelay)s)..."
+        Task {
+            let result = await ble.testRetryUntilPlusOne(
+                preWriteDelay: testPreWriteDelay,
+                maxAttempts: testMaxRetries
+            )
+            testResult = result
+            isTestRunning = false
+        }
+    }
+
+    /// Lưu các log từ lúc bắt đầu test đến hiện tại ra file .txt, trả về URL để share.
+    func exportCurrentTestLog() {
+        let slice = Array(ble.logs.dropFirst(testLogStartIndex))
+        guard !slice.isEmpty else { return }
+        let timeFmt = DateFormatter()
+        timeFmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        let text = slice.map { e in
+            "\(timeFmt.string(from: e.timestamp)) [\(e.level.rawValue)] \(e.message)"
+        }.joined(separator: "\n")
+
+        let stamp = DateFormatter()
+        stamp.dateFormat = "yyyyMMdd_HHmmss"
+        let fileName = "test_\(currentTestName)_\(stamp.string(from: Date())).txt"
+
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("test_logs", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(fileName)
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+        lastTestLogURL = url
+    }
+
     // MARK: - Computed
     
     var signalStrength: SignalStrength {

@@ -8,13 +8,13 @@ struct DebugLogView: View {
     @Environment(\.dismiss) var dismiss
     @State private var autoScroll = true
     @State private var searchText = ""
-    
+    @State private var showBLELevel = false
+
     private var filteredLogs: [BLELogEntry] {
-        if searchText.isEmpty {
-            return bleManager.logs
-        }
-        return bleManager.logs.filter {
-            $0.message.localizedCaseInsensitiveContains(searchText)
+        bleManager.logs.filter { entry in
+            if !showBLELevel && entry.level == .ble { return false }
+            if searchText.isEmpty { return true }
+            return entry.message.localizedCaseInsensitiveContains(searchText)
         }
     }
     
@@ -36,12 +36,29 @@ struct DebugLogView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 8)
                 
-                // Log count
+                // Log count + controls
                 HStack {
                     Text("\(filteredLogs.count) dòng log")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.gray)
                     Spacer()
+                    // Toggle BLE-level logs
+                    Button {
+                        showBLELevel.toggle()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: showBLELevel ? "eye" : "eye.slash")
+                                .font(.system(size: 10))
+                            Text("BLE")
+                                .font(.system(size: 11, design: .monospaced).bold())
+                        }
+                        .foregroundColor(showBLELevel ? .cyan : .gray)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(showBLELevel ? Color.cyan.opacity(0.12) : Color.white.opacity(0.06))
+                        .cornerRadius(5)
+                    }
+                    Spacer().frame(width: 8)
                     Button(action: { autoScroll.toggle() }) {
                         HStack(spacing: 4) {
                             Image(systemName: autoScroll ? "arrow.down.to.line" : "pause")
@@ -112,7 +129,7 @@ struct DebugLogView: View {
                         
                         // Clear button
                         Button(action: {
-                            bleManager.logs.removeAll()
+                            bleManager.clearLogs(clearPersisted: true)
                         }) {
                             Image(systemName: "trash")
                                 .font(.system(size: 14))

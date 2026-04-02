@@ -13,13 +13,7 @@ struct StatusCard: View {
     var body: some View {
         VStack(spacing: 0) {
             // Connection status header
-            HStack {
-                Image(systemName: connectionState.systemImage)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(statusColor)
-                    .opacity(connectionState.isWorking ? 0.6 : 1.0)
-                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: connectionState.isWorking)
-                
+            HStack(alignment: .center, spacing: 6) {
                 Text(connectionState.displayText)
                     .font(.subheadline)
                     .fontWeight(.medium)
