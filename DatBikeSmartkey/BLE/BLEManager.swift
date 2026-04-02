@@ -434,8 +434,17 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         case .armed:     lockRaw = "armed"
         default:         lockRaw = "locked"
         }
+        let phase: String
+        switch connectionState {
+        case .ready:           phase = "ready"
+        case .authenticating:  phase = "authenticating"
+        case .scanning, .connecting: phase = "connecting"
+        default:               phase = "disconnected"
+        }
         var state = SharedBikeState()
         state.isConnected = connectionState.isConnected
+        state.isAuthenticated = isAuthenticated
+        state.connectionPhase = phase
         state.lockStatusRaw = lockRaw
         state.bikeName = bikeInfo.name.isEmpty ? "Dat Bike" : bikeInfo.name
         state.batteryPercent = Int((batteryTelemetry?.soc?.soc ?? 0) * 100)
@@ -443,6 +452,13 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         state.lastUpdated = Date()
         state.save()
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Kích hoạt kết nối thủ công từ widget deep link
+    func triggerManualConnect() {
+        guard connectionState == .disconnected || connectionState == .bluetoothOff else { return }
+        log(.info, "🔌 triggerManualConnect từ widget")
+        tryReconnectKnown()
     }
 
     // MARK: - Manual Time Sync

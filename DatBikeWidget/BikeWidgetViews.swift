@@ -83,16 +83,26 @@ struct SmallWidgetView: View {
                 Spacer()
 
                 // Lock label
-                Text(state.lockLabel)
+                Text(state.isConnected ? state.lockLabel : state.phaseLabel)
                     .font(.callout.weight(.bold))
                     .foregroundStyle(.white)
 
-                // Battery
-                if state.isConnected && state.batteryPercent > 0 {
+                // Auth / battery status
+                if state.connectionPhase == "ready" && state.batteryPercent > 0 {
                     BatteryView(percent: state.batteryPercent)
                         .padding(.top, 2)
-                } else if state.isStale {
-                    Text("Mất kết nối")
+                } else if state.connectionPhase == "authenticating" || state.connectionPhase == "connecting" {
+                    HStack(spacing: 3) {
+                        Image(systemName: state.phaseIcon)
+                            .font(.caption2)
+                            .foregroundStyle(accentOrange)
+                        Text(state.phaseLabel)
+                            .font(.caption2)
+                            .foregroundStyle(accentOrange)
+                    }
+                    .padding(.top, 2)
+                } else if !state.isConnected {
+                    Text(state.isStale ? "Nhấn để kết nối" : "Mất kết nối")
                         .font(.caption2)
                         .foregroundStyle(textSecondary)
                         .padding(.top, 2)
@@ -100,7 +110,7 @@ struct SmallWidgetView: View {
             }
             .padding(14)
         }
-        .widgetURL(URL(string: "datbike://dashboard"))
+        .widgetURL(URL(string: "mybikesmartkey://dashboard"))
     }
 }
 
@@ -139,13 +149,20 @@ struct MediumWidgetView: View {
                         Text(state.bikeName.isEmpty ? "Dat Bike" : state.bikeName)
                             .font(.footnote.weight(.bold))
                             .foregroundStyle(.white)
-                        Text(state.isConnected ? "Đang kết nối" : "Mất kết nối")
-                            .font(.caption2)
-                            .foregroundStyle(state.isConnected ? accentGreen : textSecondary)
+                        HStack(spacing: 4) {
+                            Image(systemName: state.phaseIcon)
+                                .font(.system(size: 9))
+                                .foregroundStyle(state.connectionPhase == "ready" ? accentGreen :
+                                                 state.connectionPhase == "disconnected" ? textSecondary : accentOrange)
+                            Text(state.phaseLabel)
+                                .font(.caption2)
+                                .foregroundStyle(state.connectionPhase == "ready" ? accentGreen :
+                                                 state.connectionPhase == "disconnected" ? textSecondary : accentOrange)
+                        }
                     }
                     Spacer()
                     HStack(spacing: 6) {
-                        if state.isConnected && state.batteryPercent > 0 {
+                        if state.connectionPhase == "ready" && state.batteryPercent > 0 {
                             BatteryView(percent: state.batteryPercent)
                         }
                         ConnectionDot(isConnected: state.isConnected)
@@ -183,28 +200,49 @@ struct MediumWidgetView: View {
                 }
 
                 // ── Action buttons (iOS 17 Interactive)
-                HStack(spacing: 10) {
-                    // Khoá / Mở khoá
-                    Button(intent: state.lockStatusRaw == "unlocked" ? LockBikeIntent() : UnlockBikeIntent()) {
-                        Label(
-                            state.lockStatusRaw == "unlocked" ? "Khoá xe" : "Mở khoá",
-                            systemImage: state.lockStatusRaw == "unlocked" ? "lock.fill" : "lock.open.fill"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            state.lockStatusRaw == "unlocked" ? accentOrange.opacity(0.85) : accentGreen.opacity(0.85),
-                            in: RoundedRectangle(cornerRadius: 9)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!state.isConnected)
+                if state.isConnected {
+                    HStack(spacing: 10) {
+                        // Khoá / Mở khoá
+                        if state.lockStatusRaw == "unlocked" {
+                            Button(intent: LockBikeIntent()) {
+                                Label("Khoá xe", systemImage: "lock.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(accentOrange.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(state.connectionPhase != "ready")
+                        } else {
+                            Button(intent: UnlockBikeIntent()) {
+                                Label("Mở khoá", systemImage: "lock.open.fill")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(accentGreen.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(state.connectionPhase != "ready")
+                        }
 
-                    // Tìm xe
-                    Button(intent: FindBikeIntent()) {
-                        Label("Tìm xe", systemImage: "speaker.wave.2.fill")
+                        // Tìm xe
+                        Button(intent: FindBikeIntent()) {
+                            Label("Tìm xe", systemImage: "speaker.wave.2.fill")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(accentBlue.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(state.connectionPhase != "ready")
+                    }
+                } else {
+                    // Không kết nối — hiện nút Kết nối
+                    Button(intent: ConnectBikeIntent()) {
+                        Label("Kết nối xe", systemImage: "antenna.radiowaves.left.and.right")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
@@ -212,9 +250,7 @@ struct MediumWidgetView: View {
                             .background(accentBlue.opacity(0.85), in: RoundedRectangle(cornerRadius: 9))
                     }
                     .buttonStyle(.plain)
-                    .disabled(!state.isConnected)
                 }
-                .opacity(state.isConnected ? 1.0 : 0.4)
             }
             .padding(14)
         }
@@ -245,7 +281,7 @@ struct LockScreenCircleView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(lockColor(entry.state.lockStatusRaw))
         }
-        .widgetURL(URL(string: "datbike://dashboard"))
+        .widgetURL(URL(string: "mybikesmartkey://dashboard"))
     }
 }
 
@@ -270,7 +306,7 @@ struct LockScreenRectView: View {
                     .font(.caption2.weight(.medium))
             }
         }
-        .widgetURL(URL(string: "datbike://dashboard"))
+        .widgetURL(URL(string: "mybikesmartkey://dashboard"))
     }
 }
 

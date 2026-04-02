@@ -64,5 +64,16 @@
 	<string>Ứng dụng cần Bluetooth để kết nối và mở khóa xe MyBike của bạn.</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mybikesmartkey</string>
+			</array>
+			<key>CFBundleURLName</key>
+			<string>app.mybike.smartkey</string>
+		</dict>
+	</array>
 </dict>
 </plist>

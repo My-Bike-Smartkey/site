@@ -12,6 +12,8 @@ let appGroupID = "group.app.mybike.smartkey"
 
 struct SharedBikeState: Codable {
     var isConnected: Bool = false
+    var isAuthenticated: Bool = false
+    var connectionPhase: String = "disconnected"  // "disconnected", "connecting", "authenticating", "ready"
     var lockStatusRaw: String = "unknown"   // "locked", "unlocked", "armed", "unknown"
     var bikeName: String = ""
     var batteryPercent: Int = 0
@@ -59,5 +61,23 @@ struct SharedBikeState: Codable {
 
     var isStale: Bool {
         Date().timeIntervalSince(lastUpdated) > 300 // 5 phút
+    }
+
+    var phaseLabel: String {
+        switch connectionPhase {
+        case "connecting":     return "Đang kết nối..."
+        case "authenticating": return "Đang xác thực..."
+        case "ready":          return "Đã xác thực ✓"
+        default:               return "Mất kết nối"
+        }
+    }
+
+    var phaseIcon: String {
+        switch connectionPhase {
+        case "connecting":     return "antenna.radiowaves.left.and.right"
+        case "authenticating": return "key.fill"
+        case "ready":          return "checkmark.shield.fill"
+        default:               return "wifi.slash"
+        }
     }
 }

@@ -47,3 +47,38 @@ targets:
           SWIFT_COMPILATION_MODE: "wholemodule"
           SWIFT_OPTIMIZATION_LEVEL: "-O"
           GCC_SYMBOLS_PRIVATE_EXTERN: "YES"
+    dependencies:
+      - target: DatBikeWidget
+        embed: true
+
+  DatBikeWidget:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: DatBikeWidget
+        excludes:
+          - "**/*.entitlements"
+      - path: DatBikeSmartkey/Models/SharedBikeState.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.mybike.smartkey.widget
+        INFOPLIST_FILE: DatBikeWidget/Info.plist
+        MARKETING_VERSION: "1.0.3"
+        CURRENT_PROJECT_VERSION: "3"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "XU9XK4QJJW"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_EMIT_LOC_STRINGS: "YES"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks"
+        GENERATE_INFOPLIST_FILE: false
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+        SUPPORTS_MACCATALYST: false
+        CODE_SIGN_ENTITLEMENTS: DatBikeWidget/DatBikeWidget.entitlements
+        SKIP_INSTALL: "YES"
+      configs:
+        Release:
+          DEPLOYMENT_POSTPROCESSING: "YES"
+          STRIP_INSTALLED_PRODUCT: "YES"
+          SWIFT_COMPILATION_MODE: "wholemodule"
+          SWIFT_OPTIMIZATION_LEVEL: "-O"

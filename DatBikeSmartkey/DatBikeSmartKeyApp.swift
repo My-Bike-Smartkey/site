@@ -16,6 +16,20 @@ struct DatBikeSmartKeyApp: App {
                     // Initialize BLEManager singleton — activates ASAccessorySession
                     _ = BLEManager.shared
                 }
+                .onOpenURL { url in
+                    handleDeepLink(url)
+                }
+        }
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard url.scheme == "mybikesmartkey" else { return }
+        switch url.host {
+        case "lock":      Task { try? await BLEManager.shared.lock() }
+        case "unlock":    Task { try? await BLEManager.shared.unlock() }
+        case "connect":   BLEManager.shared.triggerManualConnect()
+        case "dashboard": break  // app mở bình thường
+        default:          break
         }
     }
     
