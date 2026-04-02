@@ -1157,81 +1157,87 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 }
                 log(.info, "[AUTH] Ghi SHA ngay (no pre-write delay): peripheral.state=\(peripheral.state.rawValue)")
                 
-                // 6. Ghi hash, chờ ACK
-                try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
-                log(.ble, " [AUTH] Write ACK nhận được. peripheral.state=\(peripheral.state.rawValue). Chờ firmware verify và tăng counter...")
-                
-                // 7. Verify bằng PARITY — firmware phải chuyển counter từ CHẴN sang LẺ.
-                // KHÔNG dùng increment == 1: firmware có thể tick thêm trong lúc verify,
-                // counter có thể là +1, +3, +5... (bất kỳ số lẻ nào đều hợp lệ).
-                // CHẴN sau write = SHA bị firmware reject (sai PIN, timing, hoặc duplicate write).
-                let retryDelays: [UInt64] = [500, 1000, 2000, 4000]  // Extended: firmware can take 4.5s+ to process SHA
+                 
+                // 6. Ghi SHA + Verify — in-session retry khi SHA bị reject (+2 CHẴN)
+                // Khi firmware reject SHA (counter tăng +2 nhưng vẫn CHẴN), ta re-compute SHA
+                // với counter mới và ghi lại ngay trong cùng connection — không disconnect.
+                // KHÔNG dùng zero-SHA reset: ghi zeros vào auth char làm nhiễu firmware.
                 var authVerified = false
-                
-                for (attempt, delayMs) in retryDelays.enumerated() {
-                    try await Task.sleep(nanoseconds: delayMs * 1_000_000)
-                    
-                    let verifyData = try await readValue(for: authChar)
-                    guard verifyData.count >= 4 else {
-                        log(.warning, " [AUTH] Verify \(attempt+1): response ngắn (\(verifyData.count)b), retry...")
-                        continue
-                    }
-                    
-                    let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                    let increment = Int(newCounter) - Int(currentCounter)
-                    log(.ble, " [AUTH] Verify \(attempt+1): counter \(currentCounter) → \(newCounter) (\(increment >= 0 ? "+" : "")\(increment))")
-                    
-                    if newCounter % 2 == 1 {
-                        // Counter LẺ = firmware đã verify SHA = application-layer auth OK
-                        log(.success, " [AUTH] Counter lẻ (\(newCounter)) — Xác thực thành công!")
-                        raceReconnectCount = 0
-                        authVerified = true
-                        break
-                    } else if newCounter > currentCounter {
-                        // Counter tăng nhưng vẫn CHẴN = SHA bị firmware reject
-                        // (firmware internal tick chẵn→lẻ→chẵn trong lúc đợi pre-write,
-                        //  hoặc duplicate write gây de-auth)
-                        log(.warning, " [AUTH] ⚠️ Counter +\(increment) nhưng vẫn CHẴN — SHA bị firmware reject.")
-                        if raceReconnectCount < maxRaceReconnects {
-                            raceReconnectCount += 1
-                            log(.warning, " [AUTH] Auto-reconnect để lấy fresh auth (lần \(raceReconnectCount)/\(maxRaceReconnects))...")
-                            throw BLEError.authFailed("Counter vẫn chẵn (+\(increment)) — SHA bị reject, reconnect để lấy fresh auth")
-                        } else {
-                            log(.warning, " [AUTH] Đã retry \(maxRaceReconnects) lần, tiếp tục (lệnh có thể bị từ chối)")
+                var currentChallenge = currentCounter  // theo dõi challenge counter cho session retry
+                var currentHashStr = hashHexStr
+
+                // Ghi SHA lần đầu
+                try await writeValue(Data(currentHashStr.utf8), for: authChar, type: .withResponse)
+                log(.ble, " [AUTH] Write ACK nhận được. Chờ firmware verify...")
+
+                for sessionTry in 0...maxRaceReconnects {
+                    var nextCounter: UInt32? = nil  // lưu counter mới khi SHA bị reject
+                    let retryDelays: [UInt64] = [500, 1000, 2000, 4000]
+
+                    for (attempt, delayMs) in retryDelays.enumerated() {
+                        try await Task.sleep(nanoseconds: delayMs * 1_000_000)
+
+                        let verifyData = try await readValue(for: authChar)
+                        guard verifyData.count >= 4 else {
+                            log(.warning, " [AUTH] Verify \(attempt+1): response ngắn (\(verifyData.count)b), retry...")
+                            continue
+                        }
+
+                        let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                        let increment = Int(newCounter) - Int(currentChallenge)
+                        log(.ble, " [AUTH] Verify \(attempt+1) (try \(sessionTry+1)/\(maxRaceReconnects+1)): \(currentChallenge) → \(newCounter) (\(increment >= 0 ? "+" : "")\(increment))")
+
+                        if newCounter % 2 == 1 {
+                            log(.success, " [AUTH] Counter lẻ (\(newCounter)) — Xác thực thành công!")
+                            raceReconnectCount = 0
                             authVerified = true
                             break
+                        } else if newCounter > currentChallenge {
+                            // SHA bị reject: lưu counter mới để retry in-session (không disconnect)
+                            raceReconnectCount += 1
+                            log(.warning, " [AUTH] ⚠️ Counter +\(increment) CHẴN — SHA bị firmware reject (lần \(raceReconnectCount)/\(maxRaceReconnects)).")
+                            nextCounter = newCounter
+                            break
+                        } else {
+                            log(.warning, " [AUTH] Verify \(attempt+1): counter chưa tăng (+\(increment)), chờ lâu hơn...")
                         }
-                    } else {
-                        let hint = newCounter < currentCounter ? "giảm — có thể read race" : "chưa tăng"
-                        log(.warning, " [AUTH] Verify \(attempt+1): counter \(hint) (\(newCounter)), chờ lâu hơn...")
+                    }
 
-                        // Sau lần verify đầu tiên mà counter vẫn chưa tăng:
-                        // Ghi SHA all-zeros để "cancel" auth session hiện tại trên firmware,
-                        // sau đó ghi lại SHA đúng từ đầu — tránh trạng thái firmware bị treo.
-                        if attempt == 0 && newCounter == currentCounter {
-                            log(.warning, " [AUTH] ⟳ Verify 1 không tăng — reset firmware session bằng SHA all-zeros...")
-                            let zeroSHA = String(repeating: "0", count: hashHexStr.count)
-                            try await writeValue(Data(zeroSHA.utf8), for: authChar, type: .withResponse)
-                            log(.ble, " [AUTH] ⟳ SHA zeros ghi xong, chờ 200ms rồi ghi SHA đúng lại...")
-                            try await Task.sleep(nanoseconds: 200 * 1_000_000)
-                            try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
-                            log(.ble, " [AUTH] ⟳ SHA đúng ghi lại xong. Tiếp tục verify...")
+                    if authVerified { break }
+
+                    if let rejCtr = nextCounter {
+                        // SHA bị reject: in-session retry với counter mới — KHÔNG disconnect
+                        if sessionTry >= maxRaceReconnects {
+                            log(.error, " [AUTH] SHA bị reject sau \(maxRaceReconnects+1) lần in-session — disconnect.")
+                            throw BLEError.authFailed("SHA bị reject liên tiếp — disconnect để lấy fresh challenge")
                         }
+                        currentChallenge = rejCtr
+                        let freshShifted = currentChallenge >> 1
+                        let freshMix = "\(freshShifted)\(pin)"
+                        let freshHashed = SHA256.hash(data: Data(freshMix.utf8))
+                        currentHashStr = freshHashed.compactMap { String(format: "%02x", $0) }.joined()
+                        log(.ble, " [AUTH] In-session retry \(sessionTry+1): counter=\(currentChallenge), SHA=\(String(currentHashStr.prefix(16)))...")
+                        try await writeValue(Data(currentHashStr.utf8), for: authChar, type: .withResponse)
+                        log(.ble, " [AUTH] In-session retry write ACK.")
+                    } else {
+                        // Timeout: counter không chuyển sang LẺ — disconnect để lấy fresh challenge
+                        raceReconnectCount += 1
+                        log(.error, " [AUTH] Counter vẫn chưa chuyển sang LẺ sau \(retryDelays.count) verify (tổng \(raceReconnectCount)/\(maxRaceReconnects)).")
+                        if raceReconnectCount >= maxRaceReconnects {
+                            log(.error, "   → Auth loop dừng sau \(maxRaceReconnects) lần.")
+                            raceReconnectCount = 0
+                            suppressNextReconnect = true
+                            throw BLEError.authFailed("Auth loop dừng sau \(maxRaceReconnects) lần — thử tắt/bật BLE hoặc di chuyển lại gần xe")
+                        }
+                        log(.error, "   → Disconnect → reconnect để lấy fresh challenge...")
+                        throw BLEError.authFailed("Counter không chuyển thành số lẻ — disconnect để lấy fresh challenge")
                     }
                 }
-                
-                if !authVerified {
-                    raceReconnectCount += 1
-                    log(.error, " [AUTH] Counter vẫn chưa chuyển sang LẺ sau \(retryDelays.count) lần verify (tổng \(raceReconnectCount)/\(maxRaceReconnects)).")
-                    if raceReconnectCount >= maxRaceReconnects {
-                        log(.error, "   → Đã thất bại \(maxRaceReconnects) lần liên tiếp — dừng auth loop, cần can thiệp thủ công.")
-                        raceReconnectCount = 0
-                        suppressNextReconnect = true  // block reconnect in catch block
-                        throw BLEError.authFailed("Auth loop dừng sau \(maxRaceReconnects) lần — thử tắt/bật BLE hoặc di chuyển lại gần xe")
-                    }
-                    log(.error, "   → Disconnect → reconnect để lấy fresh challenge...")
-                    throw BLEError.authFailed("Counter không chuyển thành số lẻ — disconnect để lấy fresh challenge")
+
+                guard authVerified else {
+                    throw BLEError.authFailed("Xác thực không hoàn tất")
                 }
+
             }
             
         } else {
