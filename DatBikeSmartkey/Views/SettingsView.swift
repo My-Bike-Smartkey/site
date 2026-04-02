@@ -876,7 +876,86 @@ struct BLETestPanelView: View {
                             ) { viewModel.testRetryUntilPlusOne() }
                         }
 
-                        // ── Section 2: Connection ──
+                        // ── Section 2: Kiểm tra Auth Session ──
+                        testSection(title: "KIỂM TRA PHIÊN AUTH") {
+                            testScenarioRow(
+                                icon: "checkmark.shield", iconColor: .teal,
+                                title: "Kiểm tra trạng thái Auth",
+                                description: "Xem connectionState, isAuthenticated và counter hiện tại — không ghi gì."
+                            ) { viewModel.testCheckAuthStatus() }
+
+                            Divider().background(Color.white.opacity(0.06))
+
+                            testScenarioRow(
+                                icon: "xmark.shield.fill", iconColor: .orange,
+                                title: "Ghi SHA SAI 1 lần",
+                                description: "Ghi all-zeros SHA một lần duy nhất rồi đọc lại counter — firmware nên KHÔNG tăng."
+                            ) { viewModel.testWriteWrongSHAOnce() }
+                        }
+
+                        // ── Section 3: Manual Steps ──
+                        testSection(title: "MANUAL: READ → WRITE → VERIFY") {
+                            // Step 2 wrong-SHA toggle
+                            HStack(spacing: 10) {
+                                Image(systemName: "xmark.circle")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(viewModel.testManualWrongSHA ? .red : .gray)
+                                    .frame(width: 28, height: 28)
+                                    .background((viewModel.testManualWrongSHA ? Color.red : Color.gray).opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Ghi SHA SAI ở bước 2")
+                                        .font(.subheadline)
+                                        .foregroundColor(viewModel.testManualWrongSHA ? .red : .white)
+                                    Text("Bật để bước 'Ghi SHA' dùng all-zeros thay vì hash thật")
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                }
+                                Spacer()
+                                Toggle("", isOn: $viewModel.testManualWrongSHA)
+                                    .labelsHidden()
+                                    .tint(.red)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+
+                            Divider().background(Color.white.opacity(0.06))
+
+                            testScenarioRow(
+                                icon: "1.circle.fill", iconColor: .cyan,
+                                title: "Bước 1: Đọc Challenge",
+                                description: "Đọc counter hiện tại và lưu lại làm baseline cho bước 2 & 3."
+                            ) { viewModel.testManualReadChallenge() }
+
+                            Divider().background(Color.white.opacity(0.06))
+
+                            testScenarioRow(
+                                icon: "2.circle.fill", iconColor: viewModel.testManualWrongSHA ? .red : .purple,
+                                title: viewModel.testManualWrongSHA ? "Bước 2: Ghi SHA SAI" : "Bước 2: Ghi SHA",
+                                description: viewModel.testManualWrongSHA
+                                    ? "Ghi all-zeros SHA dựa trên counter đã đọc ở bước 1."
+                                    : "Ghi SHA-256 đúng dựa trên counter đã đọc ở bước 1."
+                            ) { viewModel.testManualWriteSHA() }
+
+                            Divider().background(Color.white.opacity(0.06))
+
+                            testScenarioRow(
+                                icon: "3.circle.fill", iconColor: .green,
+                                title: "Bước 3: Verify Counter",
+                                description: "Đọc lại counter sau 500ms và so sánh với baseline từ bước 1."
+                            ) { viewModel.testManualVerifyCounter() }
+                        }
+
+                        // ── Section 4: +2 Test ──
+                        testSection(title: "TEST COUNTER +2 → SHA SAI") {
+                            testScenarioRow(
+                                icon: "2.square.fill", iconColor: .yellow,
+                                title: "Auth → Chờ +2 → SHA Sai",
+                                description: "Auth liên tục đến khi counter tăng ≥+2, rồi ghi SHA sai — kiểm tra firmware có reject không. Dùng delay và max retries ở trên."
+                            ) { viewModel.testPlusTwoThenWrongSHA() }
+                        }
+
+                        // ── Section 5: Connection ──
                         testSection(title: "KẾT NỐI") {
                             testScenarioRow(
                                 icon: "info.circle", iconColor: .blue,
