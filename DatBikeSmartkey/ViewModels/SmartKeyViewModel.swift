@@ -76,7 +76,7 @@ final class SmartKeyViewModel: ObservableObject {
             ? UserDefaults.standard.double(forKey: "rssiThreshold")
             : Double(BLEProtocol.rssiThreshold)
         let storedConnRSSI = UserDefaults.standard.object(forKey: "autoConnectRSSIThreshold") as? Int
-        self.autoConnectRSSIThreshold = Double(storedConnRSSI ?? -80)
+        self.autoConnectRSSIThreshold = Double(storedConnRSSI ?? -85)
         let storedBgReconnect = UserDefaults.standard.object(forKey: "autoBackgroundReconnectEnabled") as? Bool ?? true
         self.autoBackgroundReconnectEnabled = storedBgReconnect
         BLEManager.shared.autoBackgroundReconnectEnabled = storedBgReconnect
