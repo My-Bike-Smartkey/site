@@ -253,7 +253,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             if let existing = accessorySession.accessories.first {
                 currentAccessory = existing
                 DispatchQueue.main.async { self.hasAuthorizedAccessory = true }
-                log(.info, "🔗 Xe đã authorize: \(existing.displayName ?? "Dat Bike")")
+                log(.info, "🔗 Xe đã authorize: \(existing.displayName)")
                 // ONLY init CBCentralManager when we have an authorized accessory
                 // Creating it without authorized accessories = "global permissions" conflict
                 initCentralManagerIfNeeded()
@@ -276,7 +276,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             if let accessory = event.accessory {
                 currentAccessory = accessory
                 DispatchQueue.main.async { self.hasAuthorizedAccessory = true }
-                log(.success, "🏍️ Xe mới được authorize: \(accessory.displayName ?? "Dat Bike")")
+                log(.success, "🏍️ Xe mới được authorize: \(accessory.displayName)")
                 initCentralManagerIfNeeded()
                 connectToAccessory(accessory)
             }
@@ -291,7 +291,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         case .accessoryChanged:
             if let accessory = event.accessory {
                 currentAccessory = accessory
-                log(.info, "🔄 Accessory updated: \(accessory.displayName ?? "")")
+                log(.info, "🔄 Accessory updated: \(accessory.displayName)")
             }
             
         case .pickerDidDismiss:
@@ -1912,7 +1912,6 @@ extension BLEManager: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         let data = characteristic.value ?? Data()
         let charPrefix = characteristic.uuid.uuidString.prefix(8)
-        let hexData = data.map { String(format: "%02x", $0) }.joined()
         
         // Handle pending read callback
         if let continuation = pendingReadCallbacks.removeValue(forKey: characteristic.uuid) {

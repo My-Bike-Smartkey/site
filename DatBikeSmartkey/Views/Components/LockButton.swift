@@ -118,7 +118,7 @@ struct LockButton: View {
                 glowOpacity = 0.6
             }
         }
-        .onChange(of: lockStatus) { _ in
+        .onChange(of: lockStatus) {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.5)) {
                 rotationAngle += lockStatus.isLocked ? 15 : -15
             }

@@ -95,7 +95,7 @@ struct DebugLogView: View {
                         }
                     }
                     .background(Color(red: 0.03, green: 0.03, blue: 0.06))
-                    .onChange(of: bleManager.logs.count) { _ in
+                    .onChange(of: bleManager.logs.count) {
                         if autoScroll, let last = filteredLogs.last {
                             withAnimation(.easeOut(duration: 0.2)) {
                                 proxy.scrollTo(last.id, anchor: .bottom)

@@ -625,7 +625,7 @@ struct QRCodeView: View {
         let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         // White QR on white background — invert for dark mode friendliness
         guard let inverted = CIFilter(name: "CIColorInvert", parameters: [kCIInputImageKey: scaled])?.outputImage,
-              let white = CIFilter(name: "CIMaskToAlpha", parameters: [kCIInputImageKey: inverted])?.outputImage else {
+              CIFilter(name: "CIMaskToAlpha", parameters: [kCIInputImageKey: inverted])?.outputImage != nil else {
             let context = CIContext()
             if let cgImage = context.createCGImage(scaled, from: scaled.extent) {
                 return UIImage(cgImage: cgImage)
