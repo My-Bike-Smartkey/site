@@ -1208,6 +1208,19 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                     } else {
                         let hint = newCounter < currentCounter ? "giảm — có thể read race" : "chưa tăng"
                         log(.warning, " [AUTH] Verify \(attempt+1): counter \(hint) (\(newCounter)), chờ lâu hơn...")
+
+                        // Sau lần verify đầu tiên mà counter vẫn chưa tăng:
+                        // Ghi SHA all-zeros để "cancel" auth session hiện tại trên firmware,
+                        // sau đó ghi lại SHA đúng từ đầu — tránh trạng thái firmware bị treo.
+                        if attempt == 0 && newCounter == currentCounter {
+                            log(.warning, " [AUTH] ⟳ Verify 1 không tăng — reset firmware session bằng SHA all-zeros...")
+                            let zeroSHA = String(repeating: "0", count: hashHexStr.count)
+                            try await writeValue(Data(zeroSHA.utf8), for: authChar, type: .withResponse)
+                            log(.ble, " [AUTH] ⟳ SHA zeros ghi xong, chờ 200ms rồi ghi SHA đúng lại...")
+                            try await Task.sleep(nanoseconds: 200 * 1_000_000)
+                            try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
+                            log(.ble, " [AUTH] ⟳ SHA đúng ghi lại xong. Tiếp tục verify...")
+                        }
                     }
                 }
                 
