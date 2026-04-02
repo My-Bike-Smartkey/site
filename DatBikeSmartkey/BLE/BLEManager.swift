@@ -1146,20 +1146,16 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 
                 log(.ble, " [AUTH] SHA-256(\(shifted) + PIN) = \(String(hashHexStr.prefix(16)))...")
                 log(.info, "[AUTH] peripheral state trước khi ghi: \(peripheral.state.rawValue)")
-                
-                // 5. Delay ngắn trước khi ghi — đủ để BLE stack flush buffer,
-                //    nhưng KHÔNG được dài (2s cũ gây race: firmware tick chẵn→lẻ trong lúc chờ,
-                //    rồi app ghi SHA vào counter đang LẺ → firmware tăng thêm 1 → CHẴN lại = de-auth).
-                let preWriteDelayMs: UInt64 = 300
-                log(.ble, "[AUTH] ⏳ Đợi \(preWriteDelayMs)ms trước khi ghi hash...")
-                try await Task.sleep(nanoseconds: preWriteDelayMs * 1_000_000)
+                // No pre-write delay: RSSI gate already provides ~1.5s settle time after BLE reconnect.
+                // Adding delay here creates race condition: firmware may tick counter EVEN→ODD
+                // internally during the delay, then SHA write hits ODD state → firmware rejects → +2 EVEN.
                 
                 // Kiểm tra peripheral vẫn còn kết nối sau khi chờ
                 guard peripheral.state == .connected else {
-                    log(.error, "[AUTH] ❌ Peripheral ngắt kết nối TRONG KHI đợi pre-write delay! state=\(peripheral.state.rawValue)")
-                    throw BLEError.authFailed("Peripheral disconnected during pre-write delay")
+                    log(.error, "[AUTH] ❌ Peripheral ngắt kết nối trước khi ghi SHA! state=\(peripheral.state.rawValue)")
+                    throw BLEError.authFailed("Peripheral disconnected before SHA write")
                 }
-                log(.info, "[AUTH] peripheral state sau delay: \(peripheral.state.rawValue) — ghi hash ngay bây giờ")
+                log(.info, "[AUTH] Ghi SHA ngay (no pre-write delay): peripheral.state=\(peripheral.state.rawValue)")
                 
                 // 6. Ghi hash, chờ ACK
                 try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
@@ -1169,7 +1165,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 // KHÔNG dùng increment == 1: firmware có thể tick thêm trong lúc verify,
                 // counter có thể là +1, +3, +5... (bất kỳ số lẻ nào đều hợp lệ).
                 // CHẴN sau write = SHA bị firmware reject (sai PIN, timing, hoặc duplicate write).
-                let retryDelays: [UInt64] = [400, 700, 1200, 2000]
+                let retryDelays: [UInt64] = [500, 1000, 2000, 4000]  // Extended: firmware can take 4.5s+ to process SHA
                 var authVerified = false
                 
                 for (attempt, delayMs) in retryDelays.enumerated() {
@@ -1225,7 +1221,14 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 }
                 
                 if !authVerified {
-                    log(.error, " [AUTH] Counter vẫn chưa chuyển sang LẺ sau \(retryDelays.count) lần verify.")
+                    raceReconnectCount += 1
+                    log(.error, " [AUTH] Counter vẫn chưa chuyển sang LẺ sau \(retryDelays.count) lần verify (tổng \(raceReconnectCount)/\(maxRaceReconnects)).")
+                    if raceReconnectCount >= maxRaceReconnects {
+                        log(.error, "   → Đã thất bại \(maxRaceReconnects) lần liên tiếp — dừng auth loop, cần can thiệp thủ công.")
+                        raceReconnectCount = 0
+                        suppressNextReconnect = true  // block reconnect in catch block
+                        throw BLEError.authFailed("Auth loop dừng sau \(maxRaceReconnects) lần — thử tắt/bật BLE hoặc di chuyển lại gần xe")
+                    }
                     log(.error, "   → Disconnect → reconnect để lấy fresh challenge...")
                     throw BLEError.authFailed("Counter không chuyển thành số lẻ — disconnect để lấy fresh challenge")
                 }
@@ -1880,7 +1883,7 @@ extension BLEManager: CBCentralManagerDelegate {
         // characteristics đã discovered xong → removeAll() xoá giữa chừng → "not found".
         discoveredCharacteristics.removeAll()
         isAuthenticating = false
-        raceReconnectCount = 0  // Reset: fresh connection, counter race counter cũng reset
+        if !forceNextReconnect { raceReconnectCount = 0 }  // Reset chỉ khi fresh disconnect, không reset khi auth retry
         
         DispatchQueue.main.async {
             self.connectionState = .disconnected
@@ -2154,10 +2157,13 @@ extension BLEManager: CBPeripheralDelegate {
                     log(.error, "Xác thực thất bại: \(error.localizedDescription)")
                     log(.info, "   → Ngắt kết nối để kích hoạt scheduleReconnect tự động...")
                     DispatchQueue.main.async {
-                        self.connectionState = .error("Xác thực thất bại — đang thử lại...")
+                        let isGivingUp = self.suppressNextReconnect
+                        self.connectionState = .error(isGivingUp
+                            ? "Không thể xác thực xe — thử di chuyển gần xe hoặc tắt/bật BLE."
+                            : "Xác thực thất bại — đang thử lại...")
                     }
                     // disconnect() → didDisconnectPeripheral → scheduleReconnect()
-                    self.forceNextReconnect = true
+                    if !self.suppressNextReconnect { self.forceNextReconnect = true }  // Don't reconnect if give-up flag set
                     self.disconnect()
                 }
                 isAuthenticating = false
