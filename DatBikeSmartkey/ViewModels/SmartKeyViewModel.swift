@@ -284,6 +284,7 @@ final class SmartKeyViewModel: ObservableObject {
     @Published var testResult: String = ""
     @Published var isTestRunning: Bool = false
     @Published var testPreWriteDelay: Double = 2.0
+    @Published var testUseWrongSHA: Bool = false
     @Published var currentTestName: String = ""
     @Published var lastTestLogURL: URL?
 
@@ -310,7 +311,7 @@ final class SmartKeyViewModel: ObservableObject {
         isTestRunning = true
         testResult = "Đang xác thực (\(testPreWriteDelay)s delay)..."
         Task {
-            let result = await ble.testAuthAndVerify(preWriteDelay: testPreWriteDelay)
+            let result = await ble.testAuthAndVerify(preWriteDelay: testPreWriteDelay, useWrongSHA: testUseWrongSHA)
             testResult = result
             isTestRunning = false
         }
@@ -354,7 +355,8 @@ final class SmartKeyViewModel: ObservableObject {
         Task {
             let result = await ble.testRetryUntilPlusOne(
                 preWriteDelay: testPreWriteDelay,
-                maxAttempts: testMaxRetries
+                maxAttempts: testMaxRetries,
+                useWrongSHA: testUseWrongSHA
             )
             testResult = result
             isTestRunning = false

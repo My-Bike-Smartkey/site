@@ -447,7 +447,7 @@ struct SettingsView: View {
 
                     // App info
                     VStack(spacing: 4) {
-                        Text("MyBike Smartkey v1.0.3")
+                        Text("MyBike Smartkey v2.0.0")
                             .font(.caption)
                             .foregroundColor(.gray)
                         Text("Sản phẩm được tạo bởi tình yêu dành cho chiếc xe Datbike của tôi")
@@ -808,6 +808,32 @@ struct BLETestPanelView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, 4)
                             }
+
+                            Divider().background(Color.white.opacity(0.06))
+
+                            // Wrong-SHA toggle
+                            HStack(spacing: 10) {
+                                Image(systemName: "xmark.shield")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(viewModel.testUseWrongSHA ? .red : .gray)
+                                    .frame(width: 28, height: 28)
+                                    .background((viewModel.testUseWrongSHA ? Color.red : Color.gray).opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Ghi SHA sai (all-zeros)")
+                                        .font(.subheadline)
+                                        .foregroundColor(viewModel.testUseWrongSHA ? .red : .white)
+                                    Text("Firmware nên KHÔNG tăng counter")
+                                        .font(.caption2)
+                                        .foregroundColor(.gray)
+                                }
+                                Spacer()
+                                Toggle("", isOn: $viewModel.testUseWrongSHA)
+                                    .labelsHidden()
+                                    .tint(.red)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
 
                             Divider().background(Color.white.opacity(0.06))
 

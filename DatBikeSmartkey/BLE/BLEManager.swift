@@ -275,6 +275,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         case .accessoryAdded:
             if let accessory = event.accessory {
                 currentAccessory = accessory
+                pendingASKConnect = true  // lần ghép nối đầu tiên — luôn connect bất kể autoConnect toggle
                 DispatchQueue.main.async { self.hasAuthorizedAccessory = true }
                 log(.success, "🏍️ Xe mới được authorize: \(accessory.displayName)")
                 initCentralManagerIfNeeded()
@@ -485,10 +486,23 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     // MARK: - BLE Test Panel
 
     /// Đọc challenge counter hiện tại (không ghi gì). Dùng để quan sát counter raw trước/sau auth.
+    /// Poll discoveredCharacteristics until the given UUID appears, or timeout.
+    /// Addresses intermittent "char not found" errors when the test is triggered
+    /// just before service-discovery completes.
+    private func waitForCharacteristic(_ uuid: CBUUID, timeoutSeconds: Double = 5.0) async -> CBCharacteristic? {
+        let intervalNS: UInt64 = 200_000_000  // 200 ms
+        let maxAttempts = Int(timeoutSeconds / 0.2)
+        for _ in 0..<maxAttempts {
+            if let char = discoveredCharacteristics[uuid] { return char }
+            try? await Task.sleep(nanoseconds: intervalNS)
+        }
+        return discoveredCharacteristics[uuid]
+    }
+
     func testReadCounter() async -> String {
-        guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
-            log(.error, "[TEST] authChallenge characteristic not found")
-            return "ERR: char not found"
+        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
+            log(.error, "[TEST] authChallenge characteristic not found (waited 5s)")
+            return "ERR: char not found (xe chưa kết nối / chưa discover services?)"
         }
         do {
             let data = try await readValue(for: authChar)
@@ -503,15 +517,17 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     /// Ghi SHA-256 auth response rồi đọc lại counter — giống luồng reconnect thật.
-    /// - Parameter preWriteDelay: thời gian chờ trước khi ghi (giây), để test race condition.
-    func testAuthAndVerify(preWriteDelay: Double = 0) async -> String {
+    /// - Parameters:
+    ///   - preWriteDelay: thời gian chờ trước khi ghi (giây), để test race condition.
+    ///   - useWrongSHA: nếu true, ghi SHA sai (all-zeros) để test firmware rejection.
+    func testAuthAndVerify(preWriteDelay: Double = 0, useWrongSHA: Bool = false) async -> String {
         let pin: String
         if let k = KeychainHelper.load(key: "authPIN") { pin = k }
         else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
         else { return "ERR: no PIN" }
 
-        guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
-            return "ERR: authChallenge not found"
+        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
+            return "ERR: authChallenge not found (xe chưa kết nối?)"
         }
         do {
             // Read challenge
@@ -528,8 +544,15 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 try await Task.sleep(nanoseconds: UInt64(preWriteDelay * 1_000_000_000))
             }
 
-            // Write
-            try await writeValue(Data(hashHex.utf8), for: authChar, type: .withResponse)
+            // Write (đúng hoặc sai tùy useWrongSHA)
+            let hashToWrite: String
+            if useWrongSHA {
+                hashToWrite = String(repeating: "0", count: hashHex.count)  // all-zeros — firmware sẽ reject
+                log(.warning, "[TEST] ⚠️ GHI SHA SAI (all-zeros) — firmware nên KHÔNG tăng counter")
+            } else {
+                hashToWrite = hashHex
+            }
+            try await writeValue(Data(hashToWrite.utf8), for: authChar, type: .withResponse)
             log(.info, "[TEST] Write ACK OK. Đọc lại counter...")
 
             // Verify loop
@@ -558,14 +581,14 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     /// - Parameters:
     ///   - preWriteDelay: thời gian chờ trước khi ghi (giây)
     ///   - maxAttempts: số lần auth tối đa; nếu vượt quá → báo lỗi
-    func testRetryUntilPlusOne(preWriteDelay: Double, maxAttempts: Int) async -> String {
+    func testRetryUntilPlusOne(preWriteDelay: Double, maxAttempts: Int, useWrongSHA: Bool = false) async -> String {
         let pin: String
         if let k = KeychainHelper.load(key: "authPIN") { pin = k }
         else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
         else { return "ERR: no PIN" }
 
-        guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
-            return "ERR: authChallenge not found"
+        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
+            return "ERR: authChallenge not found (xe chưa kết nối?)"
         }
 
         var history: [(attempt: Int, increment: Int)] = []
@@ -589,8 +612,12 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                     try await Task.sleep(nanoseconds: UInt64(preWriteDelay * 1_000_000_000))
                 }
 
-                // 2. Ghi hash
-                try await writeValue(Data(hashHex.utf8), for: authChar, type: .withResponse)
+                // 2. Ghi hash (đúng hoặc sai tùy useWrongSHA)
+                let hashToWrite = useWrongSHA ? String(repeating: "0", count: hashHex.count) : hashHex
+                if useWrongSHA {
+                    log(.warning, "[RETRY-\(attempt)] ⚠️ GHI SHA SAI (all-zeros)")
+                }
+                try await writeValue(Data(hashToWrite.utf8), for: authChar, type: .withResponse)
                 log(.info, "[RETRY-\(attempt)] Write ACK OK. Verify...")
 
                 // 3. Verify counter
@@ -1313,13 +1340,20 @@ extension BLEManager: CBCentralManagerDelegate {
                 }
                 
                 // ASK: auto-connect to authorized accessory
-                guard self.autoConnectEnabled else {
-                    self.log(.info, "⚡ autoConnect tắt — bỏ qua auto-connect khi BT bật")
-                    return
-                }
+                // pendingASKConnect = true nghĩa là user vừa ghép nối qua picker → luôn connect
+                // dù autoConnectEnabled = false (toggle chỉ áp dụng cho auto-reconnect background)
                 if let accessory = self.currentAccessory {
-                    self.connectToAccessory(accessory)
+                    if self.pendingASKConnect || self.autoConnectEnabled {
+                        self.pendingASKConnect = false
+                        self.connectToAccessory(accessory)
+                    } else {
+                        self.log(.info, "⚡ autoConnect tắt — bỏ qua auto-connect khi BT bật")
+                    }
                 } else {
+                    guard self.autoConnectEnabled else {
+                        self.log(.info, "⚡ autoConnect tắt — bỏ qua auto-connect khi BT bật")
+                        return
+                    }
                     self.tryReconnectKnown()
                 }
                 
