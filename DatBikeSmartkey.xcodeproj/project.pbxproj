@@ -17,7 +17,6 @@
 		459F8C6F5265D4DBDC8E7D92 /* BikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388B85BD6205C62981FA7651 /* BikeState.swift */; };
 		47F181759EB61BCF60800366 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05562CDF9B9DBFC719F257D /* SettingsView.swift */; };
 		4D228EFFF0B70777C0A72B42 /* SharedBikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679D91488371B0C05358E180 /* SharedBikeState.swift */; };
-		58B3D9B852EFF01CC3F12346 /* development.cer in Resources */ = {isa = PBXBuildFile; fileRef = 98B051524C38E044099EA58A /* development.cer */; };
 		8CD08588268786D9762D1DCC /* DatBikeSmartKeyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */; };
 		9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52 /* Assets.xcassets */; };
 		F364707A10511F67495BC75D /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */; };
@@ -36,7 +35,6 @@
 		7F6857C002FB8A3BACA43625 /* BLEConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEConstants.swift; sourceTree = "<group>"; };
 		8D8A4DD9F679F79F85EBCC1E /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		97A617757174092E8071FDE5 /* LockButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockButton.swift; sourceTree = "<group>"; };
-		98B051524C38E044099EA58A /* development.cer */ = {isa = PBXFileReference; lastKnownFileType = file; path = development.cer; sourceTree = "<group>"; };
 		9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatBikeSmartKeyApp.swift; sourceTree = "<group>"; };
 		B1C12AC83C26941D4927CCA1 /* SignalIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalIndicator.swift; sourceTree = "<group>"; };
 		C05562CDF9B9DBFC719F257D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -105,7 +103,6 @@
 			children = (
 				21050B43FC72C8A173A4EF52 /* Assets.xcassets */,
 				9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */,
-				98B051524C38E044099EA58A /* development.cer */,
 				16CBCE3CABCBDE15A8ECC284 /* Info.plist */,
 				F6139BC99B813739C4693248 /* BLE */,
 				122EB9B16032F4204D7D1785 /* Models */,
@@ -179,7 +176,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */,
-				58B3D9B852EFF01CC3F12346 /* development.cer in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -217,6 +213,7 @@
 				CODE_SIGN_ENTITLEMENTS = DatBikeSmartkey/DatBikeSmartkey.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = XU9XK4QJJW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DatBikeSmartkey/Info.plist;
@@ -244,7 +241,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEPLOYMENT_POSTPROCESSING = YES;
-				DEVELOPMENT_TEAM = MH385VJBCB;
+				DEVELOPMENT_TEAM = XU9XK4QJJW;
 				ENABLE_PREVIEWS = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -302,7 +299,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = MH385VJBCB;
+				DEVELOPMENT_TEAM = XU9XK4QJJW;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -370,7 +367,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = MH385VJBCB;
+				DEVELOPMENT_TEAM = XU9XK4QJJW;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;

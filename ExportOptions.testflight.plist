@@ -5,11 +5,9 @@
     <key>method</key>
     <string>app-store-connect</string>
     <key>teamID</key>
-    <string>UDSKULSZ4V</string>
+    <string>XU9XK4QJJW</string>
     <key>signingStyle</key>
     <string>automatic</string>
-    <key>uploadBitcode</key>
-    <false/>
     <key>uploadSymbols</key>
     <true/>
     <key>destination</key>
