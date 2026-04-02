@@ -24,7 +24,7 @@
 		9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52 /* Assets.xcassets */; };
 		A7B250E0C3119C532D354A51 /* SharedBikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679D91488371B0C05358E180 /* SharedBikeState.swift */; };
 		E6043BE295E109121D375092 /* BikeWidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84CAFA969730F82AB94875A8 /* BikeWidgetIntents.swift */; };
-		F27D65ACD5B57990CF0C1036 /* DatBikeWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A8B4F266CC14A63C91244CCF /* DatBikeWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F27D65ACD5B57990CF0C1036 /* DatBikeWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A8B4F266CC14A63C91244CCF /* DatBikeWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F364707A10511F67495BC75D /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */; };
 		FD23847C3D8A4F42AB57E18D /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8A4DD9F679F79F85EBCC1E /* MainView.swift */; };
 /* End PBXBuildFile section */
