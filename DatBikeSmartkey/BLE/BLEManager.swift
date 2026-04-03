@@ -1670,6 +1670,18 @@ extension BLEManager: CBCentralManagerDelegate {
         log(.success, " Đã kết nối BLE tới \(peripheral.name ?? "xe")")
         DispatchQueue.main.async { self.connectionState = .connecting }
         
+        // Nếu iOS reconnect tự động qua pending connection (out-of-range → vào lại vùng),
+        // kiểm tra xem peripheral có còn trong iOS connected list không.
+        // Nếu có → set isLiveSessionRestore = true để dùng path ping+counter (nhẹ hơn authenticate()).
+        if !isLiveSessionRestore {
+            let connected = centralManager.retrieveConnectedPeripherals(
+                withServices: BLEService.allServices)
+            if connected.contains(where: { $0.identifier == peripheral.identifier }) {
+                isLiveSessionRestore = true
+                log(.info, "🔗 didConnect: xe trong iOS connected list → thử live session restore")
+            }
+        }
+
         // Discover all services
         peripheral.discoverServices(BLEService.allServices)
     }
