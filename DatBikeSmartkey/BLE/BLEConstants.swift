@@ -242,8 +242,11 @@ enum BLEProtocol {
     
     /// RSSI minimum to START authentication. Below this, connection is too unstable
     /// to reliably complete the SHA-256 challenge-response (read/write may timeout).
-    /// -80 dBm ≈ edge of comfortable range (~5-8m open space).
-    static let rssiAuthMinimum: Int = -80
+    /// -90 dBm ≈ near BLE receiver sensitivity floor — allows auth in marginal signal
+    /// while still avoiding completely out-of-range attempts.
+    /// NOTE: Old pre-ASK value was effectively -∞ (no gate). Changed from -80 to -90
+    /// to stop the rapid disconnect/reconnect storm that was caused by the -80 threshold.
+    static let rssiAuthMinimum: Int = -90
     
     /// State restoration identifier for CBCentralManager
     static let centralRestoreID = "DatBikeSmartkeyCentral"

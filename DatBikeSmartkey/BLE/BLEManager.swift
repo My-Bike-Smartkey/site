@@ -1180,8 +1180,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                     let increment = Int(newCounter) - Int(currentCounter)
                     log(.info, " [AUTH] Verify \(attempt+1): \(currentCounter) → \(newCounter) (\(increment >= 0 ? "+" : "")\(increment)) \(newCounter % 2 == 1 ? "✅ LẺ" : "CHẴN...")")
 
-                    if newCounter % 2 == 1 {
-                        log(.success, " [AUTH] Counter lẻ (\(newCounter)) — Xác thực thành công!")
+                    if newCounter > currentCounter {
+                        let mode = (newCounter % 2 == 1) ? "Lẻ ✔ (clean accept)" : "Chẵn +\(Int(newCounter)-Int(currentCounter)) (soft accept)"
+                        log(.success, " [AUTH] Counter \(currentCounter) → \(newCounter) [\(mode)] — Xác thực thành công!")
                         raceReconnectCount = 0
                         authVerified = true
                         break
@@ -1189,14 +1190,11 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 }
 
                 if !authVerified {
-                    // SHA bị reject hoặc firmware timeout — ghi SHA all-zeros để signal firmware
-                    // reset session ở application layer, iOS sẽ tự reconnect → fresh challenge.
-                    log(.error, " [AUTH] ❌ Xác thực thất bại — ghi SHA all-zeros để reset firmware session...")
-                    let zeroSHA = String(repeating: "0", count: 64)
-                    try? await writeValue(Data(zeroSHA.utf8), for: authChar, type: .withResponse)
-                    log(.info, " [AUTH] SHA zeros đã ghi → throw để disconnect + reconnect lấy fresh challenge")
+                    // Counter không tăng sau tất cả verify — disconnect để lấy fresh challenge.
+                    // Không ghi zeros (đã bỏ) — tránh gây nhiễu firmware state machine.
+                    log(.error, " [AUTH] ❌ Xác thực thất bại (counter không tăng) — disconnect để reconnect với fresh challenge...")
                     raceReconnectCount += 1
-                    throw BLEError.authFailed("SHA không được firmware xác nhận — disconnect để lấy fresh challenge")
+                    throw BLEError.authFailed("Counter không tăng sau \(retryDelays.count) lần verify — disconnect lấy fresh challenge")
                 }
             }
             
@@ -1373,10 +1371,8 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     // MARK: - Background Auto-Reconnect
     
     private func scheduleReconnect() {
-        guard autoConnectEnabled else {
-            log(.info, "⚡ autoConnect tắt — bỏ qua pending reconnect")
-            return
-        }
+        // Luôn đăng ký pending connection cho thiết bị đã biết — iOS duy trì ngị khi app bị kill.
+        // autoConnectEnabled chỉ ảnh hưởng tới scan-based discovery (didDiscover path).
         // Nếu peripheral nil (hiếm — sau stale-cache reset hoặc error 14),
         // thử khôi phục peripheral từ ASK bluetoothIdentifier trước khi bỏ cuộc.
         if peripheral == nil, let askUUID = currentAccessory?.bluetoothIdentifier,
@@ -1519,10 +1515,7 @@ extension BLEManager: CBCentralManagerDelegate {
                 // Xử lý State Restoration trước (ưu tiên cao hơn)
                 if self.shouldReconnectAfterRestore {
                     self.shouldReconnectAfterRestore = false
-                    guard self.autoConnectEnabled else {
-                        self.log(.info, "⚡ autoConnect tắt — bỏ qua state restoration reconnect")
-                        return
-                    }
+                    // Luôn reconnect khi state restoration — đây là reconnect cho thiết bị đã ghép nối.
                     if let accessory = self.currentAccessory {
                         self.connectToAccessory(accessory)
                     } else {
@@ -1540,21 +1533,12 @@ extension BLEManager: CBCentralManagerDelegate {
                     return  // connect() sẽ bị bỏ qua anyway (state == .connected), return sớm cho rõ
                 }
                 
-                // ASK: auto-connect to authorized accessory
-                // pendingASKConnect = true nghĩa là user vừa ghép nối qua picker → luôn connect
-                // dù autoConnectEnabled = false (toggle chỉ áp dụng cho auto-reconnect background)
+                // ASK / Known-device: luôn auto-connect khi BT bật — giống hành vi app cũ trước ASK.
+                // autoConnectEnabled không chặn ở đây; nó chỉ áp dụng cho scan discovery (didDiscover).
                 if let accessory = self.currentAccessory {
-                    if self.pendingASKConnect || self.autoConnectEnabled {
-                        self.pendingASKConnect = false
-                        self.connectToAccessory(accessory)
-                    } else {
-                        self.log(.info, "⚡ autoConnect tắt — bỏ qua auto-connect khi BT bật")
-                    }
+                    self.pendingASKConnect = false
+                    self.connectToAccessory(accessory)
                 } else {
-                    guard self.autoConnectEnabled else {
-                        self.log(.info, "⚡ autoConnect tắt — bỏ qua auto-connect khi BT bật")
-                        return
-                    }
                     self.tryReconnectKnown()
                 }
                 
@@ -1904,10 +1888,8 @@ extension BLEManager: CBCentralManagerDelegate {
     // MARK: - Known Device Reconnect
     
     private func tryReconnectKnown() {
-        guard autoConnectEnabled else {
-            log(.info, "⚡ autoConnect tắt — bỏ qua tryReconnectKnown")
-            return
-        }
+        // Luôn reconnect tới thiết bị đã biết (có savedUUID) — giống hành vi app cũ trước ASK.
+        // autoConnectEnabled chỉ áp dụng cho scan-based discovery, không áp dụng ở đây.
         let savedID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
         guard savedID != nil else { return }
         
