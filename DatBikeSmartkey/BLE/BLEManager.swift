@@ -1415,6 +1415,12 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     /// Counter lẻ (ODD) → auth còn hạn → tiếp tục lệnh.
     /// Counter chẵn (EVEN) → firmware mất xác thực → set UI lỗi và throw để chặn lệnh.
     private func assertAuthCounter() async throws {
+        // ── Concurrent Session Conflict Guard ──
+        // Chặn lệnh trong khi đang xác thực: tránh race condition giữa command và authenticate().
+        guard !isAuthenticating else {
+            log(.warning, "[CMD] Đang xác thực — lệnh bị từ chối (concurrent session conflict)")
+            throw BLEError.authFailed("Đang xác thực — thử lại sau khi kết nối hoàn tất")
+        }
         guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
             // Không tìm thấy char → an toàn để qua (không block lệnh)
             log(.warning, "[CMD] authChallenge char không có — bỏ qua kiểm tra counter")
@@ -2012,7 +2018,15 @@ extension BLEManager: CBPeripheralDelegate {
             // ── Live session restore path (State Restoration hoặc retrieveConnectedPeripherals) ──
             if isLiveSessionRestore {
                 isLiveSessionRestore = false
-                log(.success, " Characteristics sẵn sàng (live session). Kiểm tra link thật...")
+                // ── Concurrent Session Conflict Guard ──
+                // Đặt isAuthenticating = true TRƯỚC KHI Task bắt đầu để chặn window race:
+                //   didDiscoverCharacteristics có thể fire nhiều lần (mỗi service 1 lần).
+                //   Nếu isAuthenticating chưa được set (chỉ set bên trong Task), callback thứ 2
+                //   sẽ vượt qua guard !isAuthenticating bên dưới và khởi động 1 authenticate() song song.
+                //   2 concurrent SHA writes → 1 write thành công (LẺ), write kia sai challenge → counter
+                //   tăng thêm 1 thành CHẴN → vòng lặp chẵn mãi mãi (Concurrent Session Conflict).
+                isAuthenticating = true
+                log(.success, " Characteristics sẵn sàng (live session). Kiểm tra link thật [isAuthenticating=true để chặn concurrent auth]...")
                 
                 DispatchQueue.main.async {
                     self.connectionState = .sessionVerifying  // hiển thị "Đang khôi phục phiên..."
