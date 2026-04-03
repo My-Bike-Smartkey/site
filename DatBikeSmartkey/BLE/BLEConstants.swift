@@ -240,6 +240,12 @@ enum BLEProtocol {
     /// RSSI threshold for auto-unlock (same as ESP32: -65 dBm ≈ 1-2m)
     static let rssiThreshold: Int = -65
     
+    /// RSSI minimum to INITIATE a BLE connection in didDiscover.
+    /// Below this, signal is too weak to reliably complete challenge-response auth.
+    /// Logs showed counter-stuck (+0) issues at -89 dBm → -85 dBm prevents wasted connects.
+    /// If RSSI < this, didDiscover will skip and wait for the next scan advertisement.
+    static let rssiConnectMinimum: Int = -85
+
     /// RSSI minimum to START authentication. Below this, connection is too unstable
     /// to reliably complete the SHA-256 challenge-response (read/write may timeout).
     /// -90 dBm ≈ near BLE receiver sensitivity floor — allows auth in marginal signal
