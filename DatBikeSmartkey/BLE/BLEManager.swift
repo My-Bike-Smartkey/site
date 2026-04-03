@@ -907,6 +907,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         }
         log(.ble, " Gửi lệnh KHÓA (0x31 → smartkeyEcho char=\(char.uuid.uuidString.prefix(8)))")
         log(.info, "[CMD] peripheral.state=\(peripheral?.state.rawValue ?? -1)")
+        // Đọc counter sau khi xác nhận peripheral.state=2 isAuthenticated=true
+        // Nếu counter chẵn → mất xác thực phía firmware → báo lỗi màn hình, không gửi lệnh
+        try await assertAuthCounter()
         try await writeValue(BLECommand.lock, for: char, type: .withResponse)
         
         try await Task.sleep(nanoseconds: 400_000_000)
@@ -921,6 +924,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         // Confirmed: write ASCII '0' (0x30) = tắt xe — REPORT.md §4.2 Step 9
         log(.ble, "⚡ Gửi lệnh TẮT XE (0x30 → unlockCmd char=\(char.uuid.uuidString.prefix(8)))")
         log(.info, "[CMD] peripheral.state=\(peripheral?.state.rawValue ?? -1) isAuthenticated=\(isAuthenticated)")
+        // Đọc counter sau khi xác nhận peripheral.state=2 isAuthenticated=true
+        // Nếu counter chẵn → mất xác thực phía firmware → báo lỗi màn hình, không gửi lệnh
+        try await assertAuthCounter()
         try await writeValue(BLECommand.unlock, for: char, type: .withResponse)
         // Chờ firmware xử lý lệnh trước khi bắt đầu poll — delay tăng khi tín hiệu yếu
         let delay1 = cmdInitialDelayMs
@@ -934,6 +940,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         }
         log(.ble, " Gửi lệnh BẬT XE (0x31 → unlockCmd char=\(char.uuid.uuidString.prefix(8)))")
         log(.info, "[CMD] peripheral.state=\(peripheral?.state.rawValue ?? -1) isAuthenticated=\(isAuthenticated)")
+        // Đọc counter sau khi xác nhận peripheral.state=2 isAuthenticated=true
+        // Nếu counter chẵn → mất xác thực phía firmware → báo lỗi màn hình, không gửi lệnh
+        try await assertAuthCounter()
         try await writeValue(BLECommand.powerOff, for: char, type: .withResponse)
         // Chờ firmware xử lý lệnh trước khi bắt đầu poll — delay tăng khi tín hiệu yếu
         let delay2 = cmdInitialDelayMs
@@ -1400,6 +1409,35 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         ])
     }
     
+    // MARK: - Auth Counter Verification
+
+    /// Kiểm tra authChallenge counter sau khi đã xác nhận peripheral.state==2 và isAuthenticated==true.
+    /// Counter lẻ (ODD) → auth còn hạn → tiếp tục lệnh.
+    /// Counter chẵn (EVEN) → firmware mất xác thực → set UI lỗi và throw để chặn lệnh.
+    private func assertAuthCounter() async throws {
+        guard let authChar = discoveredCharacteristics[BLECharacteristic.authChallenge] else {
+            // Không tìm thấy char → an toàn để qua (không block lệnh)
+            log(.warning, "[CMD] authChallenge char không có — bỏ qua kiểm tra counter")
+            return
+        }
+        guard let data = try? await readValue(for: authChar), data.count >= 4 else {
+            log(.warning, "[CMD] Không đọc được counter — bỏ qua kiểm tra")
+            return
+        }
+        let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+        let isOdd = counter % 2 == 1
+        if isOdd {
+            log(.info, "[CMD] Counter \(counter) → LẺ ✅ auth còn hạn, cho phép lệnh")
+        } else {
+            log(.warning, "[CMD] Counter \(counter) → CHẴN ❌ mất xác thực — báo lỗi màn hình")
+            DispatchQueue.main.async {
+                self.isAuthenticated = false
+                self.connectionState = .error("Mất xác thực — nhấn để xác thực lại")
+            }
+            throw BLEError.authFailed("counter chẵn — session bị mất xác thực")
+        }
+    }
+
     // MARK: - GATT Read/Write Helpers
     
     private func writeValue(_ data: Data, for characteristic: CBCharacteristic, type: CBCharacteristicWriteType) async throws {
