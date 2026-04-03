@@ -79,9 +79,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     /// false = sau khi mất kết nối phải mở app mới kết nối lại được.
     var autoBackgroundReconnectEnabled: Bool = true
 
-    /// Cho phép hiển thị thông báo local (mất kết nối, kết nối thành công, v.v.)
-    var notificationsEnabled: Bool = true
-    
+
     /// Số lần đã reconnect do counter +2 race condition — giới hạn vòng lặp
     private var raceReconnectCount: Int = 0
     private let maxRaceReconnects: Int = 2
@@ -179,13 +177,11 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     /// Init CBCentralManager ONLY after ASAccessorySession has activated.
     /// This prevents the "CBManagers active with global permissions" conflict.
-    /// Uses State Restoration ID so iOS maintains connection when app is killed.
+    /// State Restoration is intentionally disabled so the app won't run in the background after force quit.
     private func initCentralManagerIfNeeded() {
         guard centralManager == nil else { return }
-        log(.info, "📡 Khởi tạo CBCentralManager (sau ASK activation, có State Restoration)")
-        centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: [
-            CBCentralManagerOptionRestoreIdentifierKey: "app.mybike.smartkey.central"
-        ])
+        log(.info, "📡 Khởi tạo CBCentralManager (chạy Foreground, không chạy ngầm sau khi vuốt tắt)")
+        centralManager = CBCentralManager(delegate: self, queue: bleQueue, options: nil)
     }
     
     // MARK: - Public API
@@ -417,6 +413,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         self.peripheral = nil
         UserDefaults.standard.removeObject(forKey: "lastPeripheralUUID")
         UserDefaults.standard.removeObject(forKey: "proximityToken")
+        KeychainHelper.delete(key: "authPIN")
         
         // Remove from AccessorySetupKit
         if let accessory = currentAccessory {
@@ -493,414 +490,6 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         try await writeValue(Data(value.utf8), for: syncChar, type: .withResponse)
     }
 
-
-    // MARK: - BLE Test Panel
-
-    /// Đọc challenge counter hiện tại (không ghi gì). Dùng để quan sát counter raw trước/sau auth.
-    /// Poll discoveredCharacteristics until the given UUID appears, or timeout.
-    /// Addresses intermittent "char not found" errors when the test is triggered
-    /// just before service-discovery completes.
-    private func waitForCharacteristic(_ uuid: CBUUID, timeoutSeconds: Double = 5.0) async -> CBCharacteristic? {
-        let intervalNS: UInt64 = 200_000_000  // 200 ms
-        let maxAttempts = Int(timeoutSeconds / 0.2)
-        for _ in 0..<maxAttempts {
-            if let char = discoveredCharacteristics[uuid] { return char }
-            try? await Task.sleep(nanoseconds: intervalNS)
-        }
-        return discoveredCharacteristics[uuid]
-    }
-
-    func testReadCounter() async -> String {
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            log(.error, "[TEST] authChallenge characteristic not found (waited 5s)")
-            return "ERR: char not found (xe chưa kết nối / chưa discover services?)"
-        }
-        do {
-            let data = try await readValue(for: authChar)
-            guard data.count >= 4 else { return "ERR: data too short (\(data.count)b)" }
-            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            log(.info, "[TEST] readCounter: \(counter) (raw: \(data.prefix(4).hexString))")
-            return "counter=\(counter) raw=\(data.prefix(4).hexString)"
-        } catch {
-            log(.error, "[TEST] readCounter error: \(error.localizedDescription)")
-            return "ERR: \(error.localizedDescription)"
-        }
-    }
-
-    /// Ghi SHA-256 auth response rồi đọc lại counter — giống luồng reconnect thật.
-    /// - Parameters:
-    ///   - preWriteDelay: thời gian chờ trước khi ghi (giây), để test race condition.
-    ///   - useWrongSHA: nếu true, ghi SHA sai (all-zeros) để test firmware rejection.
-    func testAuthAndVerify(preWriteDelay: Double = 0, useWrongSHA: Bool = false) async -> String {
-        let pin: String
-        if let k = KeychainHelper.load(key: "authPIN") { pin = k }
-        else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
-        else { return "ERR: no PIN" }
-
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: authChallenge not found (xe chưa kết nối?)"
-        }
-        do {
-            // Read challenge
-            let data = try await readValue(for: authChar)
-            guard data.count >= 4 else { return "ERR: data too short" }
-            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            let shifted = counter >> 1
-            let hash = SHA256.hash(data: Data("\(shifted)\(pin)".utf8))
-            let hashHex = hash.compactMap { String(format: "%02x", $0) }.joined()
-            log(.info, "[TEST] challenge=\(counter) shifted=\(shifted) hash=\(String(hashHex.prefix(16)))...")
-
-            if preWriteDelay > 0 {
-                log(.info, "[TEST] ⏳ Chờ \(preWriteDelay)s trước khi ghi...")
-                try await Task.sleep(nanoseconds: UInt64(preWriteDelay * 1_000_000_000))
-            }
-
-            // Write (đúng hoặc sai tùy useWrongSHA)
-            let hashToWrite: String
-            if useWrongSHA {
-                hashToWrite = String(repeating: "0", count: hashHex.count)  // all-zeros — firmware sẽ reject
-                log(.warning, "[TEST] ⚠️ GHI SHA SAI (all-zeros) — firmware nên KHÔNG tăng counter")
-            } else {
-                hashToWrite = hashHex
-            }
-            try await writeValue(Data(hashToWrite.utf8), for: authChar, type: .withResponse)
-            log(.info, "[TEST] Write ACK OK. Đọc lại counter...")
-
-            // Verify loop
-            for attempt in 1...4 {
-                let delay: UInt64 = [400, 700, 1200, 2000][attempt - 1]
-                try await Task.sleep(nanoseconds: delay * 1_000_000)
-                let verify = try await readValue(for: authChar)
-                guard verify.count >= 4 else { continue }
-                let newCounter = verify.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                log(.info, "[TEST] Verify \(attempt): \(counter) → \(newCounter) (+\(Int(newCounter) - Int(counter)))")
-                if newCounter > counter {
-                    log(.success, "[TEST] ✅ Counter tăng +\(newCounter - counter) sau \(attempt) lần verify")
-                    return "✅ counter \(counter)→\(newCounter) (+\(newCounter - counter)) sau \(attempt) verify"
-                }
-            }
-            log(.error, "[TEST] ❌ Counter không tăng sau 4 lần verify")
-            return "❌ counter không tăng (vẫn \(counter))"
-        } catch {
-            log(.error, "[TEST] error: \(error.localizedDescription)")
-            return "ERR: \(error.localizedDescription)"
-        }
-    }
-
-    /// Auth liên tục cho đến khi counter tăng đúng +1 (không phải +2 do race).
-    /// Mỗi vòng: đọc counter baseline → ghi SHA-256 → verify tăng bao nhiêu.
-    /// - Parameters:
-    ///   - preWriteDelay: thời gian chờ trước khi ghi (giây)
-    ///   - maxAttempts: số lần auth tối đa; nếu vượt quá → báo lỗi
-    func testRetryUntilPlusOne(preWriteDelay: Double, maxAttempts: Int, useWrongSHA: Bool = false) async -> String {
-        let pin: String
-        if let k = KeychainHelper.load(key: "authPIN") { pin = k }
-        else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
-        else { return "ERR: no PIN" }
-
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: authChallenge not found (xe chưa kết nối?)"
-        }
-
-        var history: [(attempt: Int, increment: Int)] = []
-
-        for attempt in 1...max(1, maxAttempts) {
-            guard peripheral?.state == .connected else {
-                return "ERR: ngắt kết nối giữa chừng (attempt \(attempt))"
-            }
-            do {
-                // 1. Đọc counter baseline
-                let data = try await readValue(for: authChar)
-                guard data.count >= 4 else { return "ERR: data too short" }
-                let baseline = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                let shifted = baseline >> 1
-                let hash = SHA256.hash(data: Data("\(shifted)\(pin)".utf8))
-                let hashHex = hash.compactMap { String(format: "%02x", $0) }.joined()
-                log(.info, "[RETRY-\(attempt)/\(maxAttempts)] baseline=\(baseline) shifted=\(shifted)")
-
-                if preWriteDelay > 0 {
-                    log(.info, "[RETRY-\(attempt)] ⏳ delay \(preWriteDelay)s...")
-                    try await Task.sleep(nanoseconds: UInt64(preWriteDelay * 1_000_000_000))
-                }
-
-                // 2. Ghi hash (đúng hoặc sai tùy useWrongSHA)
-                let hashToWrite = useWrongSHA ? String(repeating: "0", count: hashHex.count) : hashHex
-                if useWrongSHA {
-                    log(.warning, "[RETRY-\(attempt)] ⚠️ GHI SHA SAI (all-zeros)")
-                }
-                try await writeValue(Data(hashToWrite.utf8), for: authChar, type: .withResponse)
-                log(.info, "[RETRY-\(attempt)] Write ACK OK. Verify...")
-
-                // 3. Verify counter
-                var increment: Int = 0
-                for v in 1...4 {
-                    let delay: UInt64 = [400, 700, 1200, 2000][v - 1]
-                    try await Task.sleep(nanoseconds: delay * 1_000_000)
-                    let verify = try await readValue(for: authChar)
-                    guard verify.count >= 4 else { continue }
-                    let newCounter = verify.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                    increment = Int(newCounter) - Int(baseline)
-                    log(.info, "[RETRY-\(attempt)] verify \(v): \(baseline)→\(newCounter) (+\(increment))")
-                    if increment > 0 { break }
-                }
-
-                history.append((attempt: attempt, increment: increment))
-
-                if increment == 1 {
-                    let trace = history.map { "#\($0.attempt):+\($0.increment)" }.joined(separator: ", ")
-                    log(.success, "[RETRY] ✅ +1 đạt được ở lần \(attempt). Trace: \(trace)")
-                    return "✅ +1 đạt lần \(attempt)/\(maxAttempts) | " + trace
-                } else if increment == 0 {
-                    log(.warning, "[RETRY-\(attempt)] ⚠️ counter không tăng — dừng")
-                    return "❌ counter không tăng ở lần \(attempt)"
-                } else {
-                    // +2 hoặc lớn hơn → thử lại
-                    log(.warning, "[RETRY-\(attempt)] +\(increment) — cần thêm lần nữa...")
-                    // pause nhỏ trước lần tiếp theo để xe xử lý xong
-                    try await Task.sleep(nanoseconds: 300_000_000)
-                }
-            } catch {
-                log(.error, "[RETRY-\(attempt)] error: \(error.localizedDescription)")
-                return "ERR (attempt \(attempt)): \(error.localizedDescription)"
-            }
-        }
-
-        let trace = history.map { "#\($0.attempt):+\($0.increment)" }.joined(separator: ", ")
-        log(.error, "[RETRY] ❌ Không đạt +1 sau \(maxAttempts) lần. Trace: \(trace)")
-        return "❌ vượt \(maxAttempts) lần, không +1 | " + trace
-    }
-
-    /// Ngắt kết nối chủ động (không scheduleReconnect). Dùng để test cold reconnect.
-    func testForceDisconnect() {
-        log(.info, "[TEST] Force disconnect (không auto-reconnect)")
-        guard let p = peripheral else {
-            log(.warning, "[TEST] Không có peripheral để ngắt")
-            return
-        }
-        suppressNextReconnect = true
-        centralManager?.cancelPeripheralConnection(p)
-    }
-
-    /// Ngắt kết nối + lập tức trigger scheduleReconnect. Test toàn bộ reconnect flow.
-    func testDisconnectAndReconnect() {
-        log(.info, "[TEST] Disconnect + scheduleReconnect")
-        disconnect()
-    }
-
-    /// Đọc trạng thái khoá và log kết quả raw. Không ảnh hưởng state.
-    func testReadStatus() async -> String {
-        do {
-            let status = try await readLockStatus(timeout: 8)
-            return "✅ \(status.description)"
-        } catch {
-            return "ERR: \(error.localizedDescription)"
-        }
-    }
-
-    // MARK: - Test Mode Control
-
-    /// Tạm dừng keep-alive khi đang chạy BLE test để tránh nhiễu lệnh đọc/ghi.
-    func enterTestMode() {
-        isTestModeActive = true
-        log(.info, "[TEST MODE] 🔒 Test mode ON — keep-alive bị tạm dừng")
-    }
-
-    /// Khôi phục keep-alive sau khi test xong.
-    func exitTestMode() {
-        isTestModeActive = false
-        log(.info, "[TEST MODE] 🔓 Test mode OFF — khôi phục background tasks")
-    }
-
-    // MARK: - Additional Test Functions
-
-    /// Kiểm tra trạng thái phiên auth hiện tại: connectionState, isAuthenticated, counter.
-    func testCheckAuthStatus() async -> String {
-        let stateStr = "state=\(connectionState) | auth=\(isAuthenticated)"
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: char not found\n\(stateStr)"
-        }
-        do {
-            let data = try await readValue(for: authChar)
-            guard data.count >= 4 else { return "ERR: data quá ngắn\n\(stateStr)" }
-            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            log(.info, "[AUTH-STATUS] counter=\(counter) | \(stateStr)")
-            return "counter=\(counter)\n\(stateStr)"
-        } catch {
-            return "ERR: \(error.localizedDescription)\n\(stateStr)"
-        }
-    }
-
-    /// Ghi SHA sai 1 lần (all-zeros), đọc lại counter để xác nhận firmware reject.
-    func testWriteWrongSHAOnce() async -> String {
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: authChallenge not found"
-        }
-        do {
-            let data = try await readValue(for: authChar)
-            guard data.count >= 4 else { return "ERR: data quá ngắn" }
-            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            let wrongHash = String(repeating: "0", count: 64)
-            log(.warning, "[WRONG-SHA-ONCE] counter=\(counter) — ghi all-zeros SHA")
-            try await writeValue(Data(wrongHash.utf8), for: authChar, type: .withResponse)
-            try await Task.sleep(nanoseconds: 700_000_000)
-            let verify = try await readValue(for: authChar)
-            guard verify.count >= 4 else { return "ERR: verify data quá ngắn" }
-            let newCounter = verify.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            let diff = Int(newCounter) - Int(counter)
-            log(.info, "[WRONG-SHA-ONCE] \(counter) → \(newCounter) (\(diff >= 0 ? "+" : "")\(diff))")
-            if diff == 0 {
-                return "✅ SHA sai → counter KHÔNG tăng (firmware reject đúng)"
-            } else {
-                return "⚠️ SHA sai nhưng counter tăng +\(diff) (unexpected!)"
-            }
-        } catch {
-            return "ERR: \(error.localizedDescription)"
-        }
-    }
-
-    /// Manual Step 1: Đọc challenge counter — lưu lại để dùng ở bước 2 và 3.
-    func testManualReadChallenge() async -> String {
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: authChallenge not found"
-        }
-        do {
-            let data = try await readValue(for: authChar)
-            guard data.count >= 4 else { return "ERR: data quá ngắn" }
-            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            lastManualCounter = counter
-            log(.info, "[MANUAL-1] READ: counter=\(counter) raw=\(data.prefix(4).hexString)")
-            return "📥 counter=\(counter) raw=\(data.prefix(4).hexString)\n→ Sẵn sàng ghi SHA (bước 2)"
-        } catch {
-            return "ERR: \(error.localizedDescription)"
-        }
-    }
-
-    /// Manual Step 2: Ghi SHA dựa trên counter đã đọc ở bước 1.
-    /// - Parameter wrongSHA: nếu true, ghi all-zeros thay vì hash thật.
-    func testManualWriteSHA(wrongSHA: Bool = false) async -> String {
-        guard let counter = lastManualCounter else {
-            return "ERR: Chưa đọc challenge — bấm 'Đọc Challenge' trước"
-        }
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: authChallenge not found"
-        }
-        let pin: String
-        if let k = KeychainHelper.load(key: "authPIN") { pin = k }
-        else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
-        else { return "ERR: no PIN" }
-        let shifted = counter >> 1
-        let hash = SHA256.hash(data: Data("\(shifted)\(pin)".utf8))
-        let hashHex = hash.compactMap { String(format: "%02x", $0) }.joined()
-        let toWrite = wrongSHA ? String(repeating: "0", count: 64) : hashHex
-        do {
-            if wrongSHA {
-                log(.warning, "[MANUAL-2] WRITE SHA SAI (all-zeros) | counter=\(counter)")
-            } else {
-                log(.info, "[MANUAL-2] WRITE SHA đúng | counter=\(counter) shifted=\(shifted)")
-            }
-            try await writeValue(Data(toWrite.utf8), for: authChar, type: .withResponse)
-            return wrongSHA
-                ? "📤 Đã ghi SHA SAI — bấm 'Verify Counter' để kiểm tra"
-                : "📤 Đã ghi SHA đúng — bấm 'Verify Counter' để kiểm tra"
-        } catch {
-            return "ERR: \(error.localizedDescription)"
-        }
-    }
-
-    /// Manual Step 3: Đọc lại counter và so sánh với baseline từ bước 1.
-    func testManualVerifyCounter() async -> String {
-        guard let baseline = lastManualCounter else {
-            return "ERR: Chưa có baseline — bấm 'Đọc Challenge' trước"
-        }
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: authChallenge not found"
-        }
-        do {
-            try await Task.sleep(nanoseconds: 500_000_000)
-            let data = try await readValue(for: authChar)
-            guard data.count >= 4 else { return "ERR: data quá ngắn" }
-            let newCounter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-            let diff = Int(newCounter) - Int(baseline)
-            log(.info, "[MANUAL-3] VERIFY: \(baseline) → \(newCounter) (\(diff >= 0 ? "+" : "")\(diff))")
-            lastManualCounter = newCounter  // update baseline for next step
-            if diff > 0 {
-                return "✅ counter \(baseline) → \(newCounter) (+\(diff))"
-            } else if diff == 0 {
-                return "⚠️ counter không tăng (vẫn \(newCounter)) — SHA bị reject?"
-            } else {
-                return "❓ counter giảm: \(baseline) → \(newCounter) (\(diff))"
-            }
-        } catch {
-            return "ERR: \(error.localizedDescription)"
-        }
-    }
-
-    /// Auth nhiều lần chờ counter tăng +2, rồi ghi SHA sai để test firmware rejection.
-    func testPlusTwoThenWrongSHA(maxAttempts: Int = 8, preWriteDelay: Double = 0) async -> String {
-        let pin: String
-        if let k = KeychainHelper.load(key: "authPIN") { pin = k }
-        else if let u = UserDefaults.standard.string(forKey: "authPIN") { pin = u }
-        else { return "ERR: no PIN" }
-
-        guard let authChar = await waitForCharacteristic(BLECharacteristic.authChallenge) else {
-            return "ERR: authChallenge not found"
-        }
-        var history: [String] = []
-        for attempt in 1...max(1, maxAttempts) {
-            guard peripheral?.state == .connected else {
-                return "ERR: ngắt kết nối ở attempt \(attempt)"
-            }
-            do {
-                let base = try await readValue(for: authChar)
-                guard base.count >= 4 else { return "ERR: data too short" }
-                let baseline = base.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                let shifted = baseline >> 1
-                let hash = SHA256.hash(data: Data("\(shifted)\(pin)".utf8))
-                let hashHex = hash.compactMap { String(format: "%02x", $0) }.joined()
-                if preWriteDelay > 0 {
-                    try await Task.sleep(nanoseconds: UInt64(preWriteDelay * 1_000_000_000))
-                }
-                try await writeValue(Data(hashHex.utf8), for: authChar, type: .withResponse)
-                try await Task.sleep(nanoseconds: 600_000_000)
-                let after = try await readValue(for: authChar)
-                guard after.count >= 4 else { continue }
-                let newCounter = after.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                let inc = Int(newCounter) - Int(baseline)
-                log(.info, "[+2TEST-\(attempt)] baseline=\(baseline) → \(newCounter) (+\(inc))")
-                history.append("#\(attempt):+\(inc)")
-                if inc >= 2 {
-                    log(.warning, "[+2TEST-\(attempt)] +\(inc) ≥ 2 — ghi SHA sai để test rejection...")
-                    let wrongHash = String(repeating: "0", count: 64)
-                    try await writeValue(Data(wrongHash.utf8), for: authChar, type: .withResponse)
-                    try await Task.sleep(nanoseconds: 700_000_000)
-                    let afterWrong = try await readValue(for: authChar)
-                    guard afterWrong.count >= 4 else {
-                        return "ERR: verify after wrongSHA data short | " + history.joined(separator: ", ")
-                    }
-                    let counterAfterWrong = afterWrong.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
-                    let wrongInc = Int(counterAfterWrong) - Int(newCounter)
-                    log(.info, "[+2TEST] After wrong SHA: \(newCounter) → \(counterAfterWrong) (\(wrongInc >= 0 ? "+" : "")\(wrongInc))")
-                    history.append("wrongSHA:\(wrongInc >= 0 ? "+" : "")\(wrongInc)")
-                    let trace = history.joined(separator: ", ")
-                    if wrongInc == 0 {
-                        return "✅ +\(inc) → SHA sai bị reject (counter không tăng) | " + trace
-                    } else {
-                        return "⚠️ +\(inc) → SHA sai KHÔNG bị reject (+\(wrongInc)) | " + trace
-                    }
-                } else if inc == 1 {
-                    log(.info, "[+2TEST-\(attempt)] +1 — tiếp tục retry...")
-                    try await Task.sleep(nanoseconds: 300_000_000)
-                } else {
-                    let trace = history.joined(separator: ", ")
-                    return "❌ counter không tăng ở attempt \(attempt) | " + trace
-                }
-            } catch {
-                return "ERR (attempt \(attempt)): \(error.localizedDescription)"
-            }
-        }
-        let trace = history.joined(separator: ", ")
-        return "⚠️ Sau \(maxAttempts) lần không bắt được +2 | " + trace
-    }
 
     func lock() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.smartkeyEcho] else {
@@ -1235,7 +824,6 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             // Set pairing state ngay lập tức (giống Android) — không dùng watchdog
             DispatchQueue.main.async { self.connectionState = .pairingRequired }
             log(.info, " Hãy quẹt thẻ NFC vào thân xe và bấm Pair (Ghép đôi)")
-            sendLocalNotification(title: "Ghép đôi Dat Bike", body: "Hãy quẹt thẻ NFC vào xe để hoàn tất xác thực")
             
             // Retry PIN write: mỗi 2s × 10 lần (tổng 20s timeout)
             var isPaired = false
@@ -1340,13 +928,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             do {
                 try await turnOff() // NOTE: turnOff actually sends 0x31 (Turn On) logic
                 hasTriggeredAutoUnlockSession = true
-                sendLocalNotification(title: "MyBike Smartkey", body: "🔓 Xe đã tự động mở khóa (Grab-key)")
             } catch {
                 log(.error, "Grab-key auto-unlock thất bại: \(error.localizedDescription)")
-                sendLocalNotification(title: "MyBike Smartkey", body: "Đã kết nối nhưng không thể tự mở khóa")
             }
-        } else {
-            sendLocalNotification(title: "MyBike Smartkey", body: "Đã kết nối thành công với xe \(bikeInfo.name)")
         }
     }
     
@@ -1517,19 +1101,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         }
     }
     
-    // MARK: - Notifications
-    
-    func sendLocalNotification(title: String, body: String) {
-        guard notificationsEnabled else { return }
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request)
-    }
-    
+
     // MARK: - Logging
     
     func log(_ level: BLELogEntry.LogLevel, _ message: String) {
@@ -1785,7 +1357,6 @@ extension BLEManager: CBCentralManagerDelegate {
                 DispatchQueue.main.async {
                     self.connectionState = .error("Lỗi mã hoá BLE. Vui lòng tắt và bật lại Bluetooth để kết nối lại.")
                 }
-                self.sendLocalNotification(title: "Lỗi kết nối", body: "Vui lòng tắt rồi bật lại Bluetooth để khắc phục.")
                 return
             }
 
@@ -1831,10 +1402,6 @@ extension BLEManager: CBCentralManagerDelegate {
                 self.hasAuthorizedAccessory = false
             }
             
-            sendLocalNotification(
-                title: "Cần xóa kết nối cũ",
-                body: "Vào Cài đặt ➔ Bluetooth ➔ Quên thiết bị ➔ mở app ➔ Thêm xe."
-            )
             return
         }
         
@@ -1901,7 +1468,6 @@ extension BLEManager: CBCentralManagerDelegate {
                 self.hasAuthorizedAccessory = false
             }
             
-            sendLocalNotification(title: "Cần xóa kết nối cũ", body: "Vào Cài đặt ➔ Bluetooth ➔ Quên thiết bị ➔ mở app ➔ Thêm xe.")
             return
         }
         
@@ -1929,9 +1495,6 @@ extension BLEManager: CBCentralManagerDelegate {
         isKeepAliveReading = false
         
         // Only notify and auto-reconnect if this was an unexpected drop (not user-initiated)
-        if error != nil {
-            sendLocalNotification(title: "MyBike Smartkey", body: "Đã mất kết nối với xe")
-        }
         
         // ASK: auto-reconnect via pending connection
 
@@ -2295,7 +1858,6 @@ extension BLEManager: CBPeripheralDelegate {
         if autoUnlockEnabled && lockStatus.isLocked && !hasTriggeredAutoUnlockSession && rssiVal > autoUnlockThreshold {
             hasTriggeredAutoUnlockSession = true
             log(.info, " Ở gần xe (RSSI: \(rssiVal) > \(BLEProtocol.rssiThreshold)). Auto-unlock...")
-            sendLocalNotification(title: "Auto Unlock", body: "Phát hiện bạn đang ở gần xe. Đang mở khóa...")
             Task {
                 try? await turnOff() // NOTE: turnOff actually sends 0x31 (Turn On) logic
             }
@@ -2332,7 +1894,8 @@ enum KeychainHelper {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceName,
-            kSecAttrAccount as String: key
+            kSecAttrAccount as String: key,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
         ]
         // Delete existing item first
         SecItemDelete(query as CFDictionary)

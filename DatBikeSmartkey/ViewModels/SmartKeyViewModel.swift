@@ -57,12 +57,6 @@ final class SmartKeyViewModel: ObservableObject {
             BLEManager.shared.autoBackgroundReconnectEnabled = autoBackgroundReconnectEnabled
         }
     }
-    @Published var notificationsEnabled: Bool = true {
-        didSet {
-            UserDefaults.standard.set(notificationsEnabled, forKey: "notificationsEnabled")
-            BLEManager.shared.notificationsEnabled = notificationsEnabled
-        }
-    }
     
     // MARK: - Private
     
@@ -80,9 +74,6 @@ final class SmartKeyViewModel: ObservableObject {
         let storedBgReconnect = UserDefaults.standard.object(forKey: "autoBackgroundReconnectEnabled") as? Bool ?? true
         self.autoBackgroundReconnectEnabled = storedBgReconnect
         BLEManager.shared.autoBackgroundReconnectEnabled = storedBgReconnect
-        let storedNotif = UserDefaults.standard.object(forKey: "notificationsEnabled") as? Bool ?? true
-        self.notificationsEnabled = storedNotif
-        BLEManager.shared.notificationsEnabled = storedNotif
         self.isDebugModeEnabled = UserDefaults.standard.bool(forKey: "isDebugModeEnabled")
         
         setupBindings()
@@ -279,143 +270,7 @@ final class SmartKeyViewModel: ObservableObject {
         ble.autoConnectEnabled = enabled
     }
 
-    // MARK: - BLE Test Panel
 
-    @Published var testResult: String = ""
-    @Published var isTestRunning: Bool = false
-    @Published var testPreWriteDelay: Double = 2.0
-    @Published var testUseWrongSHA: Bool = false
-    @Published var currentTestName: String = ""
-    @Published var lastTestLogURL: URL?
-
-    /// Index into ble.logs where the current test started — used by exportCurrentTestLog()
-    private var testLogStartIndex: Int = 0
-
-    func testReadCounter() {
-        runTest(name: "read_counter", label: "Đang đọc...") {
-            await self.ble.testReadCounter()
-        }
-    }
-
-    func testAuthAndVerify() {
-        runTest(name: "auth_verify_\(String(format: "%.1f", testPreWriteDelay))s",
-                label: "Đang xác thực (\(testPreWriteDelay)s delay)...") {
-            await self.ble.testAuthAndVerify(preWriteDelay: self.testPreWriteDelay, useWrongSHA: self.testUseWrongSHA)
-        }
-    }
-
-    func testReadStatus() {
-        runTest(name: "read_status", label: "Đang đọc trạng thái...") {
-            await self.ble.testReadStatus()
-        }
-    }
-
-    func testForceDisconnect() {
-        currentTestName = "force_disconnect"
-        testLogStartIndex = ble.logs.count
-        ble.testForceDisconnect()
-        testResult = "Force disconnected (không reconnect)"
-    }
-
-    func testDisconnectAndReconnect() {
-        currentTestName = "disconnect_reconnect"
-        testLogStartIndex = ble.logs.count
-        ble.testDisconnectAndReconnect()
-        testResult = "Disconnect + scheduleReconnect triggered"
-    }
-
-    @Published var testMaxRetries: Int = 5
-
-    /// Toggle dùng cho Manual Step 2: ghi SHA sai hay đúng
-    @Published var testManualWrongSHA: Bool = false
-
-    func testRetryUntilPlusOne() {
-        runTest(name: "retry_plus1_max\(testMaxRetries)",
-                label: "Retry auth → chờ +1 (max \(testMaxRetries) lần, delay \(testPreWriteDelay)s)...") {
-            await self.ble.testRetryUntilPlusOne(
-                preWriteDelay: self.testPreWriteDelay,
-                maxAttempts: self.testMaxRetries,
-                useWrongSHA: self.testUseWrongSHA
-            )
-        }
-    }
-
-    /// Lưu các log từ lúc bắt đầu test đến hiện tại ra file .txt, trả về URL để share.
-    func exportCurrentTestLog() {
-        let slice = Array(ble.logs.dropFirst(testLogStartIndex))
-        guard !slice.isEmpty else { return }
-        let timeFmt = DateFormatter()
-        timeFmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-        let text = slice.map { e in
-            "\(timeFmt.string(from: e.timestamp)) [\(e.level.rawValue)] \(e.message)"
-        }.joined(separator: "\n")
-
-        let stamp = DateFormatter()
-        stamp.dateFormat = "yyyyMMdd_HHmmss"
-        let fileName = "test_\(currentTestName)_\(stamp.string(from: Date())).txt"
-
-        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("test_logs", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(fileName)
-        try? text.write(to: url, atomically: true, encoding: .utf8)
-        lastTestLogURL = url
-    }
-
-    // MARK: - New Test Wrappers
-
-    private func runTest(name: String, label: String = "Đang chạy...", _ body: @escaping () async -> String) {
-        guard !isTestRunning else { return }
-        currentTestName = name
-        testLogStartIndex = ble.logs.count
-        isTestRunning = true
-        testResult = label
-        ble.enterTestMode()
-        Task {
-            let result = await body()
-            ble.exitTestMode()
-            testResult = result
-            isTestRunning = false
-        }
-    }
-
-    func testCheckAuthStatus() {
-        runTest(name: "check_auth_status", label: "Kiểm tra trạng thái auth...") {
-            await self.ble.testCheckAuthStatus()
-        }
-    }
-
-    func testWriteWrongSHAOnce() {
-        runTest(name: "wrong_sha_once", label: "Ghi SHA sai 1 lần...") {
-            await self.ble.testWriteWrongSHAOnce()
-        }
-    }
-
-    func testManualReadChallenge() {
-        runTest(name: "manual_read_challenge", label: "Đọc Challenge Counter (bước 1)...") {
-            await self.ble.testManualReadChallenge()
-        }
-    }
-
-    func testManualWriteSHA() {
-        runTest(name: testManualWrongSHA ? "manual_write_wrong_sha" : "manual_write_sha",
-                label: testManualWrongSHA ? "Ghi SHA SAI (bước 2)..." : "Ghi SHA đúng (bước 2)...") {
-            await self.ble.testManualWriteSHA(wrongSHA: self.testManualWrongSHA)
-        }
-    }
-
-    func testManualVerifyCounter() {
-        runTest(name: "manual_verify_counter", label: "Verify Counter (bước 3)...") {
-            await self.ble.testManualVerifyCounter()
-        }
-    }
-
-    func testPlusTwoThenWrongSHA() {
-        runTest(name: "plus2_wrong_sha_max\(testMaxRetries)",
-                label: "Auth → chờ +2 → SHA sai (max \(testMaxRetries) lần)...") {
-            await self.ble.testPlusTwoThenWrongSHA(maxAttempts: self.testMaxRetries, preWriteDelay: self.testPreWriteDelay)
-        }
-    }
 
     // MARK: - Computed
     
