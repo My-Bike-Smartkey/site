@@ -84,6 +84,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     private var raceReconnectCount: Int = 0
     private let maxRaceReconnects: Int = 2
     
+    /// Bật ghi logs trên UI và file. Mặc định là bật (từ Settings)
+    var isDebugLoggingEnabled: Bool = true
+    
     // Auth sequence state
     private var authContinuation: CheckedContinuation<Bool, Never>?
     private var pendingWriteCallbacks: [CBUUID: CheckedContinuation<Void, Error>] = [:]
@@ -1105,15 +1108,18 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     // MARK: - Logging
     
     func log(_ level: BLELogEntry.LogLevel, _ message: String) {
+        #if DEBUG
+        print("[\(level.rawValue)] \(message)")
+        #endif
+
+        guard isDebugLoggingEnabled else { return }
+
         let entry = BLELogEntry(timestamp: Date(), level: level, message: message)
         DispatchQueue.main.async {
             self.logs.append(entry)
         }
         // Persist to file
         PersistentLogger.shared.append(entry)
-        #if DEBUG
-        print("[\(level.rawValue)] \(message)")
-        #endif
     }
     
     /// Load persisted logs from recent days into memory. Call once on app launch.

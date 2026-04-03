@@ -17,8 +17,11 @@ final class SmartKeyViewModel: ObservableObject {
     @Published var selectedBike: DiscoveredBike? = nil
     @Published var autoUnlockEnabled: Bool = false
     @Published var isAuthenticated = false
-    @Published var isDebugModeEnabled: Bool = false {
-        didSet { UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled") }
+    @Published var isDebugModeEnabled: Bool = true {
+        didSet {
+            UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled")
+            BLEManager.shared.isDebugLoggingEnabled = isDebugModeEnabled
+        }
     }
     @Published var hasAuthorizedAccessory = false
     @Published var pickerDismissed = false
@@ -74,7 +77,13 @@ final class SmartKeyViewModel: ObservableObject {
         let storedBgReconnect = UserDefaults.standard.object(forKey: "autoBackgroundReconnectEnabled") as? Bool ?? true
         self.autoBackgroundReconnectEnabled = storedBgReconnect
         BLEManager.shared.autoBackgroundReconnectEnabled = storedBgReconnect
-        self.isDebugModeEnabled = UserDefaults.standard.bool(forKey: "isDebugModeEnabled")
+        if UserDefaults.standard.object(forKey: "isDebugModeEnabled") == nil {
+            self.isDebugModeEnabled = true
+            UserDefaults.standard.set(true, forKey: "isDebugModeEnabled")
+        } else {
+            self.isDebugModeEnabled = UserDefaults.standard.bool(forKey: "isDebugModeEnabled")
+        }
+        BLEManager.shared.isDebugLoggingEnabled = self.isDebugModeEnabled
         
         setupBindings()
     }
