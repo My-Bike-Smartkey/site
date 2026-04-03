@@ -386,7 +386,10 @@ struct SettingsView: View {
                                 settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log (\(viewModel.logs.count))") {
                                     showLogs = true
                                 }
-
+                                Divider().background(Color.white.opacity(0.06))
+                                settingsButton(icon: "antenna.radiowaves.left.and.right", iconColor: .orange, title: "BLE Test Panel") {
+                                    showTestPanel = true
+                                }
                             }
                         }
                     }
