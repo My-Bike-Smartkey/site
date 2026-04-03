@@ -43,6 +43,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     private let bleQueue = DispatchQueue(label: "app.mybike.smartkey.ble", qos: .userInitiated)
     private var rssiTimer: Timer?
     private var isAuthenticating: Bool = false
+    private var authChallengeLastNotify: Data? = nil  // bleQueue only — firmware NOTIFY async sau SHA write
     private var isConnecting: Bool = false
     private var pairingRetryCount: Int = 0
     private let maxPairingRetries: Int = 3
@@ -1170,16 +1171,36 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
                 // 6. Ghi SHA + verify
                 // Nếu firmware reject (counter vẫn CHẴN), ghi SHA all-zeros để force-disconnect
                 // ở application layer → iOS tự reconnect → fresh challenge → auth lại.
-                try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
-                log(.info, " [AUTH] Write ACK nhận được. Chờ firmware verify...")
+                // Subscribe to NOTIFY on authChallenge: firmware pushes counter after SHA processing (async)
+                peripheral.setNotifyValue(true, for: authChar)
+                bleQueue.async { self.authChallengeLastNotify = nil }  // clear stale NOTIFYs before write
 
-                let retryDelays: [UInt64] = [500, 1000, 2000, 4000]
+                try await writeValue(Data(hashHexStr.utf8), for: authChar, type: .withResponse)
+                log(.info, " [AUTH] Write ACK nhận được. Chờ firmware verify (NOTIFY fast-path + poll)...")
+
+                // Log analysis (datbike_ble_log_20260403): firmware processes SHA async (~3s) and
+                // sends NOTIFY C8EAF27B. Old loop [500,1000,2000,4000] (7.5s total) already timed out
+                // before the NOTIFY arrived → auth failed even though firmware verified successfully.
+                // Fix: extend to [500,1000,2000,4000,6000,8000] (21.5s) + NOTIFY fast-path check.
+                let retryDelays: [UInt64] = [500, 1000, 2000, 4000, 6000, 8000]
                 var authVerified = false
 
                 for (attempt, delayMs) in retryDelays.enumerated() {
                     try await Task.sleep(nanoseconds: delayMs * 1_000_000)
 
-                    let verifyData = try await readValue(for: authChar)
+                    // Fast path: check if firmware sent NOTIFY during sleep
+                    let notifyData: Data? = bleQueue.sync {
+                        guard let d = self.authChallengeLastNotify else { return nil }
+                        self.authChallengeLastNotify = nil
+                        return d
+                    }
+                    let verifyData: Data
+                    if let nd = notifyData {
+                        log(.info, " [AUTH] NOTIFY fast-path (attempt \(attempt+1)): firmware pushed new counter")
+                        verifyData = nd
+                    } else {
+                        verifyData = try await readValue(for: authChar)
+                    }
                     guard verifyData.count >= 4 else {
                         log(.warning, " [AUTH] Verify \(attempt+1): response ngắn (\(verifyData.count)b), retry...")
                         continue
@@ -2227,6 +2248,12 @@ extension BLEManager: CBPeripheralDelegate {
             return
         }
         
+        // Auth challenge NOTIFY — async firmware response to SHA write
+        if characteristic.uuid == BLECharacteristic.authChallenge {
+            log(.ble, "[RX] NOTIFY \(charPrefix) — firmware async SHA response (\(data.count)b)")
+            authChallengeLastNotify = data  // On bleQueue — threadsafe
+            return
+        }
         log(.ble, "[RX] NOTIFY \(charPrefix) (\(data.count) bytes)")
         if characteristic.uuid == BLECharacteristic.smartkeyEcho ||
            characteristic.uuid == BLECharacteristic.statusFlags {
