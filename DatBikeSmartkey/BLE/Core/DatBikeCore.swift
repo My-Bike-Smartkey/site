@@ -159,7 +159,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
     
     // 2. Phục hồi didDiscover
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        guard let name = peripheral.name, name.contains("Dat Bike") else { return }
+        guard let name = peripheral.name, (name.contains("Dat Bike") || name.contains("QT_")) else { return }
         
         centralManager.stopScan()
         stateMachine.transition(to: .connecting)

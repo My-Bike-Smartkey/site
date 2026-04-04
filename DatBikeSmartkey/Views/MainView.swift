@@ -182,6 +182,16 @@ struct ConnectingSplashView: View {
                                 .background(Color.blue.opacity(0.8))
                                 .clipShape(Capsule())
                         }
+                    } else if dashboardVM.connectionState == .scanning {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                            .scaleEffect(1.3)
+                        
+                        Text("Đang tìm Bluetooth của xe...")
+                            .font(.headline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     } else if dashboardVM.connectionState == .connecting || dashboardVM.connectionState == .authenticating {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .orange))
