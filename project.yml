@@ -27,6 +27,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.mybike.smartkey
         INFOPLIST_FILE: DatBikeSmartkey/Info.plist
+        PRODUCT_NAME: DatBikeSmartkey
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "MH385VJBCB"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

@@ -3,120 +3,199 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 50;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		00EB49AE3BDA2C0C7040C9CD /* LockButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A617757174092E8071FDE5 /* LockButton.swift */; };
-		04C3ACC31BC5F0C0E3D28178 /* DebugLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9551BB69F236D49B477850 /* DebugLogView.swift */; };
-		07DFC5B75E67528ADA1FA2E0 /* SmartKeyViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 576A49715915FBA2B39FF95F /* SmartKeyViewModel.swift */; };
-		13FBAE203AFEB7C79C1210B4 /* BLEConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6857C002FB8A3BACA43625 /* BLEConstants.swift */; };
-		153B3F42D7007BFBDB696519 /* StatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B85AA99388E35EDABEC8870 /* StatusCard.swift */; };
-		23BE748DFF7BF3A246D13AFD /* SignalIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C12AC83C26941D4927CCA1 /* SignalIndicator.swift */; };
-		2EE97DF2F2874274B4E74BD9 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FCC6E9C8A2D8043FD4DBDF8 /* DashboardView.swift */; };
-		459F8C6F5265D4DBDC8E7D92 /* BikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388B85BD6205C62981FA7651 /* BikeState.swift */; };
-		47F181759EB61BCF60800366 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05562CDF9B9DBFC719F257D /* SettingsView.swift */; };
-		4D228EFFF0B70777C0A72B42 /* SharedBikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679D91488371B0C05358E180 /* SharedBikeState.swift */; };
-		8CD08588268786D9762D1DCC /* DatBikeSmartKeyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */; };
-		9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52 /* Assets.xcassets */; };
-		F364707A10511F67495BC75D /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */; };
-		FD23847C3D8A4F42AB57E18D /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8A4DD9F679F79F85EBCC1E /* MainView.swift */; };
+		091AB28D2C6697E5C12F62CC307F6D50 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05562CDF9B9DBFC719F257DD560252B /* SettingsView.swift */; };
+		1317C389CF45A175FE36A45ABDEEB886 /* AppDIContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9199096C02324C14D9AFEA1B8548F24 /* AppDIContainer.swift */; };
+		2BFF2E5A7B82271FAB05C0307935B45E /* LockButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A617757174092E8071FDE590A4848C /* LockButton.swift */; };
+		32FE182834CB327E643E603CC1D3A002 /* IoTError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61550F75A7B3022BC7FA942A039DECF4 /* IoTError.swift */; };
+		337ADBAA3B70A21C0EE26A4931EB761E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */; };
+		436627ECB43EC3016EF6D667546308FA /* SharedBikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679D91488371B0C05358E180BBC426BC /* SharedBikeState.swift */; };
+		461BE7C18B7E80BB5C7582003E7FD7DE /* BLEAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D3640AFD52271742CB9C24E5DA7CE82 /* BLEAuthenticator.swift */; };
+		46D2E68782623B5C9BB9F03DA8C43FB8 /* BLEConnectionContext.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AA79BF2AA66071BAC48F86A19AE5B71 /* BLEConnectionContext.swift */; };
+		55999D0909BE9EA7A2549D9782828282 /* BLECharacteristicIO.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8E159FB9312D6ABD2942B1F9B70352E /* BLECharacteristicIO.swift */; };
+		55A3C90094AF2C3EADE958317EBB769D /* StatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B85AA99388E35EDABEC8870823D6958 /* StatusCard.swift */; };
+		57E7B4ECC0FA6CEC4BF375259FEE1E77 /* IoTProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D497B3507E68C262F4CDF89CE93BC73 /* IoTProtocols.swift */; };
+		59D6C63F16CC19FFEFCBF257C12539AF /* BLECommandDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5BFF499347F9F3C5AB86837FD85D1B /* BLECommandDispatcher.swift */; };
+		5D31AE63EB79F4163585616B388261B4 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0DEFCC8C5F879C56FF954B6F94414F /* SettingsViewModel.swift */; };
+		6A34E8A95930A9E78D9DA393F8567A48 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EDA91550F458545D616A31C725B1849 /* DashboardViewModel.swift */; };
+		72AD9647D22031153D242E28108F6E0A /* BLEConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 462FFA0486C355E3A7B020AE471FAEC2 /* BLEConstants.swift */; };
+		7610617F7A326290C1D5806FD08DC90A /* BLEStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8653E8961F943307958265B058C12AD /* BLEStateMachine.swift */; };
+		884B9C4CFA2D537F7EA18B02C6B0F43D /* DatBikeSmartKeyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA4F56BF3C02A8F164BE1CBAD119AE /* DatBikeSmartKeyApp.swift */; };
+		A8A7D9CD2580F244342951F0CFF56636 /* SignalIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C12AC83C26941D4927CCA134AF380F /* SignalIndicator.swift */; };
+		B70A1A05B1955B2C297575F53D7FF7CA /* BLETelemetryParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7002A3AC9A896F9AFF52C1C9A878F12B /* BLETelemetryParser.swift */; };
+		B8840C572601A76FF04EC460BA76B32B /* BLEAccessorySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8747A5AE7C5FCE2E30624D18F7C4C09D /* BLEAccessorySetup.swift */; };
+		BE91CF90E3A3E224415AC3DEA7B802BB /* BLEPollingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF1CEB9359552D533990522A6E6B9F7 /* BLEPollingEngine.swift */; };
+		BF847A169DFB356A0C7FD427AFECCDCA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FCC6E9C8A2D8043FD4DBDF83350CCE5 /* DashboardView.swift */; };
+		C4076E2138EA08D7E6F6FA04F5DEE6B9 /* BLETaskQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD261BDC2093921FE38BE7486E9F7E91 /* BLETaskQueue.swift */; };
+		C58CF7FF543E31033BA0F7A946098514 /* BLECryptography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57692E101394A49F5DB2FF058CA1AD5B /* BLECryptography.swift */; };
+		C8807A6DD2568FC5D11285BC4B915C07 /* DatBikeCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2CABFAD4D80894A59FE01B37DBD967C /* DatBikeCore.swift */; };
+		D48539231A4EB2F795260018CDEBB4C2 /* BikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388B85BD6205C62981FA76514B43C809 /* BikeState.swift */; };
+		E070EDBA41A967A8AB5959A34BA970F8 /* IoTTypedModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF99A910FB3DFEFBD422F0D77250B9EA /* IoTTypedModels.swift */; };
+		F5B95415843E0B581F6CA028ABD868E1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8A4DD9F679F79F85EBCC1EEBC0E8AE /* MainView.swift */; };
+		FF199C4CEC167B4F490FC6F48993A4FB /* PreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F03AD5480391835B46E7593B112134 /* PreferencesManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		16CBCE3CABCBDE15A8ECC284 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		21050B43FC72C8A173A4EF52 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		388B85BD6205C62981FA7651 /* BikeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeState.swift; sourceTree = "<group>"; };
-		3B85AA99388E35EDABEC8870 /* StatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCard.swift; sourceTree = "<group>"; };
-		576A49715915FBA2B39FF95F /* SmartKeyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartKeyViewModel.swift; sourceTree = "<group>"; };
-		679D91488371B0C05358E180 /* SharedBikeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedBikeState.swift; sourceTree = "<group>"; };
-		6D28035E433410A46DE8392C /* DatBikeSmartkey.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DatBikeSmartkey.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		6FCC6E9C8A2D8043FD4DBDF8 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
-		7F6857C002FB8A3BACA43625 /* BLEConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEConstants.swift; sourceTree = "<group>"; };
-		8D8A4DD9F679F79F85EBCC1E /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
-		97A617757174092E8071FDE5 /* LockButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockButton.swift; sourceTree = "<group>"; };
-		9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatBikeSmartKeyApp.swift; sourceTree = "<group>"; };
-		B1C12AC83C26941D4927CCA1 /* SignalIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalIndicator.swift; sourceTree = "<group>"; };
-		C05562CDF9B9DBFC719F257D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEManager.swift; sourceTree = "<group>"; };
-		EF9551BB69F236D49B477850 /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
+		16CBCE3CABCBDE15A8ECC284F25F5F33 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		1D497B3507E68C262F4CDF89CE93BC73 /* IoTProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoTProtocols.swift; sourceTree = "<group>"; };
+		21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		34EE5343AA337AB6E362F3CB91632A40 /* DatBikeSmartkey.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DatBikeSmartkey.entitlements; sourceTree = "<group>"; };
+		388B85BD6205C62981FA76514B43C809 /* BikeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeState.swift; sourceTree = "<group>"; };
+		3B85AA99388E35EDABEC8870823D6958 /* StatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCard.swift; sourceTree = "<group>"; };
+		462FFA0486C355E3A7B020AE471FAEC2 /* BLEConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEConstants.swift; sourceTree = "<group>"; };
+		4AF1CEB9359552D533990522A6E6B9F7 /* BLEPollingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEPollingEngine.swift; sourceTree = "<group>"; };
+		4EDA91550F458545D616A31C725B1849 /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
+		57692E101394A49F5DB2FF058CA1AD5B /* BLECryptography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLECryptography.swift; sourceTree = "<group>"; };
+		61550F75A7B3022BC7FA942A039DECF4 /* IoTError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoTError.swift; sourceTree = "<group>"; };
+		679D91488371B0C05358E180BBC426BC /* SharedBikeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedBikeState.swift; sourceTree = "<group>"; };
+		6D28035E433410A46DE8392C086534B1 /* DatBikeSmartkey.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DatBikeSmartkey.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6D3640AFD52271742CB9C24E5DA7CE82 /* BLEAuthenticator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEAuthenticator.swift; sourceTree = "<group>"; };
+		6FCC6E9C8A2D8043FD4DBDF83350CCE5 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		7002A3AC9A896F9AFF52C1C9A878F12B /* BLETelemetryParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLETelemetryParser.swift; sourceTree = "<group>"; };
+		71F03AD5480391835B46E7593B112134 /* PreferencesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesManager.swift; sourceTree = "<group>"; };
+		8747A5AE7C5FCE2E30624D18F7C4C09D /* BLEAccessorySetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEAccessorySetup.swift; sourceTree = "<group>"; };
+		8D5BFF499347F9F3C5AB86837FD85D1B /* BLECommandDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLECommandDispatcher.swift; sourceTree = "<group>"; };
+		8D8A4DD9F679F79F85EBCC1EEBC0E8AE /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
+		97A617757174092E8071FDE590A4848C /* LockButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockButton.swift; sourceTree = "<group>"; };
+		9AA79BF2AA66071BAC48F86A19AE5B71 /* BLEConnectionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEConnectionContext.swift; sourceTree = "<group>"; };
+		9BEA4F56BF3C02A8F164BE1CBAD119AE /* DatBikeSmartKeyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatBikeSmartKeyApp.swift; sourceTree = "<group>"; };
+		B1C12AC83C26941D4927CCA134AF380F /* SignalIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalIndicator.swift; sourceTree = "<group>"; };
+		C05562CDF9B9DBFC719F257DD560252B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		C8E159FB9312D6ABD2942B1F9B70352E /* BLECharacteristicIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLECharacteristicIO.swift; sourceTree = "<group>"; };
+		C9199096C02324C14D9AFEA1B8548F24 /* AppDIContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDIContainer.swift; sourceTree = "<group>"; };
+		CA0DEFCC8C5F879C56FF954B6F94414F /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
+		CF99A910FB3DFEFBD422F0D77250B9EA /* IoTTypedModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoTTypedModels.swift; sourceTree = "<group>"; };
+		D8653E8961F943307958265B058C12AD /* BLEStateMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEStateMachine.swift; sourceTree = "<group>"; };
+		DD261BDC2093921FE38BE7486E9F7E91 /* BLETaskQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLETaskQueue.swift; sourceTree = "<group>"; };
+		E2CABFAD4D80894A59FE01B37DBD967C /* DatBikeCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatBikeCore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		122EB9B16032F4204D7D1785 /* Models */ = {
+		122EB9B16032F4204D7D17856FBCC3BD /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				388B85BD6205C62981FA7651 /* BikeState.swift */,
-				679D91488371B0C05358E180 /* SharedBikeState.swift */,
+				388B85BD6205C62981FA76514B43C809 /* BikeState.swift */,
+				679D91488371B0C05358E180BBC426BC /* SharedBikeState.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
 		};
-		2C7B919E938ADAAC5315A045 /* Components */ = {
+		2C7B919E938ADAAC5315A045A31F1A41 /* Components */ = {
 			isa = PBXGroup;
 			children = (
-				97A617757174092E8071FDE5 /* LockButton.swift */,
-				B1C12AC83C26941D4927CCA1 /* SignalIndicator.swift */,
-				3B85AA99388E35EDABEC8870 /* StatusCard.swift */,
+				97A617757174092E8071FDE590A4848C /* LockButton.swift */,
+				B1C12AC83C26941D4927CCA134AF380F /* SignalIndicator.swift */,
+				3B85AA99388E35EDABEC8870823D6958 /* StatusCard.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
 		};
-		4BD6485E6CF67053584E3F21 = {
+		3FE6B8683D914E3531BBE5008F30764A /* Transport */ = {
 			isa = PBXGroup;
 			children = (
-				B7BB8718BCB325CEDE408A85 /* DatBikeSmartkey */,
-				A955552598C6EF2BC152D444 /* Products */,
+				C8E159FB9312D6ABD2942B1F9B70352E /* BLECharacteristicIO.swift */,
+				9AA79BF2AA66071BAC48F86A19AE5B71 /* BLEConnectionContext.swift */,
+				DD261BDC2093921FE38BE7486E9F7E91 /* BLETaskQueue.swift */,
+			);
+			path = Transport;
+			sourceTree = "<group>";
+		};
+		4BD6485E6CF67053584E3F21A91B8CCB = {
+			isa = PBXGroup;
+			children = (
+				B7BB8718BCB325CEDE408A852CC5E2A3 /* DatBikeSmartkey */,
+				A955552598C6EF2BC152D444928D4F06 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		53418555D3043C5424A56A4B /* Views */ = {
+		53418555D3043C5424A56A4B3FC7C60D /* Views */ = {
 			isa = PBXGroup;
 			children = (
-				6FCC6E9C8A2D8043FD4DBDF8 /* DashboardView.swift */,
-				EF9551BB69F236D49B477850 /* DebugLogView.swift */,
-				8D8A4DD9F679F79F85EBCC1E /* MainView.swift */,
-				C05562CDF9B9DBFC719F257D /* SettingsView.swift */,
-				2C7B919E938ADAAC5315A045 /* Components */,
+				6FCC6E9C8A2D8043FD4DBDF83350CCE5 /* DashboardView.swift */,
+				8D8A4DD9F679F79F85EBCC1EEBC0E8AE /* MainView.swift */,
+				C05562CDF9B9DBFC719F257DD560252B /* SettingsView.swift */,
+				2C7B919E938ADAAC5315A045A31F1A41 /* Components */,
 			);
 			path = Views;
 			sourceTree = "<group>";
 		};
-		9F7B242263F3F5A976476610 /* ViewModels */ = {
+		6983C13051188C59D263851EAA48A43D /* Domain */ = {
 			isa = PBXGroup;
 			children = (
-				576A49715915FBA2B39FF95F /* SmartKeyViewModel.swift */,
+				462FFA0486C355E3A7B020AE471FAEC2 /* BLEConstants.swift */,
+				61550F75A7B3022BC7FA942A039DECF4 /* IoTError.swift */,
+				1D497B3507E68C262F4CDF89CE93BC73 /* IoTProtocols.swift */,
+				CF99A910FB3DFEFBD422F0D77250B9EA /* IoTTypedModels.swift */,
+			);
+			path = Domain;
+			sourceTree = "<group>";
+		};
+		916107540A91D3F93CA434A850B91619 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				6D3640AFD52271742CB9C24E5DA7CE82 /* BLEAuthenticator.swift */,
+				8D5BFF499347F9F3C5AB86837FD85D1B /* BLECommandDispatcher.swift */,
+				57692E101394A49F5DB2FF058CA1AD5B /* BLECryptography.swift */,
+				4AF1CEB9359552D533990522A6E6B9F7 /* BLEPollingEngine.swift */,
+				7002A3AC9A896F9AFF52C1C9A878F12B /* BLETelemetryParser.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		95210A7872648BF4FFD37A64FC475C36 /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				8747A5AE7C5FCE2E30624D18F7C4C09D /* BLEAccessorySetup.swift */,
+				D8653E8961F943307958265B058C12AD /* BLEStateMachine.swift */,
+				E2CABFAD4D80894A59FE01B37DBD967C /* DatBikeCore.swift */,
+				71F03AD5480391835B46E7593B112134 /* PreferencesManager.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		9F7B242263F3F5A9764766106E51960A /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				4EDA91550F458545D616A31C725B1849 /* DashboardViewModel.swift */,
+				CA0DEFCC8C5F879C56FF954B6F94414F /* SettingsViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
 		};
-		A955552598C6EF2BC152D444 /* Products */ = {
+		A955552598C6EF2BC152D444928D4F06 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				6D28035E433410A46DE8392C /* DatBikeSmartkey.app */,
+				6D28035E433410A46DE8392C086534B1 /* DatBikeSmartkey.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		B7BB8718BCB325CEDE408A85 /* DatBikeSmartkey */ = {
+		B7BB8718BCB325CEDE408A852CC5E2A3 /* DatBikeSmartkey */ = {
 			isa = PBXGroup;
 			children = (
-				21050B43FC72C8A173A4EF52 /* Assets.xcassets */,
-				9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */,
-				16CBCE3CABCBDE15A8ECC284 /* Info.plist */,
-				F6139BC99B813739C4693248 /* BLE */,
-				122EB9B16032F4204D7D1785 /* Models */,
-				9F7B242263F3F5A976476610 /* ViewModels */,
-				53418555D3043C5424A56A4B /* Views */,
+				C9199096C02324C14D9AFEA1B8548F24 /* AppDIContainer.swift */,
+				21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */,
+				34EE5343AA337AB6E362F3CB91632A40 /* DatBikeSmartkey.entitlements */,
+				9BEA4F56BF3C02A8F164BE1CBAD119AE /* DatBikeSmartKeyApp.swift */,
+				16CBCE3CABCBDE15A8ECC284F25F5F33 /* Info.plist */,
+				F6139BC99B813739C4693248AB2E628D /* BLE */,
+				122EB9B16032F4204D7D17856FBCC3BD /* Models */,
+				9F7B242263F3F5A9764766106E51960A /* ViewModels */,
+				53418555D3043C5424A56A4B3FC7C60D /* Views */,
 			);
 			path = DatBikeSmartkey;
 			sourceTree = "<group>";
 		};
-		F6139BC99B813739C4693248 /* BLE */ = {
+		F6139BC99B813739C4693248AB2E628D /* BLE */ = {
 			isa = PBXGroup;
 			children = (
-				7F6857C002FB8A3BACA43625 /* BLEConstants.swift */,
-				CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */,
+				95210A7872648BF4FFD37A64FC475C36 /* Core */,
+				6983C13051188C59D263851EAA48A43D /* Domain */,
+				916107540A91D3F93CA434A850B91619 /* Services */,
+				3FE6B8683D914E3531BBE5008F30764A /* Transport */,
 			);
 			path = BLE;
 			sourceTree = "<group>";
@@ -124,100 +203,108 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		B00D597E4E6B8C6D9A628FEA /* DatBikeSmartkey */ = {
+		B00D597E4E6B8C6D9A628FEA3F8240E1 /* DatBikeSmartkey */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 791D3E6C54C9E331709FF9CB /* Build configuration list for PBXNativeTarget "DatBikeSmartkey" */;
+			buildConfigurationList = 791D3E6C54C9E331709FF9CB0E25C702 /* Build configuration list for PBXNativeTarget "DatBikeSmartkey" */;
 			buildPhases = (
-				3F8D049541D0382EEEDF3720 /* Sources */,
-				265212DDE57ABFB14EA42D25 /* Resources */,
+				3F8D049541D0382EEEDF37206028ADFC /* Sources */,
+				265212DDE57ABFB14EA42D255DF0300E /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			name = DatBikeSmartkey;
-			packageProductDependencies = (
-			);
 			productName = DatBikeSmartkey;
-			productReference = 6D28035E433410A46DE8392C /* DatBikeSmartkey.app */;
+			productReference = 6D28035E433410A46DE8392C086534B1 /* DatBikeSmartkey.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		382E459A4399B373ED6A1E41 /* Project object */ = {
+		382E459A4399B373ED6A1E41D3FB3AE3 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 1000;
 				TargetAttributes = {
-					B00D597E4E6B8C6D9A628FEA = {
+					B00D597E4E6B8C6D9A628FEA3F8240E1 = {
 						DevelopmentTeam = MH385VJBCB;
 						ProvisioningStyle = Automatic;
 					};
 				};
 			};
-			buildConfigurationList = 7676589F9D8971D9AFD23A8D /* Build configuration list for PBXProject "DatBikeSmartkey" */;
+			buildConfigurationList = 7676589F9D8971D9AFD23A8D8F916ABB /* Build configuration list for PBXProject "DatBikeSmartkey" */;
+			compatibilityVersion = "Xcode 9.3";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				Base,
 				en,
 			);
-			mainGroup = 4BD6485E6CF67053584E3F21;
-			minimizedProjectReferenceProxies = 1;
-			preferredProjectObjectVersion = 77;
-			productRefGroup = A955552598C6EF2BC152D444 /* Products */;
+			mainGroup = 4BD6485E6CF67053584E3F21A91B8CCB;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				B00D597E4E6B8C6D9A628FEA /* DatBikeSmartkey */,
+				B00D597E4E6B8C6D9A628FEA3F8240E1 /* DatBikeSmartkey */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		265212DDE57ABFB14EA42D25 /* Resources */ = {
+		265212DDE57ABFB14EA42D255DF0300E /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */,
+				337ADBAA3B70A21C0EE26A4931EB761E /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		3F8D049541D0382EEEDF3720 /* Sources */ = {
+		3F8D049541D0382EEEDF37206028ADFC /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				13FBAE203AFEB7C79C1210B4 /* BLEConstants.swift in Sources */,
-				F364707A10511F67495BC75D /* BLEManager.swift in Sources */,
-				459F8C6F5265D4DBDC8E7D92 /* BikeState.swift in Sources */,
-				2EE97DF2F2874274B4E74BD9 /* DashboardView.swift in Sources */,
-				8CD08588268786D9762D1DCC /* DatBikeSmartKeyApp.swift in Sources */,
-				04C3ACC31BC5F0C0E3D28178 /* DebugLogView.swift in Sources */,
-				00EB49AE3BDA2C0C7040C9CD /* LockButton.swift in Sources */,
-				FD23847C3D8A4F42AB57E18D /* MainView.swift in Sources */,
-				47F181759EB61BCF60800366 /* SettingsView.swift in Sources */,
-				4D228EFFF0B70777C0A72B42 /* SharedBikeState.swift in Sources */,
-				23BE748DFF7BF3A246D13AFD /* SignalIndicator.swift in Sources */,
-				07DFC5B75E67528ADA1FA2E0 /* SmartKeyViewModel.swift in Sources */,
-				153B3F42D7007BFBDB696519 /* StatusCard.swift in Sources */,
+				1317C389CF45A175FE36A45ABDEEB886 /* AppDIContainer.swift in Sources */,
+				B8840C572601A76FF04EC460BA76B32B /* BLEAccessorySetup.swift in Sources */,
+				461BE7C18B7E80BB5C7582003E7FD7DE /* BLEAuthenticator.swift in Sources */,
+				55999D0909BE9EA7A2549D9782828282 /* BLECharacteristicIO.swift in Sources */,
+				59D6C63F16CC19FFEFCBF257C12539AF /* BLECommandDispatcher.swift in Sources */,
+				46D2E68782623B5C9BB9F03DA8C43FB8 /* BLEConnectionContext.swift in Sources */,
+				72AD9647D22031153D242E28108F6E0A /* BLEConstants.swift in Sources */,
+				C58CF7FF543E31033BA0F7A946098514 /* BLECryptography.swift in Sources */,
+				BE91CF90E3A3E224415AC3DEA7B802BB /* BLEPollingEngine.swift in Sources */,
+				7610617F7A326290C1D5806FD08DC90A /* BLEStateMachine.swift in Sources */,
+				C4076E2138EA08D7E6F6FA04F5DEE6B9 /* BLETaskQueue.swift in Sources */,
+				B70A1A05B1955B2C297575F53D7FF7CA /* BLETelemetryParser.swift in Sources */,
+				D48539231A4EB2F795260018CDEBB4C2 /* BikeState.swift in Sources */,
+				BF847A169DFB356A0C7FD427AFECCDCA /* DashboardView.swift in Sources */,
+				6A34E8A95930A9E78D9DA393F8567A48 /* DashboardViewModel.swift in Sources */,
+				C8807A6DD2568FC5D11285BC4B915C07 /* DatBikeCore.swift in Sources */,
+				884B9C4CFA2D537F7EA18B02C6B0F43D /* DatBikeSmartKeyApp.swift in Sources */,
+				32FE182834CB327E643E603CC1D3A002 /* IoTError.swift in Sources */,
+				57E7B4ECC0FA6CEC4BF375259FEE1E77 /* IoTProtocols.swift in Sources */,
+				E070EDBA41A967A8AB5959A34BA970F8 /* IoTTypedModels.swift in Sources */,
+				2BFF2E5A7B82271FAB05C0307935B45E /* LockButton.swift in Sources */,
+				F5B95415843E0B581F6CA028ABD868E1 /* MainView.swift in Sources */,
+				FF199C4CEC167B4F490FC6F48993A4FB /* PreferencesManager.swift in Sources */,
+				091AB28D2C6697E5C12F62CC307F6D50 /* SettingsView.swift in Sources */,
+				5D31AE63EB79F4163585616B388261B4 /* SettingsViewModel.swift in Sources */,
+				436627ECB43EC3016EF6D667546308FA /* SharedBikeState.swift in Sources */,
+				A8A7D9CD2580F244342951F0CFF56636 /* SignalIndicator.swift in Sources */,
+				55A3C90094AF2C3EADE958317EBB769D /* StatusCard.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		4708387DC16AF274F2797CD0 /* Debug */ = {
+		4708387DC16AF274F2797CD032A84C7C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = DatBikeSmartkey/DatBikeSmartkey.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_PREVIEWS = YES;
@@ -226,7 +313,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey;
-				SDKROOT = iphoneos;
+				PRODUCT_NAME = DatBikeSmartkey;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -234,13 +321,12 @@
 			};
 			name = Debug;
 		};
-		9696DE004FE6112F8E0EA684 /* Release */ = {
+		9696DE004FE6112F8E0EA684F250435B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = DatBikeSmartkey/DatBikeSmartkey.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				DEVELOPMENT_TEAM = MH385VJBCB;
@@ -251,7 +337,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey;
-				SDKROOT = iphoneos;
+				PRODUCT_NAME = DatBikeSmartkey;
 				STRIP_INSTALLED_PRODUCT = YES;
 				STRIP_SWIFT_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -263,125 +349,24 @@
 			};
 			name = Release;
 		};
-		AAA0CCA643B5F37CC60C23F5 /* Debug */ = {
+		AAA0CCA643B5F37CC60C23F5622DD718 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 3;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_TESTABILITY = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu11;
-				GCC_DYNAMIC_NO_PIC = NO;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = (
-					"$(inherited)",
-					"DEBUG=1",
-				);
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 2.0.0;
-				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
-				MTL_FAST_MATH = YES;
-				ONLY_ACTIVE_ARCH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
-				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.9;
 			};
 			name = Debug;
 		};
-		ED6738C8FFCC9AF625DCD51A /* Release */ = {
+		ED6738C8FFCC9AF625DCD51A0582473F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				CLANG_ANALYZER_NONNULL = YES;
-				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
-				CLANG_CXX_LIBRARY = "libc++";
-				CLANG_ENABLE_MODULES = YES;
-				CLANG_ENABLE_OBJC_ARC = YES;
-				CLANG_ENABLE_OBJC_WEAK = YES;
-				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
-				CLANG_WARN_BOOL_CONVERSION = YES;
-				CLANG_WARN_COMMA = YES;
-				CLANG_WARN_CONSTANT_CONVERSION = YES;
-				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
-				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
-				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
-				CLANG_WARN_EMPTY_BODY = YES;
-				CLANG_WARN_ENUM_CONVERSION = YES;
-				CLANG_WARN_INFINITE_RECURSION = YES;
-				CLANG_WARN_INT_CONVERSION = YES;
-				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
-				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
-				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
-				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
-				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
-				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
-				CLANG_WARN_STRICT_PROTOTYPES = YES;
-				CLANG_WARN_SUSPICIOUS_MOVE = YES;
-				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
-				CLANG_WARN_UNREACHABLE_CODE = YES;
-				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
-				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 3;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_NS_ASSERTIONS = NO;
-				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				GCC_C_LANGUAGE_STANDARD = gnu11;
-				GCC_NO_COMMON_BLOCKS = YES;
-				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
-				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
-				GCC_WARN_UNDECLARED_SELECTOR = YES;
-				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
-				GCC_WARN_UNUSED_FUNCTION = YES;
-				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MARKETING_VERSION = 2.0.0;
-				MTL_ENABLE_DEBUG_INFO = NO;
-				MTL_FAST_MATH = YES;
-				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.9;
 			};
 			name = Release;
@@ -389,25 +374,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		7676589F9D8971D9AFD23A8D /* Build configuration list for PBXProject "DatBikeSmartkey" */ = {
+		7676589F9D8971D9AFD23A8D8F916ABB /* Build configuration list for PBXProject "DatBikeSmartkey" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				AAA0CCA643B5F37CC60C23F5 /* Debug */,
-				ED6738C8FFCC9AF625DCD51A /* Release */,
+				AAA0CCA643B5F37CC60C23F5622DD718 /* Debug */,
+				ED6738C8FFCC9AF625DCD51A0582473F /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		791D3E6C54C9E331709FF9CB /* Build configuration list for PBXNativeTarget "DatBikeSmartkey" */ = {
+		791D3E6C54C9E331709FF9CB0E25C702 /* Build configuration list for PBXNativeTarget "DatBikeSmartkey" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				4708387DC16AF274F2797CD0 /* Debug */,
-				9696DE004FE6112F8E0EA684 /* Release */,
+				4708387DC16AF274F2797CD032A84C7C /* Debug */,
+				9696DE004FE6112F8E0EA684F250435B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = "";
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 382E459A4399B373ED6A1E41 /* Project object */;
+	rootObject = 382E459A4399B373ED6A1E41D3FB3AE3 /* Project object */;
 }

@@ -3,7 +3,7 @@
 import SwiftUI
 
 struct LockButton: View {
-    let lockStatus: LockStatus
+    let lockStatus: IoTLockState
     let isProcessing: Bool
     let action: () -> Void
     
@@ -134,8 +134,8 @@ struct LockButton: View {
 
 // MARK: - Status Label
 
-struct LockStatusLabel: View {
-    let lockStatus: LockStatus
+struct IoTLockStateLabel: View {
+    let lockStatus: IoTLockState
     
     var body: some View {
         HStack(spacing: 8) {

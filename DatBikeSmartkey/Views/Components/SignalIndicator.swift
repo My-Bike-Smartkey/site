@@ -2,6 +2,31 @@
 
 import SwiftUI
 
+enum SignalStrength: Int {
+    case weak = 1
+    case fair = 2
+    case good = 3
+    case excellent = 4
+    
+    var color: Color {
+        switch self {
+        case .weak: return .red
+        case .fair: return .orange
+        case .good: return .green
+        case .excellent: return .green
+        }
+    }
+    
+    var label: String {
+        switch self {
+        case .weak: return "Yếu"
+        case .fair: return "Tạm"
+        case .good: return "Tốt"
+        case .excellent: return "Rất tốt"
+        }
+    }
+}
+
 struct SignalIndicator: View {
     let strength: SignalStrength
     let rssi: Int

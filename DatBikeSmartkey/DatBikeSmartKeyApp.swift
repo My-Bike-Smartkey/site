@@ -8,13 +8,14 @@ import UserNotifications
 @main
 struct DatBikeSmartKeyApp: App {
     
+    @StateObject private var container = AppDIContainer()
+    
     var body: some Scene {
         WindowGroup {
             MainView()
+                .environmentObject(container) // Truyền ngang dọc từ gốc
                 .onAppear {
                     requestNotificationPermission()
-                    // Initialize BLEManager singleton — activates ASAccessorySession
-                    _ = BLEManager.shared
                 }
                 .onOpenURL { url in
                     handleDeepLink(url)
@@ -25,9 +26,15 @@ struct DatBikeSmartKeyApp: App {
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "mybikesmartkey" else { return }
         switch url.host {
-        case "lock":      Task { try? await BLEManager.shared.lock() }
-        case "unlock":    Task { try? await BLEManager.shared.turnOnBike() }
-        case "connect":   BLEManager.shared.triggerManualConnect()
+        case "lock":      
+            if let dispatcher = try? container.bleCore.getDispatcher() {
+                Task { try? await dispatcher.toggleLock() }
+            }
+        case "unlock":    
+            if let dispatcher = try? container.bleCore.getDispatcher() {
+                Task { try? await dispatcher.turnOnBike() }
+            }
+        case "connect":   container.bleCore.connect()
         case "dashboard": break  // app mở bình thường
         default:          break
         }
@@ -41,4 +48,3 @@ struct DatBikeSmartKeyApp: App {
         }
     }
 }
-

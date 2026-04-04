@@ -3,10 +3,10 @@
 import SwiftUI
 
 struct StatusCard: View {
-    let connectionState: ConnectionState
+    let connectionState: IoTConnectionState
     let rssi: Int
     let signalStrength: SignalStrength
-    let bikeInfo: BikeInfo
+    let bikeInfo: DashboardViewModel.FakeBikeInfo
     let batteryPercentage: Int
     let odometer: Float
     
@@ -58,7 +58,7 @@ struct StatusCard: View {
     
     private var statusColor: Color {
         switch connectionState {
-        case .ready:            return .green
+        case .active:            return .green
         case .scanning,
              .connecting,
              .authenticating:   return .orange

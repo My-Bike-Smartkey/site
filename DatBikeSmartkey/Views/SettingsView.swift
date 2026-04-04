@@ -4,7 +4,7 @@ import SwiftUI
 import CoreImage.CIFilterBuiltins
 
 struct SettingsView: View {
-    @ObservedObject var viewModel: SmartKeyViewModel
+    @ObservedObject var viewModel: SettingsViewModel
     @State private var showLogs = false
     @State private var showForgetConfirm = false
     @State private var showInfoAutoConnect = false
@@ -62,13 +62,13 @@ struct SettingsView: View {
                                             title: "Auto Unlock",
                                             icon: "location.fill",
                                             iconColor: .purple,
-                                            body: "Khi bật, app đo tín hiệu Bluetooth (RSSI) liên tục khi mở app. Khi RSSI vượt ngưỡng cài đặt (tức là bạn đang đứng đủ gần xe), app tự động gửi lệnh mở khóa — giống như Grab-key, không cần chạm màn hình.\n\n⚠️ Dùng thận trọng: xe có thể tự mở khóa nếu bạn đang mở app và đứng gần nhưng không có ý định đi."
+                                            body: "Khi bật, app đo tín hiệu Bluetooth (RSSI) liên tục khi mở app. Khi RSSI vượt ngưỡng cài đặt (tức là bạn đang đứng đủ gần xe), app tự tự động mở khoá."
                                         )
                                     }
                                     Spacer()
                                     Toggle("", isOn: Binding(
                                         get: { viewModel.autoUnlockEnabled },
-                                        set: { viewModel.setAutoUnlock($0) }
+                                        set: { viewModel.autoUnlockEnabled = $0 }
                                     ))
                                     .tint(.purple)
                                 }

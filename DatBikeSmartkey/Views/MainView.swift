@@ -3,7 +3,7 @@
 import SwiftUI
 
 struct MainView: View {
-    @StateObject private var viewModel = SmartKeyViewModel()
+    @EnvironmentObject var container: AppDIContainer
     @State private var showingSettings = false
     @State private var showingLogs = false
     @State private var showingNFCPrompt = false
@@ -11,15 +11,21 @@ struct MainView: View {
     
     var body: some View {
         Group {
-            if viewModel.isAuthenticated {
-                DashboardView(viewModel: viewModel)
+            if container.dashboardViewModel.isConnected {
+                DashboardView(viewModel: container.dashboardViewModel)
                     .transition(.opacity)
             } else {
-                ConnectingSplashView(viewModel: viewModel, showingSettings: $showingSettings, showingLogs: $showingLogs, showingNFCPrompt: $showingNFCPrompt)
-                    .transition(.opacity)
+                ConnectingSplashView(
+                    dashboardVM: container.dashboardViewModel,
+                    settingsVM: container.settingsViewModel,
+                    showingSettings: $showingSettings,
+                    showingLogs: $showingLogs,
+                    showingNFCPrompt: $showingNFCPrompt
+                )
+                .transition(.opacity)
             }
         }
-        .animation(.easeInOut, value: viewModel.isAuthenticated)
+        .animation(.easeInOut, value: container.dashboardViewModel.isConnected)
         .preferredColorScheme(.dark)
         .onAppear {
             if !UserDefaults.standard.bool(forKey: "disclaimerAccepted") {
@@ -27,10 +33,7 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $showingSettings) {
-            SettingsView(viewModel: viewModel)
-        }
-        .sheet(isPresented: $showingLogs) {
-            DebugLogView(bleManager: BLEManager.shared)
+            SettingsView(viewModel: container.settingsViewModel)
         }
         .alert("Miễn trừ trách nhiệm", isPresented: $showingDisclaimer) {
             Button("Tôi đã hiểu và đồng ý") {
@@ -50,11 +53,11 @@ struct MainView: View {
             Button("Hủy", role: .cancel) {
                 // Do nothing
             }
-            Button("Bắt đầu ghép đôi") {
-                viewModel.showAccessoryPicker()
+            Button("Bắt đầu") {
+                container.dashboardViewModel.connectBike()
             }
         } message: {
-            Text("Đảm bảo thẻ NFC đã được đặt trên mặt đồng hồ xe. Bấm xác nhận để bắt đầu ghép đôi Bluetooth.")
+            Text("Đảm bảo quá trình ghép đôi AccessorySetupKit đã được khởi tạo.")
         }
     }
 }
@@ -62,7 +65,8 @@ struct MainView: View {
 // MARK: - Connecting Splash View
 
 struct ConnectingSplashView: View {
-    @ObservedObject var viewModel: SmartKeyViewModel
+    @ObservedObject var dashboardVM: DashboardViewModel
+    @ObservedObject var settingsVM: SettingsViewModel
     @Binding var showingSettings: Bool
     @Binding var showingLogs: Bool
     @Binding var showingNFCPrompt: Bool
@@ -79,7 +83,7 @@ struct ConnectingSplashView: View {
             VStack {
                 HStack {
                     Spacer()
-                    if viewModel.isDebugModeEnabled {
+                    if settingsVM.isDebugModeEnabled {
                         Button(action: { showingLogs = true }) {
                             Image(systemName: "terminal.fill")
                                 .font(.system(size: 24))
@@ -118,18 +122,18 @@ struct ConnectingSplashView: View {
                 
                 // Status indicator
                 VStack(spacing: 20) {
-                    if let _ = viewModel.connectionState.displayText.range(of: "Lỗi") {
+                    if let err = dashboardVM.pairingError {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.largeTitle)
                             .foregroundColor(.red)
                         
-                        Text(viewModel.connectionState.displayText)
+                        Text(err)
                             .font(.subheadline)
                             .foregroundColor(.red.opacity(0.8))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                         
-                        Button(action: { viewModel.startScan() }) {
+                        Button(action: { dashboardVM.connectBike() }) {
                             Text("Thử lại")
                                 .font(.headline)
                                 .foregroundColor(.white)
@@ -138,68 +142,41 @@ struct ConnectingSplashView: View {
                                 .background(Color.orange)
                                 .clipShape(Capsule())
                         }
-                    } else if viewModel.connectionState.isWorking {
+                    } else if dashboardVM.connectionState == .connecting || dashboardVM.connectionState == .authenticating {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                             .scaleEffect(1.5)
                         
-                        Text(viewModel.connectionState.displayText)
+                        Text("Đang thiết lập kết nối mã hoá...")
                             .font(.headline)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    } else if viewModel.connectionState == .pairingRequired {
-                        Image(systemName: "wave.3.right")
-                            .font(.system(size: 40))
-                            .foregroundColor(.orange)
-                        
-                        Text("Quẹt thẻ NFC vào đồng hồ xe")
-                            .font(.headline)
-                            .foregroundColor(.orange)
-                        
-                        Text("Đặt thẻ NFC lên mặt đồng hồ và chờ xác thực")
-                            .font(.subheadline)
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     } else {
-                        // Disconnected / Bluetooth Off — show action buttons
-                        if viewModel.hasAuthorizedAccessory {
-                            // Already has an authorized bike — auto-reconnecting silently
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .orange))
-                                .scaleEffect(1.2)
-                            
-                            Text("Đang kết nối lại xe...")
-                                .font(.headline)
-                                .foregroundColor(.gray)
-                        } else {
-                            // No authorized bike — show picker button
-                            Button(action: { showingNFCPrompt = true }) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title2)
-                                    Text("Thêm xe")
-                                        .font(.headline)
-                                }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 30)
-                                .padding(.vertical, 14)
-                                .background(
-                                    LinearGradient(
-                                        colors: [.orange, .orange.opacity(0.8)],
-                                        startPoint: .leading,
-                                        endPoint: .trailing
-                                    )
-                                )
-                                .clipShape(Capsule())
-                                .shadow(color: .orange.opacity(0.3), radius: 10, y: 5)
+                        Button(action: { showingNFCPrompt = true }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                                Text("Thêm xe / Kết nối")
+                                    .font(.headline)
                             }
-                            
-                            Text("Sử dụng AccessorySetupKit để ghép đôi an toàn")
-                                .font(.caption)
-                                .foregroundColor(.gray.opacity(0.6))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 30)
+                            .padding(.vertical, 14)
+                            .background(
+                                LinearGradient(
+                                    colors: [.orange, .orange.opacity(0.8)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .clipShape(Capsule())
+                            .shadow(color: .orange.opacity(0.3), radius: 10, y: 5)
                         }
+                        
+                        Text("Sử dụng kiến trúc IoT V2")
+                            .font(.caption)
+                            .foregroundColor(.gray.opacity(0.6))
                     }
                 }
                 .frame(minHeight: 100)
