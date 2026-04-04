@@ -21,9 +21,17 @@ actor BLECharacteristicIO {
     func readValue(from characteristic: CBCharacteristic) async throws -> Data {
         if peripheral.state != .connected { throw IoTError.notConnected }
         
-        return try await withCheckedThrowingContinuation { continuation in
-            readContinuations[characteristic.uuid] = continuation
-            peripheral.readValue(for: characteristic)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                if let old = readContinuations[characteristic.uuid] {
+                    print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Read cho \(characteristic.uuid) bị huỷ đè!")
+                    old.resume(throwing: CancellationError())
+                }
+                readContinuations[characteristic.uuid] = continuation
+                peripheral.readValue(for: characteristic)
+            }
+        } onCancel: {
+            Task { [weak self] in await self?.cancelRead(for: characteristic.uuid) }
         }
     }
     
@@ -31,13 +39,32 @@ actor BLECharacteristicIO {
         if peripheral.state != .connected { throw IoTError.notConnected }
         
         if type == .withResponse {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                writeContinuations[characteristic.uuid] = continuation
-                peripheral.writeValue(data, for: characteristic, type: type)
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    if let old = writeContinuations[characteristic.uuid] {
+                        print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Write cho \(characteristic.uuid) bị huỷ đè!")
+                        old.resume(throwing: CancellationError())
+                    }
+                    writeContinuations[characteristic.uuid] = continuation
+                    peripheral.writeValue(data, for: characteristic, type: type)
+                }
+            } onCancel: {
+                Task { [weak self] in await self?.cancelWrite(for: characteristic.uuid) }
             }
         } else {
             peripheral.writeValue(data, for: characteristic, type: type)
         }
+    }
+    
+    // MARK: - Cancellation Lifecycle
+    func cancelRead(for targetUUID: CBUUID) {
+        guard let continuation = readContinuations.removeValue(forKey: targetUUID) else { return }
+        continuation.resume(throwing: CancellationError())
+    }
+    
+    func cancelWrite(for targetUUID: CBUUID) {
+        guard let continuation = writeContinuations.removeValue(forKey: targetUUID) else { return }
+        continuation.resume(throwing: CancellationError())
     }
     
     // MARK: - Delegate Bơm ngược (Feedbacks)

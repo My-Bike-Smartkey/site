@@ -8,8 +8,7 @@ class BLEPollingEngine {
     
     private let context: BLEConnectionContext
     
-    private var rssiTimer: Timer?
-    private var keepAliveTimer: Timer?
+    private var pollingTask: Task<Void, Never>?
     
     // Publishers
     @Published private(set) var currentRSSI: Double = 0.0
@@ -21,26 +20,39 @@ class BLEPollingEngine {
     func startPolling() {
         stopPolling()
         
-        // 1. RSSI Polling
-        DispatchQueue.main.async { [weak self] in
+        pollingTask = Task { [weak self] in
             guard let self = self else { return }
-            self.rssiTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-                self?.context.peripheral.readRSSI()
-            }
-        }
-        
-        // 2. Keep-Alive / Telemetry Polling
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else { return }
-            self.keepAliveTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
-                guard let self = self else { return }
-                // Đẩy vào Queue để đọc an toàn
-                Task {
-                    do {
-                        let echoChar = try self.context.requireCharacteristic(BLECharacteristic.smartkeyEcho)
-                        let _ = try await self.context.io.readValue(from: echoChar)
-                    } catch {
-                        // Bỏ qua lỗi Keep Alive tạm thời
+            
+            // Chạy 2 vòng lặp bất đồng bộ song song cho RSSI và Keep-Alive
+            await withTaskGroup(of: Void.self) { group in
+                
+                // Vòng lặp 1: RSSI Polling (Mỗi 1s)
+                group.addTask { [weak self] in
+                    while !Task.isCancelled {
+                        self?.context.peripheral.readRSSI() // Lệnh này không qua CharacteristicIO nên không cần Enqueue
+                        do {
+                            // Sleep 1s (Swift 6 chuẩn)
+                            try await Task.sleep(nanoseconds: 1_000_000_000)
+                        } catch { break }
+                    }
+                }
+                
+                // Vòng lặp 2: Keep-Alive / Telemetry (Mỗi 30s)
+                group.addTask { [weak self] in
+                    while !Task.isCancelled {
+                        do {
+                            try await Task.sleep(nanoseconds: 30_000_000_000) // Sleep 30s
+                            guard let self = self else { break }
+                            
+                            // ĐẨY VÀO QUEUE ĐỂ ĐẢM BẢO KHÔNG XUNG ĐỘT (GATT COLLISION)
+                            let _ = try await self.context.queue.enqueue {
+                                let echoChar = try self.context.requireCharacteristic(BLECharacteristic.smartkeyEcho)
+                                return try await self.context.io.readValue(from: echoChar)
+                            }
+                        } catch {
+                            // Bỏ qua lỗi huỷ hoặc kẹt BLE
+                            if error is CancellationError { break }
+                        }
                     }
                 }
             }
@@ -48,12 +60,8 @@ class BLEPollingEngine {
     }
     
     func stopPolling() {
-        DispatchQueue.main.async { [weak self] in
-            self?.rssiTimer?.invalidate()
-            self?.rssiTimer = nil
-            self?.keepAliveTimer?.invalidate()
-            self?.keepAliveTimer = nil
-        }
+        pollingTask?.cancel()
+        pollingTask = nil
     }
     
     // Được Delegate CBPeripheralDelegate gọi lại

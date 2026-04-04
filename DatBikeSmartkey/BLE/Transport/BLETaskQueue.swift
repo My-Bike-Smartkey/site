@@ -4,15 +4,21 @@ import Foundation
 /// được thực thi tuần tự (FIFO), ngăn chặn triệt để tình trạng đè lệnh (GATT collisions) gây treo phần cứng.
 actor BLETaskQueue {
     private var isExecuting: Bool = false
-    private var pendingTasks: [CheckedContinuation<Void, Error>] = []
+    private var pendingTasks: [(UUID, CheckedContinuation<Void, Error>)] = []
     
     /// Thêm một khối lệnh bất đồng bộ vào hàng đợi. Nó sẽ bị treo (await) cho đến khi
     /// phần cứng Bluetooth rảnh rỗi và đến lượt nó thi hành.
     func enqueue<T>(task: @escaping () async throws -> T) async throws -> T {
+        let taskID = UUID()
+        
         // Đăng kí xếp hàng nếu Queue đang bận
         if isExecuting {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                pendingTasks.append(continuation)
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    pendingTasks.append((taskID, continuation))
+                }
+            } onCancel: {
+                Task { [weak self] in await self?.cancelTask(id: taskID) }
             }
         }
         
@@ -22,6 +28,7 @@ actor BLETaskQueue {
         }
         
         // Bắt đầu thực thi Task
+        try Task.checkCancellation()
         return try await task()
     }
     
@@ -31,7 +38,16 @@ actor BLETaskQueue {
         } else {
             // Cho phép tác vụ tiếp theo (FIFO)
             let next = pendingTasks.removeFirst()
-            next.resume()
+            next.1.resume()
+        }
+    }
+    
+    /// Bắn tín hiệu huỷ 1 task duy nhất (Do user huỷ)
+    private func cancelTask(id: UUID) {
+        if let index = pendingTasks.firstIndex(where: { $0.0 == id }) {
+            print("⚠️ [BLE_QUEUE] Đã huỷ tác vụ đang xếp hàng: \(id)")
+            let removed = pendingTasks.remove(at: index)
+            removed.1.resume(throwing: CancellationError())
         }
     }
     
@@ -42,7 +58,7 @@ actor BLETaskQueue {
         isExecuting = false
         
         for task in tasks {
-            task.resume(throwing: IoTError.gattOverload)
+            task.1.resume(throwing: IoTError.gattOverload) // Báo ngắt toàn bộ liên kết
         }
     }
 }
