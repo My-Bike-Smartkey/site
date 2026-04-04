@@ -30,6 +30,8 @@ struct MainView: View {
         .onAppear {
             if !UserDefaults.standard.bool(forKey: "disclaimerAccepted") {
                 showingDisclaimer = true
+            } else {
+                container.dashboardViewModel.initializeHardware()
             }
         }
         .sheet(isPresented: $showingSettings) {
@@ -38,6 +40,7 @@ struct MainView: View {
         .alert("Miễn trừ trách nhiệm", isPresented: $showingDisclaimer) {
             Button("Tôi đã hiểu và đồng ý") {
                 UserDefaults.standard.set(true, forKey: "disclaimerAccepted")
+                container.dashboardViewModel.initializeHardware()
             }
         } message: {
             Text("""

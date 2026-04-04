@@ -82,6 +82,10 @@ class DashboardViewModel: ObservableObject {
     
     // MARK: - Tiền Trình Bấm Nút
     
+    func initializeHardware() {
+        core.initializeBluetoothHardware()
+    }
+    
     func connectBike() {
         isProcessing = true
         core.connect()

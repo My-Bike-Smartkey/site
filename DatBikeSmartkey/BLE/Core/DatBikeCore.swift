@@ -27,10 +27,15 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     init(preferences: PreferencesManager = .shared) {
         self.preferences = preferences
         super.init()
-        let queue = DispatchQueue(label: "datbike.core.ble", qos: .userInitiated)
-        self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [CBCentralManagerOptionShowPowerAlertKey: true])
         PersistentLogger.shared.markSessionStart()
         setupLogging()
+    }
+    
+    /// Được gọi bởi UI sau khi user đã đọc và đồng ý Disclaimer
+    func initializeBluetoothHardware() {
+        guard centralManager == nil else { return }
+        let queue = DispatchQueue(label: "datbike.core.ble", qos: .userInitiated)
+        self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [CBCentralManagerOptionShowPowerAlertKey: true])
     }
     
     private func setupLogging() {
@@ -51,9 +56,16 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     }
     
     func connect() {
+        guard let central = centralManager else {
+            // Khởi tạo phần cứng tự động nếu UI quên gọi
+            initializeBluetoothHardware()
+            stateMachine.transition(to: .scanning)
+            return
+        }
+        
         // Trạng thái của centralManager phải được đánh giá trên đúng luồng khởi tạo để tránh gãy state.
         // CBCentralManager có thể báo .poweredOff giả trên MainThread trong lúc boot.
-        let state = centralManager.state
+        let state = central.state
         
         switch state {
         case .poweredOn:
@@ -84,14 +96,14 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
         
         stateMachine.transition(to: .scanning)
         // 1. Phục hồi Scanner: Quét các thiết bị quảng bá Service BLE của Dat Bike (nếu biết UUID, nếu không thì nil)
-        centralManager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
     }
     
     func disconnect() {
         stateMachine.transition(to: .idle)
         pollingEngine?.stopPolling()
         if let ctx = activeContext {
-            centralManager.cancelPeripheralConnection(ctx.peripheral)
+            centralManager?.cancelPeripheralConnection(ctx.peripheral)
         }
         activeContext = nil
         commandDispatcher = nil
@@ -157,11 +169,10 @@ extension DatBikeCore: CBCentralManagerDelegate {
         }
     }
     
-    // 2. Phục hồi didDiscover
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         guard let name = peripheral.name, (name.contains("Dat Bike") || name.contains("QT_")) else { return }
         
-        centralManager.stopScan()
+        central.stopScan()
         stateMachine.transition(to: .connecting)
         
         let context = BLEConnectionContext(peripheral: peripheral)
@@ -172,7 +183,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
         self.pollingEngine = BLEPollingEngine(context: context)
         self.isAuthenticating = false // Reset cờ
         
-        centralManager.connect(peripheral, options: nil)
+        central.connect(peripheral, options: nil)
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
