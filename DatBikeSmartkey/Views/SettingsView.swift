@@ -221,7 +221,8 @@ struct SettingsView: View {
                             
                             if viewModel.isDebugModeEnabled {
                                 Divider().background(Color.white.opacity(0.06))
-                                settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log (\(viewModel.logs.count))") {
+                                settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log") {
+                                    viewModel.logs = PersistentLogger.shared.loadLogs()
                                     showLogs = true
                                 }
                             }

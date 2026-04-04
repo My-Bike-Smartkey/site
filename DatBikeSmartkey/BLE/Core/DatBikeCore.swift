@@ -29,6 +29,25 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
         super.init()
         let queue = DispatchQueue(label: "datbike.core.ble", qos: .userInitiated)
         self.centralManager = CBCentralManager(delegate: self, queue: queue)
+        PersistentLogger.shared.markSessionStart()
+        setupLogging()
+    }
+    
+    private func setupLogging() {
+        stateMachine.statePublisher
+            .sink { state in
+                let entry = BLELogEntry(timestamp: Date(), level: .ble, message: "Trạng thái mới: \(state.displayText)")
+                PersistentLogger.shared.append(entry)
+            }
+            .store(in: &cancellables)
+            
+        $currentLockState
+            .dropFirst()
+            .sink { lockState in
+                let entry = BLELogEntry(timestamp: Date(), level: .info, message: "Trang thái xe: \(lockState.description)")
+                PersistentLogger.shared.append(entry)
+            }
+            .store(in: &cancellables)
     }
     
     func connect() {
