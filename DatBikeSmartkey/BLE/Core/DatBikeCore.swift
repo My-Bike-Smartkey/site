@@ -201,24 +201,42 @@ extension DatBikeCore: CBPeripheralDelegate {
         // 3. Kích hoạt luồng Authenticator ngay khi thấy đủ characteristic c8eaf27b...
         if !isAuthenticating, (try? ctx.requireCharacteristic(BLECharacteristic.authChallenge)) != nil {
             isAuthenticating = true
-            let authenticator = BLEAuthenticator(context: ctx, pin: "123456")
             
-            Task {
-                do {
-                    stateMachine.transition(to: .authenticating)
-                    try await authenticator.authenticate()
-                    
-                    // Thành công -> Bật engine Polling & Cắm cờ Auto Unlock
-                    if let engine = self.pollingEngine {
-                        engine.startPolling()
-                        self.setupAutoUnlock(engine: engine)
-                    }
-                    
-                    stateMachine.transition(to: .active)
-                } catch {
-                    print("Lỗi xác thực BLE: \(error)")
-                    disconnect()
+            if let savedPin = PreferencesManager.shared.savedPin, !savedPin.isEmpty {
+                executeAuthProtocol(ctx: ctx, pin: savedPin)
+            } else {
+                stateMachine.transition(to: .pairingRequired)
+            }
+        }
+    }
+    
+    /// Nhận mã PIN ảo lập lập từ luồng NFC (giả lập)
+    func submitPairingPin(_ pin: String) {
+        guard stateMachine.state == .pairingRequired, let ctx = activeContext else { return }
+        PreferencesManager.shared.savedPin = pin
+        executeAuthProtocol(ctx: ctx, pin: pin)
+    }
+    
+    private func executeAuthProtocol(ctx: BLEConnectionContext, pin: String) {
+        let authenticator = BLEAuthenticator(context: ctx, pin: pin)
+        
+        Task {
+            do {
+                stateMachine.transition(to: .authenticating)
+                try await authenticator.authenticate()
+                
+                // Thành công -> Bật engine Polling & Cắm cờ Auto Unlock
+                if let engine = self.pollingEngine {
+                    engine.startPolling()
+                    self.setupAutoUnlock(engine: engine)
                 }
+                
+                stateMachine.transition(to: .active)
+            } catch {
+                disconnect()
+                stateMachine.transition(to: .error("Xác thực thất bại do sai mã ẩn."))
+                // Xoá mã PIN rác nếu có
+                PreferencesManager.shared.savedPin = nil
             }
         }
     }

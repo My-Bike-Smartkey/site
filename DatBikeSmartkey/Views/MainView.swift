@@ -158,12 +158,36 @@ struct ConnectingSplashView: View {
                                     .clipShape(Capsule())
                             }
                         }
+                    } else if dashboardVM.connectionState == .pairingRequired {
+                        Image(systemName: "wave.3.left.circle.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(.blue)
+                        
+                        Text("Vui lòng chạm thẻ NFC vào xe để xác thực.")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                        
+                        Button(action: {
+                            // Giả lập hệ thống NFC trả về một mã PIN 6 số hoặc lấy tự động
+                            let simulatedPin = String(format: "%06d", Int.random(in: 100000...999999))
+                            dashboardVM.submitPairingPin(simulatedPin)
+                        }) {
+                            Text("Giả lập chạm thẻ NFC (Sinh PIN)")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 30)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.8))
+                                .clipShape(Capsule())
+                        }
                     } else if dashboardVM.connectionState == .connecting || dashboardVM.connectionState == .authenticating {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                             .scaleEffect(1.5)
                         
-                        Text("Đang thiết lập kết nối mã hoá...")
+                        Text(dashboardVM.connectionState == .authenticating ? "Đang xác thực bằng cơ chế ẩn..." : "Đang thiết lập kết nối mã hoá...")
                             .font(.headline)
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)

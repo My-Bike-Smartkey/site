@@ -92,6 +92,10 @@ class DashboardViewModel: ObservableObject {
         core.connect()
     }
     
+    func submitPairingPin(_ pin: String) {
+        core.submitPairingPin(pin)
+    }
+    
     func lock() {
         // ...
         guard let dispatcher = try? core.getDispatcher() else { return }
