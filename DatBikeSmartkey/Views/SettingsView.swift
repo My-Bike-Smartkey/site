@@ -11,9 +11,6 @@ struct SettingsView: View {
     @State private var showInfoBgReconnect = false
     @State private var showInfoAutoUnlock = false
     
-    @State private var currentTime = Date()
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-    
     var body: some View {
         ZStack {
             Color(red: 0.04, green: 0.04, blue: 0.08)
@@ -156,9 +153,7 @@ struct SettingsView: View {
                                         Text("Giờ điện thoại (UTC+7)")
                                             .font(.subheadline)
                                             .foregroundColor(.white)
-                                        Text(currentVNTimeString())
-                                            .font(.system(.caption, design: .monospaced))
-                                            .foregroundColor(.gray)
+                                        LiveTimeText()
                                     }
                                 }
                                 Spacer()
@@ -301,9 +296,6 @@ struct SettingsView: View {
                 .padding(.top, 8)
             }
         }
-        .onReceive(timer) { input in
-            currentTime = input
-        }
         .sheet(isPresented: $showLogs) {
             LogView(logs: viewModel.logs)
         }
@@ -401,14 +393,6 @@ struct SettingsView: View {
         }
     }
 
-    private func currentVNTimeString() -> String {
-        let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
-        let formatter = DateFormatter()
-        formatter.timeZone = vnTZ
-        formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
-        return formatter.string(from: currentTime)
-    }
-
     @ViewBuilder
     private func infoPopover(title: String, icon: String, iconColor: Color, body: String) -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -439,16 +423,27 @@ struct SettingsView: View {
 struct QRCodeView: View {
     let content: String
     let size: CGFloat
+    @State private var cachedImage: UIImage?
 
     var body: some View {
-        if let image = generateQRCode(from: content) {
-            Image(uiImage: image)
-                .interpolation(.none)
-                .resizable()
-                .scaledToFit()
-                .frame(width: size, height: size)
-        } else {
-            Color.gray.frame(width: size, height: size)
+        Group {
+            if let image = cachedImage {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+            } else {
+                Color.white.frame(width: size, height: size)
+                    .overlay(ProgressView())
+            }
+        }
+        .onAppear {
+            Task {
+                if cachedImage == nil {
+                    cachedImage = generateQRCode(from: content)
+                }
+            }
         }
     }
 
@@ -549,5 +544,27 @@ struct LogView: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Live Time Text
+struct LiveTimeText: View {
+    @State private var currentTime = Date()
+    
+    var body: some View {
+        Text(currentVNTimeString(currentTime))
+            .font(.system(.caption, design: .monospaced))
+            .foregroundColor(.gray)
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { input in
+                currentTime = input
+            }
+    }
+    
+    private func currentVNTimeString(_ date: Date) -> String {
+        let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let formatter = DateFormatter()
+        formatter.timeZone = vnTZ
+        formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
+        return formatter.string(from: date)
     }
 }
