@@ -32,8 +32,9 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     }
     
     func connect() {
-        guard centralManager.state == .poweredOn else {
-            stateMachine.transition(to: .error("Bluetooth chưa sẵn sàng"))
+        // centralManager khi vừa init sẽ có state = .unknown, cần chờ tới .poweredOn mới thao tác được.
+        if centralManager.state != .poweredOn {
+            stateMachine.transition(to: .scanning) // Ghi nhận trạng thái chờ
             return
         }
         stateMachine.transition(to: .scanning)
@@ -78,13 +79,17 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
 
 extension DatBikeCore: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        if central.state != .poweredOn {
-            stateMachine.transition(to: .error("Bluetooth bị tắt trên điện thoại."))
-        } else {
+        switch central.state {
+        case .poweredOn:
             // Tự quét nếu đang chờ
             if stateMachine.state == .scanning {
                 connect()
             }
+        case .poweredOff, .unsupported, .unauthorized:
+            stateMachine.transition(to: .error("Bluetooth không sẵn sàng hoặc bị cấm."))
+        default:
+            // .unknown hoặc .resetting -> Chờ tiếp, không báo lỗi
+            break
         }
     }
     
