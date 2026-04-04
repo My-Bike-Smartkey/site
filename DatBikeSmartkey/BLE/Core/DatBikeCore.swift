@@ -52,10 +52,19 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     
     func connect() {
         // centralManager khi vừa init sẽ có state = .unknown, cần chờ tới .poweredOn mới thao tác được.
-        if centralManager.state != .poweredOn {
-            stateMachine.transition(to: .scanning) // Ghi nhận trạng thái chờ
+        switch centralManager.state {
+        case .poweredOn:
+            break // Sẵn sàng
+        case .unknown, .resetting:
+            stateMachine.transition(to: .scanning) // Ghi nhận trạng thái chờ OS boot
+            return
+        case .poweredOff, .unsupported, .unauthorized:
+            stateMachine.transition(to: .error("Bluetooth không sẵn sàng hoặc bị cấm."))
+            return
+        @unknown default:
             return
         }
+        
         stateMachine.transition(to: .scanning)
         // 1. Phục hồi Scanner: Quét các thiết bị quảng bá Service BLE của Dat Bike (nếu biết UUID, nếu không thì nil)
         centralManager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
@@ -105,7 +114,9 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 connect()
             }
         case .poweredOff, .unsupported, .unauthorized:
-            stateMachine.transition(to: .error("Bluetooth không sẵn sàng hoặc bị cấm."))
+            if stateMachine.state != .idle {
+                stateMachine.transition(to: .error("Bluetooth không sẵn sàng hoặc bị cấm."))
+            }
         default:
             // .unknown hoặc .resetting -> Chờ tiếp, không báo lỗi
             break

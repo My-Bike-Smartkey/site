@@ -57,7 +57,7 @@ struct MainView: View {
                 container.dashboardViewModel.connectBike()
             }
         } message: {
-            Text("Đảm bảo quá trình ghép đôi AccessorySetupKit đã được khởi tạo.")
+            Text("Vui lòng chuẩn bị thẻ NFC và đưa lại gần điện thoại để tiến hành xác thực khi được yêu cầu.")
         }
     }
 }
