@@ -2,6 +2,7 @@
 // Uses ASAccessorySession for discovery/pairing, CoreBluetooth for GATT communication
 
 @preconcurrency import CoreBluetooth
+import UIKit
 import AccessorySetupKit
 import Combine
 import UserNotifications
@@ -127,9 +128,6 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     /// Thời điểm đọc RSSI lần cuối — dùng để phát hiện RSSI stale trong didFailToConnect.
     /// rssiTimer dừng khi disconnect, nên RSSI có thể là giá trị từ nhiều phút trước.
     private var lastRSSIDate: Date? = nil
-    
-    /// Flag set by willRestoreState: cần auto-connect khi BT powers on
-    private var shouldReconnectAfterRestore = false
 
     /// Set khi ASK `accessoryAdded` fires — đảm bảo lần ghép nối đầu tiên luôn connect
     /// dù autoConnectEnabled = false. Được clear sau khi connect thành công.
@@ -147,6 +145,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         UserDefaults.standard.set(token, forKey: "proximityToken")
         return token
     }
+    
+    // MARK: - App Lifecycle State
+    private var isAppInForeground: Bool = true
     
     // MARK: - Singleton
     
@@ -167,6 +168,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         loadPersistedLogs(daysBack: 7)
         // Ghi dấu phiên mới vào file log để phân biệt giữa các lần mở app
         PersistentLogger.shared.markSessionStart()
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(handleAppDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleAppWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
         
         log(.info, "BLE Manager khởi tạo (AccessorySetupKit — iOS 18+)")
         
@@ -510,24 +514,23 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     }
 
     
-    func unlock() async throws {
+    func turnOffBike() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.unlockCmd] else {
             throw BLEError.characteristicNotFound("unlockCmd")
         }
-        // Confirmed: write ASCII '0' (0x30) = tắt xe — REPORT.md §4.2 Step 9
         log(.ble, "⚡ Gửi lệnh TẮT XE (0x30 → unlockCmd char=\(char.uuid.uuidString.prefix(8)))")
         log(.info, "[CMD] peripheral.state=\(peripheral?.state.rawValue ?? -1) isAuthenticated=\(isAuthenticated)")
         // Đọc counter sau khi xác nhận peripheral.state=2 isAuthenticated=true
         // Nếu counter chẵn → mất xác thực phía firmware → báo lỗi màn hình, không gửi lệnh
         try await assertAuthCounter()
-        try await writeValue(BLECommand.unlock, for: char, type: .withResponse)
+        try await writeValue(BLECommand.powerOff, for: char, type: .withResponse)
         // Chờ firmware xử lý lệnh trước khi bắt đầu poll — delay tăng khi tín hiệu yếu
         let delay1 = cmdInitialDelayMs
         log(.info, "[CMD] RSSI \(rssiRaw) dBm → initial poll delay \(delay1)ms")
         try await pollLockStatus(until: { $0.isLocked }, attempts: 8, initialDelayMs: delay1, intervalMs: 400)
     }
     
-    func turnOff() async throws {
+    func turnOnBike() async throws {
         guard let char = discoveredCharacteristics[BLECharacteristic.unlockCmd] else {
             throw BLEError.characteristicNotFound("unlockCmd")
         }
@@ -536,7 +539,7 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         // Đọc counter sau khi xác nhận peripheral.state=2 isAuthenticated=true
         // Nếu counter chẵn → mất xác thực phía firmware → báo lỗi màn hình, không gửi lệnh
         try await assertAuthCounter()
-        try await writeValue(BLECommand.powerOff, for: char, type: .withResponse)
+        try await writeValue(BLECommand.powerOn, for: char, type: .withResponse)
         // Chờ firmware xử lý lệnh trước khi bắt đầu poll — delay tăng khi tín hiệu yếu
         let delay2 = cmdInitialDelayMs
         log(.info, "[CMD] RSSI \(rssiRaw) dBm → initial poll delay \(delay2)ms")
@@ -575,9 +578,9 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     
     func toggleLock() async throws {
         if lockStatus.isLocked {
-            try await unlock()
+            try await turnOnBike()
         } else {
-            try await turnOff()
+            try await turnOffBike()
         }
     }
     
@@ -925,14 +928,14 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
         // Start keep-alive: đọc lock status mỗi 20s để giữ kết nối không bị drop
         startKeepAlive()
         
-        // Grab-key: tự động mở khóa khi app được iOS đánh thức ở background
+        // Auto-Unlock: tự động mở khóa khi màn hình app đang mở và kết nối thành công
         if autoUnlockEnabled && lockStatus.isLocked && !hasTriggeredAutoUnlockSession {
-            log(.info, "🔓 Grab-key auto-unlock: xe đang khóa, tự động mở...")
+            log(.info, "🔓 Auto-Unlock on App Open: xe đang khóa, tự động mở...")
             do {
-                try await turnOff() // NOTE: turnOff actually sends 0x31 (Turn On) logic
+                try await turnOnBike() // NOTE: Fixed function name
                 hasTriggeredAutoUnlockSession = true
             } catch {
-                log(.error, "Grab-key auto-unlock thất bại: \(error.localizedDescription)")
+                log(.error, "Auto-Unlock thất bại: \(error.localizedDescription)")
             }
         }
     }
@@ -988,6 +991,11 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
     // MARK: - Background Auto-Reconnect
     
     private func scheduleReconnect() {
+        guard isAppInForeground else {
+            log(.info, "⛔ App đang ở background -> Bỏ qua scheduleReconnect")
+            return
+        }
+        
         // Luôn đăng ký pending connection cho thiết bị đã biết — iOS duy trì ngị khi app bị kill.
         // autoConnectEnabled chỉ ảnh hưởng tới scan-based discovery (didDiscover path).
         // Nếu peripheral nil (hiếm — sau stale-cache reset hoặc error 14),
@@ -1015,6 +1023,61 @@ final class BLEManager: NSObject, ObservableObject, @unchecked Sendable {
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true,
             CBConnectPeripheralOptionNotifyOnNotificationKey: true
         ])
+    }
+    
+    // MARK: - App Lifecycle
+    
+    @objc private func handleAppDidEnterBackground() {
+        log(.warning, "🛑 App đi vào Background — Dừng giao tiếp BLE (Foreground-Only)")
+        self.isAppInForeground = false
+        
+        // Huỷ các Timer
+        self.rssiTimer?.invalidate()
+        self.rssiTimer = nil
+        self.keepAliveTimer?.invalidate()
+        self.keepAliveTimer = nil
+        
+        // Huỷ kết nối hoàn toàn để dọn dẹp state
+        self.disconnect()
+        
+        // Cần thiết lập cờ để tránh deadlock
+        self.isAuthenticating = false
+        self.isConnecting = false
+    }
+    
+    @objc private func handleAppWillEnterForeground() {
+        log(.info, "🚀 App quay lại Foreground — Khôi phục trạng thái BLE")
+        self.isAppInForeground = true
+        
+        // iOS đôi lúc không cấp lại quyền nếu không check, hoặc centralManager bị nil do stash
+        self.initCentralManagerIfNeeded()
+        
+        // Trì hoãn một chút để Bluetooth state cập nhật xong
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self else { return }
+            if self.centralManager?.state == .poweredOn {
+                if let accessory = self.currentAccessory {
+                    self.connectToAccessory(accessory)
+                } else {
+                    self.tryReconnectKnown()
+                }
+            }
+        }
+    }
+    
+    private func runWithBackgroundTask(delay: TimeInterval, action: @escaping () -> Void) {
+        var bgTask: UIBackgroundTaskIdentifier = .invalid
+        bgTask = UIApplication.shared.beginBackgroundTask(withName: "BLE_Fault_Recovery") {
+            UIApplication.shared.endBackgroundTask(bgTask)
+            bgTask = .invalid
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            action()
+            if bgTask != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTask)
+                bgTask = .invalid
+            }
+        }
     }
     
     // MARK: - Auth Counter Verification
@@ -1155,27 +1218,6 @@ extension BLEManager: CBCentralManagerDelegate {
                     self.connectionState = .disconnected
                 }
                 
-                // Xử lý State Restoration trước (ưu tiên cao hơn)
-                if self.shouldReconnectAfterRestore {
-                    self.shouldReconnectAfterRestore = false
-                    // Luôn reconnect khi state restoration — đây là reconnect cho thiết bị đã ghép nối.
-                    if let accessory = self.currentAccessory {
-                        self.connectToAccessory(accessory)
-                    } else {
-                        self.scheduleReconnect()
-                    }
-                    return  // tránh double-connect
-                }
-                
-                // Live session restore (peripheral vẫn connected khi app bị kill):
-                // willRestoreState đã gọi discoverServices nhưng BT có thể chưa sẵn sàng lúc đó.
-                // Gọi lại ở đây khi BT chắc chắn đã bật để đảm bảo callback didDiscoverCharacteristics luôn đến.
-                if self.isLiveSessionRestore, let p = self.peripheral, p.state == .connected {
-                    self.log(.info, "🔗 Live session: BT đã bật, gọi lại discoverServices để đảm bảo auth...")
-                    p.discoverServices(BLEService.allServices)
-                    return  // connect() sẽ bị bỏ qua anyway (state == .connected), return sớm cho rõ
-                }
-                
                 // ASK / Known-device: luôn auto-connect khi BT bật — giống hành vi app cũ trước ASK.
                 // autoConnectEnabled không chặn ở đây; nó chỉ áp dụng cho scan discovery (didDiscover).
                 if let accessory = self.currentAccessory {
@@ -1203,66 +1245,13 @@ extension BLEManager: CBCentralManagerDelegate {
         }
     }
     
-    // MARK: - State Restoration (Hybrid: ASK discovery + CB persistence)
-    
-    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
-        log(.info, "🔄 State Restoration: iOS đánh thức app — khôi phục phiên BLE")
-        
-        if let restoredPeripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] {
-            for p in restoredPeripherals {
-                log(.info, "  → Khôi phục peripheral: \(p.name ?? p.identifier.uuidString) (state: \(p.state.rawValue))")
-                p.delegate = self
-                self.peripheral = p
-                
-                if p.state == .connected {
-                    // Session BLE vẫn sống — KHÔNG gửi bất kỳ read/write nào.
-                    self.isLiveSessionRestore = true
-                    self.isAuthenticated = true
-                    log(.info, "  → OS giữ kết nối BLE, khôi phục session trực tiếp (KHÔNG ping)")
-                    DispatchQueue.main.async {
-                        self.connectionState = .ready
-                        self.isAuthenticated = true
-                    }
-                    p.discoverServices(BLEService.allServices)
-                } else {
-                    log(.info, "  → Peripheral đã ngắt, sẽ auto-reconnect khi BT bật")
-                    shouldReconnectAfterRestore = true
-                }
-            }
-        }
-    }
+
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                          advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        let name = peripheral.name ?? "Unknown"
-        let rssiVal = RSSI.intValue
-        
-        log(.ble, "📡 didDiscover [\(name)] RSSI: \(rssiVal) dBm")
-        
-        // Auto-connect ONLY if this is our saved bike
-        let savedUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
-        if peripheral.identifier.uuidString == savedUUID {
-            guard autoConnectEnabled else {
-                log(.info, "⚡ autoConnect tắt — bỏ qua kết nối với \(name)")
-                return
-            }
-            if rssiVal < autoConnectRSSIThreshold {
-                log(.info, "📶 RSSI \(rssiVal) < ngưỡng \(autoConnectRSSIThreshold) dBm — bỏ qua auto-connect")
-                return
-            }
-            log(.success, "🔗 Tự động kết nối lại xe đã lưu: \(name)!")
-            connect(to: peripheral)
-        } else if pendingBondRecovery { // note: bond-recovery ignores autoConnectEnabled intentionally
-            let containedUUIDs = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
-            let isDatBike = name.contains(BLEProtocol.deviceNamePrefix) ||
-                            name.hasPrefix(BLEProtocol.deviceNameAltPrefix) ||
-                            containedUUIDs.contains(BLEService.scan) ||
-                            containedUUIDs.contains(BLEService.auth)
-            if isDatBike {
-                log(.info, "🔧 Bond recovery: kết nối \(name) như thiết bị mới...")
-                connect(to: peripheral)
-            }
-        }
+        // Foreground-only: AccessorySetupKit không phát ra các event scan qua hàm này.
+        // Việc thiết lập kết nối được định tuyến ngầm bởi iOS qua handleAccessoryEvent và State Restoration.
+        // -> Khối code dead-code quét UUID cũ đã xoá.
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
@@ -1322,9 +1311,11 @@ extension BLEManager: CBCentralManagerDelegate {
         // PHÂN BIỆT 2 trường hợp:
         // • Out-of-range (RSSI < -85): chỉ scheduleReconnect, không reset CM
         // • Encryption cache stale (RSSI tốt): cần rebuild CM + delay
-        if errMsg.contains("encrypt the connection") {
+        if errMsg.contains("encrypt the connection") || errMsg.lowercased().contains("mic failure") || (nsError?.domain == "CBInternalErrorDomain" && nsError?.code == 31) {
             isConnecting = false
             log(.warning, "🔐 [ENCRYPT] Phát hiện lỗi mã hoá BLE — bắt đầu phân tích...")
+
+            let isMicFailure = errMsg.lowercased().contains("mic failure") || (nsError?.domain == "CBInternalErrorDomain" && nsError?.code == 31)
 
             // RSSI stale check: rssiTimer dừng khi disconnect, nên self.rssi có thể là
             // giá trị từ nhiều phút trước (khi còn đứng gần xe). Nếu stale → không tin được
@@ -1334,20 +1325,32 @@ extension BLEManager: CBCentralManagerDelegate {
             log(.info, "   • RSSI age: \(String(format: "%.1f", rssiAgeSec))s (\(rssiIsStale ? "STALE — không đáng tin" : "fresh"))")
 
             // Nếu RSSI rất yếu HOẶC đọc quá lâu rồi → xe đang ngoài tầm, không phải stale encryption
-            if self.rssi < -85 || rssiIsStale {
+            // Bỏ qua check này nếu là MIC failure (vì nhận được gói tin mã hoá sai nghĩa là chắc chắn trong tầm)
+            if !isMicFailure && (self.rssi < -85 || rssiIsStale) {
                 log(.warning, "📡 [ENCRYPT → OUT-OF-RANGE] RSSI \(self.rssi) dBm\(rssiIsStale ? " (stale \(String(format: "%.0f", rssiAgeSec))s)" : "") → Xe ngoài tầm, KHÔNG phải encryption stale")
                 log(.warning, "   → Bỏ qua CBManager reset, đăng ký pending connection chờ xe quay lại...")
                 log(.warning, "   → discoveredCharacteristics.removeAll() + scheduleReconnect()")
-                // KHÔNG nil peripheral — scheduleReconnect() cần nó để đăng ký pending connection
-                // (nếu nil trước, guard let peripheral else { return } sẽ return ngay)
                 self.discoveredCharacteristics.removeAll()
                 DispatchQueue.main.async { self.connectionState = .disconnected }
                 scheduleReconnect()
                 return
             }
 
-            log(.warning, "🔐 [ENCRYPT → STALE-CACHE] RSSI \(self.rssi) dBm ≥ -85 → Phán đoán: bluetoothd encryption cache bị stale")
             encryptionRetryCount += 1
+            
+            // Nếu là MIC failure, thử reconnect nhanh 2 lần trước khi flush cache bluetoothd
+            if isMicFailure && encryptionRetryCount < 3 {
+                log(.warning, "♻️ [MIC FAILURE] Lỗi mã khoá - Thử reconnect nhanh lần \(encryptionRetryCount)/2 (bỏ qua reset CM)...")
+                self.discoveredCharacteristics.removeAll()
+                DispatchQueue.main.async { self.connectionState = .disconnected }
+                self.runWithBackgroundTask(delay: 1.5) { [weak self] in
+                    guard let self, let accessory = self.currentAccessory else { return }
+                    if self.centralManager != nil { self.connectToAccessory(accessory) }
+                }
+                return
+            }
+
+            log(.warning, "🔐 [ENCRYPT → STALE-CACHE] RSSI \(self.rssi) dBm ≥ -85 → Phán đoán: bluetoothd encryption cache bị stale")
             log(.warning, "♻️ [ENCRYPT] Retry \(encryptionRetryCount)/\(maxEncryptionRetries): huỷ kết nối + xoá BLE session cache...")
 
             central.cancelPeripheralConnection(peripheral)
@@ -1375,7 +1378,7 @@ extension BLEManager: CBCentralManagerDelegate {
             // Ép deinit XPC session với bluetoothd
             self.centralManager = nil
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            self.runWithBackgroundTask(delay: delay) { [weak self] in
                 guard let self else { return }
                 self.log(.info, "⏰ [ENCRYPT] Hết \(Int(delay))s — gọi initCentralManagerIfNeeded(), chờ .poweredOn tự connect lại")
                 self.initCentralManagerIfNeeded()
@@ -1865,7 +1868,7 @@ extension BLEManager: CBPeripheralDelegate {
             hasTriggeredAutoUnlockSession = true
             log(.info, " Ở gần xe (RSSI: \(rssiVal) > \(BLEProtocol.rssiThreshold)). Auto-unlock...")
             Task {
-                try? await turnOff() // NOTE: turnOff actually sends 0x31 (Turn On) logic
+                try? await turnOnBike() // NOTE: Fixed function name
             }
         }
     }

@@ -113,19 +113,17 @@ enum BLECharacteristic {
 // MARK: - Commands
 
 enum BLECommand {
-    /// Unlock: WRITE ASCII '0' (0x30) → unlockCmd (7F13FE5C)
-    /// Confirmed: BLE write "0" = mở khóa xe (REPORT.md §4.2 Step 9)
-    static let unlock: Data = Data([0x30])
+    /// Power OFF: WRITE ASCII '0' (0x30) → unlockCmd (7F13FE5C)
+    /// Confirmed: Lệnh này thưc tế tắt xe (isLocked = true).
+    static let powerOff: Data = Data([0x30])
     
     /// Lock/Arm: WRITE ASCII '1' (0x31) → smartkeyEcho (EEC8FD7F)
-    /// Note: lock sequence not observed in logs, keeping as-is
+    /// Dùng cho hàm lock() riêng biệt.
     static let lock: Data   = Data([0x31])
     
-    /// Power ON alias — same as unlock
-    static let powerOn: Data = Data([0x30])
-    
-    /// Power OFF alias — write '1' (unknown effect, not confirmed)
-    static let powerOff: Data = Data([0x31])
+    /// Power ON: WRITE '1' (0x31) → unlockCmd (7F13FE5C)
+    /// Confirmed: Lệnh này thực tế bật xe (isLocked = false).
+    static let powerOn: Data = Data([0x31])
     
     /// Find bike start: WRITE '1' → findBike (h=0x034)
     static let findStart: Data = Data([0x31])

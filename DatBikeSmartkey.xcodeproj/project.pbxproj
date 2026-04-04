@@ -13,68 +13,32 @@
 		13FBAE203AFEB7C79C1210B4 /* BLEConstants.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F6857C002FB8A3BACA43625 /* BLEConstants.swift */; };
 		153B3F42D7007BFBDB696519 /* StatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B85AA99388E35EDABEC8870 /* StatusCard.swift */; };
 		23BE748DFF7BF3A246D13AFD /* SignalIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C12AC83C26941D4927CCA1 /* SignalIndicator.swift */; };
-		24C68B6FB810407A1D8BA84F /* BikeWidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4813BA907B2AEE47A92603E9 /* BikeWidgetViews.swift */; };
 		2EE97DF2F2874274B4E74BD9 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FCC6E9C8A2D8043FD4DBDF8 /* DashboardView.swift */; };
-		445800A11C826A328B44E065 /* BikeWidgetProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F1A783FECF9EE85625B46D5 /* BikeWidgetProvider.swift */; };
 		459F8C6F5265D4DBDC8E7D92 /* BikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 388B85BD6205C62981FA7651 /* BikeState.swift */; };
 		47F181759EB61BCF60800366 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05562CDF9B9DBFC719F257D /* SettingsView.swift */; };
 		4D228EFFF0B70777C0A72B42 /* SharedBikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679D91488371B0C05358E180 /* SharedBikeState.swift */; };
-		53F6689C76513FFD68000516 /* BikeWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7ECE5EF6E3330BD99E45EF /* BikeWidgetBundle.swift */; };
 		8CD08588268786D9762D1DCC /* DatBikeSmartKeyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */; };
 		9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52 /* Assets.xcassets */; };
-		A7B250E0C3119C532D354A51 /* SharedBikeState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679D91488371B0C05358E180 /* SharedBikeState.swift */; };
-		E6043BE295E109121D375092 /* BikeWidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84CAFA969730F82AB94875A8 /* BikeWidgetIntents.swift */; };
-		F27D65ACD5B57990CF0C1036 /* DatBikeWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A8B4F266CC14A63C91244CCF /* DatBikeWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		F364707A10511F67495BC75D /* BLEManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */; };
 		FD23847C3D8A4F42AB57E18D /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8A4DD9F679F79F85EBCC1E /* MainView.swift */; };
 /* End PBXBuildFile section */
-
-/* Begin PBXContainerItemProxy section */
-		2F30C68A8496B979526FF0E7 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 382E459A4399B373ED6A1E41 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 30AC869ED90C6CA4D67233AE;
-			remoteInfo = DatBikeWidget;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		95B8A2A0900194D363878FFE /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				F27D65ACD5B57990CF0C1036 /* DatBikeWidget.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		16CBCE3CABCBDE15A8ECC284 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		21050B43FC72C8A173A4EF52 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		388B85BD6205C62981FA7651 /* BikeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeState.swift; sourceTree = "<group>"; };
 		3B85AA99388E35EDABEC8870 /* StatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCard.swift; sourceTree = "<group>"; };
-		4813BA907B2AEE47A92603E9 /* BikeWidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeWidgetViews.swift; sourceTree = "<group>"; };
-		4C7ECE5EF6E3330BD99E45EF /* BikeWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeWidgetBundle.swift; sourceTree = "<group>"; };
-		4F1A783FECF9EE85625B46D5 /* BikeWidgetProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeWidgetProvider.swift; sourceTree = "<group>"; };
 		576A49715915FBA2B39FF95F /* SmartKeyViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartKeyViewModel.swift; sourceTree = "<group>"; };
 		679D91488371B0C05358E180 /* SharedBikeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedBikeState.swift; sourceTree = "<group>"; };
-		6D28035E433410A46DE8392C /* DatBikeSmartkey.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DatBikeSmartkey.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6D28035E433410A46DE8392C /* DatBikeSmartkey.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = DatBikeSmartkey.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6FCC6E9C8A2D8043FD4DBDF8 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		7F6857C002FB8A3BACA43625 /* BLEConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEConstants.swift; sourceTree = "<group>"; };
-		84CAFA969730F82AB94875A8 /* BikeWidgetIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeWidgetIntents.swift; sourceTree = "<group>"; };
 		8D8A4DD9F679F79F85EBCC1E /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		97A617757174092E8071FDE5 /* LockButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockButton.swift; sourceTree = "<group>"; };
 		9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DatBikeSmartKeyApp.swift; sourceTree = "<group>"; };
-		A8B4F266CC14A63C91244CCF /* DatBikeWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DatBikeWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1C12AC83C26941D4927CCA1 /* SignalIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalIndicator.swift; sourceTree = "<group>"; };
 		C05562CDF9B9DBFC719F257D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		CC245AF590FD9F6A66B8BEEE /* BLEManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEManager.swift; sourceTree = "<group>"; };
-		E3515B2931552A74C53EB08D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		EF9551BB69F236D49B477850 /* DebugLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugLogView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -102,7 +66,6 @@
 			isa = PBXGroup;
 			children = (
 				B7BB8718BCB325CEDE408A85 /* DatBikeSmartkey */,
-				C5635C49D6D04C3DCA46D285 /* DatBikeWidget */,
 				A955552598C6EF2BC152D444 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -131,7 +94,6 @@
 			isa = PBXGroup;
 			children = (
 				6D28035E433410A46DE8392C /* DatBikeSmartkey.app */,
-				A8B4F266CC14A63C91244CCF /* DatBikeWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -150,18 +112,6 @@
 			path = DatBikeSmartkey;
 			sourceTree = "<group>";
 		};
-		C5635C49D6D04C3DCA46D285 /* DatBikeWidget */ = {
-			isa = PBXGroup;
-			children = (
-				4C7ECE5EF6E3330BD99E45EF /* BikeWidgetBundle.swift */,
-				84CAFA969730F82AB94875A8 /* BikeWidgetIntents.swift */,
-				4F1A783FECF9EE85625B46D5 /* BikeWidgetProvider.swift */,
-				4813BA907B2AEE47A92603E9 /* BikeWidgetViews.swift */,
-				E3515B2931552A74C53EB08D /* Info.plist */,
-			);
-			path = DatBikeWidget;
-			sourceTree = "<group>";
-		};
 		F6139BC99B813739C4693248 /* BLE */ = {
 			isa = PBXGroup;
 			children = (
@@ -174,35 +124,16 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		30AC869ED90C6CA4D67233AE /* DatBikeWidget */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 99142D11902E099AD48B981F /* Build configuration list for PBXNativeTarget "DatBikeWidget" */;
-			buildPhases = (
-				05D50005623C65995ED2CE0B /* Sources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = DatBikeWidget;
-			packageProductDependencies = (
-			);
-			productName = DatBikeWidget;
-			productReference = A8B4F266CC14A63C91244CCF /* DatBikeWidget.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 		B00D597E4E6B8C6D9A628FEA /* DatBikeSmartkey */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 791D3E6C54C9E331709FF9CB /* Build configuration list for PBXNativeTarget "DatBikeSmartkey" */;
 			buildPhases = (
 				3F8D049541D0382EEEDF3720 /* Sources */,
 				265212DDE57ABFB14EA42D25 /* Resources */,
-				95B8A2A0900194D363878FFE /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				E0731CDDF4FF92D652EFD7A0 /* PBXTargetDependency */,
 			);
 			name = DatBikeSmartkey;
 			packageProductDependencies = (
@@ -218,12 +149,10 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2640;
+				LastUpgradeCheck = 1430;
 				TargetAttributes = {
-					30AC869ED90C6CA4D67233AE = {
-						ProvisioningStyle = Automatic;
-					};
 					B00D597E4E6B8C6D9A628FEA = {
+						DevelopmentTeam = MH385VJBCB;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -243,7 +172,6 @@
 			projectRoot = "";
 			targets = (
 				B00D597E4E6B8C6D9A628FEA /* DatBikeSmartkey */,
-				30AC869ED90C6CA4D67233AE /* DatBikeWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -260,18 +188,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		05D50005623C65995ED2CE0B /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				53F6689C76513FFD68000516 /* BikeWidgetBundle.swift in Sources */,
-				E6043BE295E109121D375092 /* BikeWidgetIntents.swift in Sources */,
-				445800A11C826A328B44E065 /* BikeWidgetProvider.swift in Sources */,
-				24C68B6FB810407A1D8BA84F /* BikeWidgetViews.swift in Sources */,
-				A7B250E0C3119C532D354A51 /* SharedBikeState.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		3F8D049541D0382EEEDF3720 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -294,40 +210,7 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		E0731CDDF4FF92D652EFD7A0 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 30AC869ED90C6CA4D67233AE /* DatBikeWidget */;
-			targetProxy = 2F30C68A8496B979526FF0E7 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		0DD4CF081F0E97C9A6628441 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = DatBikeWidget/DatBikeWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = DatBikeWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 2.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey.widget;
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Debug;
-		};
 		4708387DC16AF274F2797CD0 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -336,14 +219,12 @@
 				CODE_SIGN_ENTITLEMENTS = DatBikeSmartkey/DatBikeSmartkey.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DatBikeSmartkey/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey;
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -352,34 +233,6 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
-		};
-		5DF0BFE7E25BD10C41C77AC4 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = DatBikeWidget/DatBikeWidget.entitlements;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
-				DEPLOYMENT_POSTPROCESSING = YES;
-				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = DatBikeWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 2.0.0;
-				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey.widget;
-				SDKROOT = iphoneos;
-				SKIP_INSTALL = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-				SUPPORTS_MACCATALYST = NO;
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = Release;
 		};
 		9696DE004FE6112F8E0EA684 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -390,17 +243,17 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEPLOYMENT_POSTPROCESSING = YES;
+				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_PREVIEWS = YES;
 				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = DatBikeSmartkey/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey;
 				SDKROOT = iphoneos;
+				STRIP_INSTALLED_PRODUCT = YES;
+				STRIP_SWIFT_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -446,10 +299,8 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -471,7 +322,6 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.9;
@@ -514,10 +364,8 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -532,7 +380,6 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.9;
@@ -556,15 +403,6 @@
 			buildConfigurations = (
 				4708387DC16AF274F2797CD0 /* Debug */,
 				9696DE004FE6112F8E0EA684 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		99142D11902E099AD48B981F /* Build configuration list for PBXNativeTarget "DatBikeWidget" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				0DD4CF081F0E97C9A6628441 /* Debug */,
-				5DF0BFE7E25BD10C41C77AC4 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -26,7 +26,7 @@ struct DatBikeSmartKeyApp: App {
         guard url.scheme == "mybikesmartkey" else { return }
         switch url.host {
         case "lock":      Task { try? await BLEManager.shared.lock() }
-        case "unlock":    Task { try? await BLEManager.shared.unlock() }
+        case "unlock":    Task { try? await BLEManager.shared.turnOnBike() }
         case "connect":   BLEManager.shared.triggerManualConnect()
         case "dashboard": break  // app mở bình thường
         default:          break

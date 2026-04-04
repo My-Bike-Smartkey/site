@@ -183,13 +183,13 @@ final class SmartKeyViewModel: ObservableObject {
         }
     }
     
-    func unlock() {
+    func turnOffBike() {
         guard !isProcessing else { return }
         isProcessing = true
         
         Task {
             do {
-                try await ble.unlock()
+                try await ble.turnOffBike()
             } catch {
                 showError(error.localizedDescription)
             }
@@ -197,13 +197,13 @@ final class SmartKeyViewModel: ObservableObject {
         }
     }
     
-    func turnOff() {
+    func turnOnBike() {
         guard !isProcessing else { return }
         isProcessing = true
         
         Task {
             do {
-                try await ble.turnOff()
+                try await ble.turnOnBike()
             } catch {
                 showError(error.localizedDescription)
             }
@@ -220,7 +220,7 @@ final class SmartKeyViewModel: ObservableObject {
                 if lockStatus.isLocked {
                     try await ble.lock() // If OFF, toggles anti-theft
                 } else {
-                    try await ble.unlock() // If ON, turns the bike OFF
+                    try await ble.turnOffBike() // If ON, turns the bike OFF
                 }
             } catch {
                 showError(error.localizedDescription)

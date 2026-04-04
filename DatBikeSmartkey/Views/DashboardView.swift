@@ -341,7 +341,7 @@ struct DashboardView: View {
                     subtitle: "Power OFF",
                     color: .red,
                     isActive: false,
-                    action: { viewModel.unlock() }
+                    action: { viewModel.turnOffBike() }
                 )
                 .disabled(viewModel.lockStatus.isLocked || viewModel.isProcessing)
                 
@@ -352,7 +352,7 @@ struct DashboardView: View {
                     subtitle: "Power ON",
                     color: .green,
                     isActive: false,
-                    action: { viewModel.turnOff() }
+                    action: { viewModel.turnOnBike() }
                 )
                 .disabled(!viewModel.lockStatus.isLocked || viewModel.isProcessing)
                 
