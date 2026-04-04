@@ -51,15 +51,26 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     }
     
     func connect() {
-        // centralManager khi vừa init sẽ có state = .unknown, cần chờ tới .poweredOn mới thao tác được.
-        switch centralManager.state {
+        // Trạng thái của centralManager phải được đánh giá trên đúng luồng khởi tạo để tránh gãy state.
+        // CBCentralManager có thể báo .poweredOff giả trên MainThread trong lúc boot.
+        let state = centralManager.state
+        
+        switch state {
         case .poweredOn:
             break // Sẵn sàng
         case .unknown, .resetting:
             stateMachine.transition(to: .scanning) // Ghi nhận trạng thái chờ OS boot
             return
         case .poweredOff:
-            stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self = self else { return }
+                if self.centralManager.state == .poweredOff {
+                    self.stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
+                } else if self.centralManager.state == .poweredOn {
+                    self.connect()
+                }
+            }
+            stateMachine.transition(to: .scanning) // Ghi nhận đợi debounce
             return
         case .unauthorized:
             stateMachine.transition(to: .error("Ứng dụng chưa được cấp quyền Bluetooth."))
@@ -121,7 +132,16 @@ extension DatBikeCore: CBCentralManagerDelegate {
             }
         case .poweredOff:
             if stateMachine.state != .idle {
-                stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
+                // Workaround iOS bug: CoreBluetooth có thể flash qua .poweredOff
+                // trong mốc thời gian vài trăm ms khi boot, dù đang bật. Cần debounce.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                    guard let self = self else { return }
+                    if self.centralManager.state == .poweredOff && self.stateMachine.state != .idle {
+                        self.stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
+                    } else if self.centralManager.state == .poweredOn && self.stateMachine.state == .scanning {
+                        self.connect()
+                    }
+                }
             }
         case .unauthorized:
             if stateMachine.state != .idle {
