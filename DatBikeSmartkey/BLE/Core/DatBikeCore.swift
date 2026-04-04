@@ -28,7 +28,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
         self.preferences = preferences
         super.init()
         let queue = DispatchQueue(label: "datbike.core.ble", qos: .userInitiated)
-        self.centralManager = CBCentralManager(delegate: self, queue: queue)
+        self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [CBCentralManagerOptionShowPowerAlertKey: true])
         PersistentLogger.shared.markSessionStart()
         setupLogging()
     }

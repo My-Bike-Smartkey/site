@@ -24,22 +24,7 @@
 	<string>3</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSAccessorySetupBluetoothNames</key>
-	<array>
-		<string>Dat Bike</string>
-		<string>QT_</string>
-	</array>
-	<key>NSAccessorySetupBluetoothServices</key>
-	<array>
-		<string>0000FCF1-0000-1000-8000-00805F9B34FB</string>
-		<string>10CB0217-FF02-4474-A1EF-6FD88B5BDAEA</string>
-		<string>D4905F67-8931-4FAA-8C61-86EC7490F3C5</string>
-		<string>15111100-3023-455B-86CE-615F79EE8ECE</string>
-	</array>
-	<key>NSAccessorySetupKitSupports</key>
-	<array>
-		<string>Bluetooth</string>
-	</array>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
