@@ -58,8 +58,14 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
         case .unknown, .resetting:
             stateMachine.transition(to: .scanning) // Ghi nhận trạng thái chờ OS boot
             return
-        case .poweredOff, .unsupported, .unauthorized:
-            stateMachine.transition(to: .error("Bluetooth không sẵn sàng hoặc bị cấm."))
+        case .poweredOff:
+            stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
+            return
+        case .unauthorized:
+            stateMachine.transition(to: .error("Ứng dụng chưa được cấp quyền Bluetooth."))
+            return
+        case .unsupported:
+            stateMachine.transition(to: .error("Thiết bị không hỗ trợ Bluetooth."))
             return
         @unknown default:
             return
@@ -113,9 +119,17 @@ extension DatBikeCore: CBCentralManagerDelegate {
             if stateMachine.state == .scanning {
                 connect()
             }
-        case .poweredOff, .unsupported, .unauthorized:
+        case .poweredOff:
             if stateMachine.state != .idle {
-                stateMachine.transition(to: .error("Bluetooth không sẵn sàng hoặc bị cấm."))
+                stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
+            }
+        case .unauthorized:
+            if stateMachine.state != .idle {
+                stateMachine.transition(to: .error("Ứng dụng chưa được cấp quyền Bluetooth."))
+            }
+        case .unsupported:
+            if stateMachine.state != .idle {
+                stateMachine.transition(to: .error("Thiết bị không hỗ trợ Bluetooth."))
             }
         default:
             // .unknown hoặc .resetting -> Chờ tiếp, không báo lỗi

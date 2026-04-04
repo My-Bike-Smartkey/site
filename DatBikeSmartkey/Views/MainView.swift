@@ -133,14 +133,30 @@ struct ConnectingSplashView: View {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                         
-                        Button(action: { dashboardVM.connectBike() }) {
-                            Text("Thử lại")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 30)
-                                .padding(.vertical, 12)
-                                .background(Color.orange)
-                                .clipShape(Capsule())
+                        if err.contains("cấp quyền") {
+                            Button(action: {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }) {
+                                Text("Mở Cài Đặt")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 30)
+                                    .padding(.vertical, 12)
+                                    .background(Color.blue)
+                                    .clipShape(Capsule())
+                            }
+                        } else {
+                            Button(action: { dashboardVM.connectBike() }) {
+                                Text("Thử lại")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 30)
+                                    .padding(.vertical, 12)
+                                    .background(Color.orange)
+                                    .clipShape(Capsule())
+                            }
                         }
                     } else if dashboardVM.connectionState == .connecting || dashboardVM.connectionState == .authenticating {
                         ProgressView()
