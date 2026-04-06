@@ -348,7 +348,7 @@
 		AAA0CCA643B5F37CC60C23F5622DD718 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 3.0.1;
 				SDKROOT = iphoneos;
@@ -359,7 +359,7 @@
 		ED6738C8FFCC9AF625DCD51A0582473F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 3.0.1;
 				SDKROOT = iphoneos;
