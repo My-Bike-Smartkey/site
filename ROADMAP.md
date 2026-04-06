@@ -10,7 +10,7 @@
 | **Reconnect khi app bị kill** | ⚠️ Có nhưng không 100% | ⚠️ Có nhưng không 100% | ✅ Tối ưu (~95%) |
 | **Auto-reconnect khi xe vào tầm** | ⚠️ Pending connect (phụ thuộc iOS) | ⚠️ Pending connect | ✅ Pending connect + optimized |
 | **Auto-unlock khi tới gần** | ❌ | ❌ | ✅ RSSI-based proximity |
-| **iOS tối thiểu** | 14.0 | 17.0 | 14.0 |
+| **iOS tối thiểu** | 15.0 | 17.0 | 15.0 |
 | **App Store review** | Cần giải trình background | Dễ (ASK = chuẩn Apple) | Cần giải trình background |
 | **Pin tiêu thụ** | Thấp–Trung bình | Thấp–Trung bình | Trung bình–Cao |
 | **Độ phức tạp** | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |

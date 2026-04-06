@@ -380,7 +380,7 @@ struct LogView: View {
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ZStack {
                 Color(red: 0.04, green: 0.04, blue: 0.08)
                     .ignoresSafeArea()

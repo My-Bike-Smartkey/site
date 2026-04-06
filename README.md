@@ -9,7 +9,7 @@
 | Hạng mục | Chi tiết |
 |---|---|
 | **Phiên bản** | 3.0.0 |
-| **Nền tảng** | iOS 14+, Swift 5.9, SwiftUI |
+| **Nền tảng** | iOS 15+, Swift 5.9, SwiftUI |
 | **BLE Stack** | CoreBluetooth + Background BLE (State Restoration) |
 | **Mã hóa** | SHA-256 (CryptoKit), PIN challenge-response |
 | **PIN** | 12 ký tự ngẫu nhiên (chữ thường + hoa + số + đặc biệt), SecRandomCopyBytes |
