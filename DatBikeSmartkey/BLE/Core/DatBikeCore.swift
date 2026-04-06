@@ -35,7 +35,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     private var scanTimer: DispatchWorkItem?
     private var scanRetryCount = 0
     private let maxScanRetries = 3
-    private let scanTimeoutSeconds: TimeInterval = 10
+    private let scanTimeoutSeconds: TimeInterval = 6
     
     // MIC failure auto-recovery — progressive delays: 3s, 5s, 8s, 12s, 18s, 25s
     private var micRetryCount = 0
@@ -343,21 +343,37 @@ extension DatBikeCore: CBCentralManagerDelegate {
             let ctx = BLEConnectionContext(peripheral: restored)
             activeContext = ctx
             commandDispatcher = BLECommandDispatcher(context: ctx)
+            pollingEngine = BLEPollingEngine(context: ctx)
             
-            if restored.state == .connected {
-                // Peripheral vẫn connected → discover lại services
-                restored.discoverServices(BLEService.allServices)
-            }
+            // Lưu UUID để connect() không cần scan lại
+            preferences.savedPeripheralUUID = restored.identifier.uuidString
+            
+            // KHÔNG gọi discoverServices() ở đây — BLE chưa poweredOn
+            // Đánh dấu để centralManagerDidUpdateState xử lý
+            stateMachine.transition(to: .connecting)
         }
     }
     
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
+            // Nếu đã có activeContext từ willRestoreState → discover services
+            if let ctx = activeContext, case .connecting = stateMachine.state {
+                if ctx.peripheral.state == .connected {
+                    // Peripheral vẫn connected → discover ngay
+                    ctx.peripheral.discoverServices(BLEService.allServices)
+                } else {
+                    // Peripheral đã disconnect → reconnect
+                    central.connect(ctx.peripheral, options: [
+                        CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+                        CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
+                    ])
+                }
+                return
+            }
             if stateMachine.state == .scanning {
                 connect()
             } else if stateMachine.state == .idle {
-                // BLE sẵn sàng lần đầu — auto-scan nếu đã pair
                 if preferences.savedPin != nil {
                     connect()
                 }

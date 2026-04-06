@@ -63,7 +63,14 @@ struct SettingsView: View {
                         }
                     }
 
-
+                    // Logs section
+                    settingsSection(title: "NHẬT KÝ") {
+                        VStack(spacing: 0) {
+                            settingsButton(icon: "exclamationmark.triangle.fill", iconColor: .orange, title: "Xem lỗi kết nối") {
+                                showLogs = true
+                            }
+                        }
+                    }
 
                     // Time Sync section
                     settingsSection(title: "ĐỒNG BỘ GIỜ XE") {
@@ -313,7 +320,6 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(minWidth: 280, maxWidth: 340)
-        .presentationCompactAdaptation(.popover)
     }
 }
 
@@ -379,13 +385,35 @@ struct LogView: View {
     let logs: [BLELogEntry]
     @Environment(\.dismiss) private var dismiss
     
+    /// Danh sách keyword nhạy cảm — log chứa keyword này sẽ bị ẩn
+    private static let sensitiveKeywords = [
+        "SHA", "hash", "PIN", "pin", "auth", "Auth",
+        "challenge", "counter", "nonce", "token", "Token",
+        "session", "proximity", "Xác thực", "xác thực",
+        "NOTIFY", "serviceChanged"
+    ]
+    
+    /// Chỉ hiện error + warning, ẩn nội dung nhạy cảm
+    private var filteredLogs: [BLELogEntry] {
+        logs.filter { entry in
+            // Chỉ giữ error và warning
+            guard entry.level == .error || entry.level == .warning else { return false }
+            // Ẩn log chứa nội dung nhạy cảm
+            let msg = entry.message
+            for keyword in Self.sensitiveKeywords {
+                if msg.contains(keyword) { return false }
+            }
+            return true
+        }
+    }
+    
     var body: some View {
         NavigationView {
             ZStack {
                 Color(red: 0.04, green: 0.04, blue: 0.08)
                     .ignoresSafeArea()
                 
-                if logs.isEmpty {
+                if filteredLogs.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 40))
@@ -396,7 +424,7 @@ struct LogView: View {
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(logs.reversed()) { entry in
+                            ForEach(filteredLogs.reversed()) { entry in
                                 HStack(alignment: .top, spacing: 6) {
                                     Text(entry.formattedTime)
                                         .font(.system(size: 10, design: .monospaced))
@@ -430,7 +458,7 @@ struct LogView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
-                        let fullString = logs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
+                        let fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
                         UIPasteboard.general.string = fullString
                     } label: {
                         Image(systemName: "doc.on.doc")
@@ -442,6 +470,7 @@ struct LogView: View {
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
     }
 }

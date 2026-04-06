@@ -84,7 +84,7 @@ class BLEAuthenticator: IoTAuthService {
         // 4. Verify counter chuyển sang LẺ — retry với delay tăng dần
         // Rule: counter CHẴN = chờ xác thực, counter LẺ = đã xác thực
         // Thành công = counter chuyển từ chẵn → lẻ
-        let retryDelays: [UInt64] = [400, 700, 1200, 2000]
+        let retryDelays: [UInt64] = [200, 400, 700, 1200]
         var authVerified = false
         
         for (attempt, delayMs) in retryDelays.enumerated() {
