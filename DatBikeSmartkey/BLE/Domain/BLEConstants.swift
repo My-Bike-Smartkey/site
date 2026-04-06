@@ -1,42 +1,180 @@
+// BLEConstants.swift — Dat Bike Quantum S3 BLE Protocol Constants
+// Reverse-engineered from btsnoop_hci.log — đồng bộ commit 64623aa
+
 import CoreBluetooth
+import Security
+
+// MARK: - Service UUIDs
+
+enum BLEService {
+    /// Primary scan/advertisement service UUID
+    static let scan          = CBUUID(string: "0000FCF1-0000-1000-8000-00805F9B34FB")
+    
+    /// Authentication service (handles 0x00a–0x010)
+    static let auth          = CBUUID(string: "10CB0217-FF02-4474-A1EF-6FD88B5BDAEA")
+    
+    /// Configuration service (handles 0x011–0x017)
+    static let config        = CBUUID(string: "CF6900A7-4520-4A4C-977C-82979E8BACCF")
+    
+    /// Main vehicle control service (handles 0x018–0x03e)
+    static let main          = CBUUID(string: "D4905F67-8931-4FAA-8C61-86EC7490F3C5")
+    
+    /// Extended service (handles 0x03f–0xffff)
+    static let ext           = CBUUID(string: "5B6D1069-A0BC-4875-BA5B-FDC94647D918")
+    
+    /// Alternate scan service UUID seen in some advertisements
+    static let altScan       = CBUUID(string: "15111100-3023-455B-86CE-615F79EE8ECE")
+    
+    /// All services to discover after connection
+    static let allServices: [CBUUID] = [auth, config, main, ext]
+    
+    /// Alias cũ dùng ở một số chỗ — trùng với auth
+    static let datBikeService = auth
+    
+    /// UUIDs cho foreground & background scan
+    static let scanUUIDs: [CBUUID] = [auth, main]
+}
 
 // MARK: - Characteristic UUIDs
 enum BLECharacteristic {
+    // — Auth Service —
+    
     /// Auth challenge/PIN write (handle 0x00c)
-    static let authChallenge   = CBUUID(string: "c8eaf27b-9fb7-4bc3-b11a-bf68c97b1b1f")
+    /// Write PIN here to authenticate. First write triggers SMP pairing if not bonded.
+    static let authChallenge   = CBUUID(string: "C8EAF27B-9FB7-4BC3-B11A-BF68C97B1B1F")
     
-    /// Session token (handle 0x02e), TimeSync
-    static let sessionToken    = CBUUID(string: "44e2bde6-9cd5-4159-9d43-a3e3f4e9c737")
+    /// Auth response (handle 0x00e)
+    static let authResponse    = CBUUID(string: "C75EBE03-EA2F-4C0E-A720-1E7112A72D81")
     
-    /// Auto-unlock / proximity (handle 0x032)
-    static let autoUnlock      = CBUUID(string: "87efab0d-9e32-4ab8-8916-ed7cb72d819a")
+    /// Auth token (handle 0x010)
+    static let authToken       = CBUUID(string: "91E84EB0-DEA0-436F-A157-F21D89443B32")
     
-    /// Unlock command (handle 0x030)
-    static let unlockCmd       = CBUUID(string: "7f13fe5c-1971-4fec-97fd-f90e16cf8c28")
+    // — Config Service —
     
-    /// Smartkey echo / status (handle 0x036)
-    static let smartkeyEcho    = CBUUID(string: "eec8fd7f-4709-441a-a838-b9eb3066ede4")
+    /// Cấu hình và Dashboard (handle 0x013)
+    static let dashboardData   = CBUUID(string: "6D2EB205-6F9B-4ECF-BB1B-A5FAD127C66C")
     
-    /// Find bike command (handle 0x034)
-    static let findBike        = CBUUID(string: "350d9a82-b3f3-4213-bdda-6403be495f53")
+    /// Nhật ký Pin / Battery Info (JSON format)
+    static let batteryData     = CBUUID(string: "84C7BE0B-7619-45C1-A503-95F4FF8736ED")
     
-    /// Dashboard telemetry (handle 0x013)
-    static let dashboardData   = CBUUID(string: "6d2eb205-6f9b-4ecf-bb1b-a5fad127c66c")
+    /// Bike Config JSON (name, model, frame, firmware, controller, mainPcb data)
+    static let bikeConfigJson  = CBUUID(string: "018E6A6F-4BDA-7B07-8586-1298248A8D5C")
     
-    /// Device Serial
-    static let deviceSerialAlt = CBUUID(string: "041d5a06-e35f-42d3-92c8-0d421186d2f3")
+    // — Main Service —
+    
+    /// Vehicle status / BIKE_NAME (handle 0x01a) — READ returns device name string
+    static let vehicleStatus   = CBUUID(string: "88C30D2C-F80F-43F8-B0CB-FC1E4AE49BE9")
+    
+    /// STATUS_FLAGS (handle 0x01c) — 0x08 0x00 observed
+    static let statusFlags     = CBUUID(string: "5D681587-C268-4BD3-9560-66EC79DBFDC8")
+    
+    /// Device serial (alternate, handle 0x022)
+    static let deviceSerialAlt = CBUUID(string: "041D5A06-E35F-42D3-92C8-0D421186D2F3")
+    
+    /// Device model (alternate, handle 0x028)
+    static let deviceModelAlt  = CBUUID(string: "4AAE98E9-90B5-492F-8180-9538FA2C843D")
+    
+    /// Time sync / session token (handle 0x02e)
+    static let timeSync        = CBUUID(string: "44E2BDE6-9CD5-4159-9D43-A3E3F4E9C737")
+    
+    /// Unlock command (handle 0x030) — WRITE '0' (0x30) to unlock / bật xe
+    static let unlockCmd       = CBUUID(string: "7F13FE5C-1971-4FEC-97FD-F90E16CF8C28")
+    
+    /// Auto-unlock / proximity token (handle 0x032)
+    static let autoUnlock      = CBUUID(string: "87EFAB0D-9E32-4AB8-8916-ED7CB72D819A")
+    
+    /// Find bike command (handle 0x034) — WRITE '1' start, '0' stop
+    static let findBike        = CBUUID(string: "350D9A82-B3F3-4213-BDDA-6403BE495F53")
+    
+    /// Smartkey echo / lock command (handle 0x036)
+    /// READ: status byte. WRITE '1' (0x31) to lock/arm.
+    static let smartkeyEcho    = CBUUID(string: "EEC8FD7F-4709-441A-A838-B9EB3066EDE4")
+    
+    /// Commit hash string (handle 0x03a)
+    static let commitHash      = CBUUID(string: "73D50009-ED01-4BB1-BDC2-E89B725A91DB")
+    
+    /// Firmware version string (handle 0x02a) — e.g. "1.10.1"
+    static let fwVersion       = CBUUID(string: "D1DA175E-7E4B-42DB-9EC5-BDD7E929EB6C")
+    
+    /// LOCK_STATUS — alias of smartkeyEcho
+    static let lockStatus      = CBUUID(string: "EEC8FD7F-4709-441A-A838-B9EB3066EDE4")
+    
+    /// SMARTKEY_FLAG (r) — 0x01 = SmartKey enabled
+    static let smartkeyFlag    = CBUUID(string: "69C79762-C574-46D0-8E8B-D2B8D8B1019A")
+    
+    /// Service Changed (standard BLE, handle 0x008)
+    static let serviceChanged  = CBUUID(string: "2A05")
 }
 
 // MARK: - Commands
+
 enum BLECommand {
+    /// Power OFF / Tắt xe: WRITE 0x30 → unlockCmd
     static let powerOff: Data  = Data([0x30])
+    
+    /// Power ON / Bật xe: WRITE 0x31 → unlockCmd
     static let powerOn: Data   = Data([0x31])
+    
+    /// Lock/Arm: WRITE 0x31 → smartkeyEcho
     static let lock: Data      = Data([0x31])
+    
+    /// Find bike start: WRITE '1' → findBike
     static let findStart: Data = Data([0x31])
+    
+    /// Find bike stop: WRITE '0' → findBike
     static let findStop: Data  = Data([0x30])
 }
 
+// MARK: - Protocol Constants
+
+enum BLEProtocol {
+    /// Sinh PIN ngẫu nhiên 12 ký tự (chữ thường, chữ hoa, số, ký tự đặc biệt)
+    /// Dùng SecRandomCopyBytes cho entropy cấp mật mã
+    static func generateSecurePIN() -> String {
+        let lowercase = Array("abcdefghijklmnopqrstuvwxyz")
+        let uppercase = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        let digits    = Array("0123456789")
+        let special   = Array("!@#$%^&*()-_=+")
+        let allChars  = lowercase + uppercase + digits + special
+        
+        func secureRandom(_ bound: Int) -> Int {
+            var randomBytes = [UInt8](repeating: 0, count: 1)
+            _ = SecRandomCopyBytes(kSecRandomDefault, 1, &randomBytes)
+            return Int(randomBytes[0]) % bound
+        }
+        
+        // Đảm bảo mỗi loại ít nhất 1 ký tự
+        var pin: [Character] = [
+            lowercase[secureRandom(lowercase.count)],
+            uppercase[secureRandom(uppercase.count)],
+            digits[secureRandom(digits.count)],
+            special[secureRandom(special.count)]
+        ]
+        
+        // 8 ký tự còn lại từ tất cả
+        for _ in 0..<8 {
+            pin.append(allChars[secureRandom(allChars.count)])
+        }
+        
+        // Shuffle dùng Fisher-Yates với secure random
+        for i in stride(from: pin.count - 1, through: 1, by: -1) {
+            let j = secureRandom(i + 1)
+            pin.swapAt(i, j)
+        }
+        
+        return String(pin)
+    }
+    
+    static let deviceNamePrefix = "Dat Bike"
+    static let deviceNameAltPrefix = "QT_"
+    static let rssiThreshold: Int = -65
+    static let rssiReadInterval: TimeInterval = 2.0
+    static let authConfirmDelay: TimeInterval = 0.12
+    static let authSessionDelay: TimeInterval = 0.5
+}
+
 // MARK: - Data Extension
+
 extension Data {
     var hexString: String {
         map { String(format: "%02x", $0) }.joined()

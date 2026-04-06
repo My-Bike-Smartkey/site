@@ -32,6 +32,12 @@ struct MainView: View {
                 showingDisclaimer = true
             } else {
                 container.dashboardViewModel.initializeHardware()
+                // Auto-connect nếu đã pair trước đó (có savedPin)
+                // centralManagerDidUpdateState(.poweredOn) sẽ tự trigger connect()
+                // nhưng gọi thêm ở đây để cover case BLE đã ready trước onAppear
+                if PreferencesManager.shared.savedPin != nil {
+                    container.dashboardViewModel.connectBike()
+                }
             }
         }
         .sheet(isPresented: $showingSettings) {
@@ -86,14 +92,7 @@ struct ConnectingSplashView: View {
             VStack {
                 HStack {
                     Spacer()
-                    if settingsVM.isDebugModeEnabled {
-                        Button(action: { showingLogs = true }) {
-                            Image(systemName: "terminal.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.cyan)
-                                .padding()
-                        }
-                    }
+                    
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 24))
@@ -173,11 +172,10 @@ struct ConnectingSplashView: View {
                             .padding(.horizontal)
                         
                         Button(action: {
-                            // Giả lập hệ thống NFC trả về một mã PIN 6 số hoặc lấy tự động
-                            let simulatedPin = String(format: "%06d", Int.random(in: 100000...999999))
-                            dashboardVM.submitPairingPin(simulatedPin)
+                            let securePin = BLEProtocol.generateSecurePIN()
+                            dashboardVM.submitPairingPin(securePin)
                         }) {
-                            Text("Giả lập chạm thẻ NFC (Sinh PIN)")
+                            Text("Đặt thẻ khóa NFC lên vị trí mở khóa")
                                 .font(.headline)
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 30)
@@ -186,31 +184,86 @@ struct ConnectingSplashView: View {
                                 .clipShape(Capsule())
                         }
                     } else if dashboardVM.connectionState == .scanning {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .orange))
-                            .scaleEffect(1.3)
-                        
-                        Text("Đang tìm Bluetooth của xe...")
-                            .font(.headline)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                        // MARK: - Bike Picker / Scanning
+                        if dashboardVM.discoveredBikes.isEmpty {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                                .scaleEffect(1.3)
+                            
+                            Text("Đang tìm xe...")
+                                .font(.headline)
+                                .foregroundColor(.gray)
+                        } else {
+                            // Danh sách xe tìm thấy
+                            VStack(spacing: 16) {
+                                Text("Chọn xe để kết nối")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                
+                                ForEach(dashboardVM.discoveredBikes) { bike in
+                                    Button(action: { dashboardVM.selectBike(bike.id) }) {
+                                        HStack(spacing: 14) {
+                                            Image(systemName: "bicycle")
+                                                .font(.title2)
+                                                .foregroundColor(.orange)
+                                                .frame(width: 36)
+                                            
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(bike.name)
+                                                    .font(.headline)
+                                                    .foregroundColor(.white)
+                                                Text("ID: \(String(bike.id.suffix(8)).uppercased())")
+                                                    .font(.caption)
+                                                    .foregroundColor(.orange.opacity(0.7))
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            // Signal indicator
+                                            bikeSignalIcon(rssi: bike.rssi)
+                                        }
+                                        .padding(.horizontal, 18)
+                                        .padding(.vertical, 14)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 14)
+                                                .fill(Color.white.opacity(0.06))
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 14)
+                                                        .stroke(Color.orange.opacity(0.2), lineWidth: 1)
+                                                )
+                                        )
+                                    }
+                                }
+                                .padding(.horizontal)
+                                
+                                // Vẫn đang quét thêm
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .gray))
+                                        .scaleEffect(0.7)
+                                    Text("Đang quét thêm...")
+                                        .font(.caption)
+                                        .foregroundColor(.gray.opacity(0.6))
+                                }
+                            }
+                        }
                     } else if dashboardVM.connectionState == .connecting || dashboardVM.connectionState == .authenticating {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                             .scaleEffect(1.5)
                         
-                        Text(dashboardVM.connectionState == .authenticating ? "Đang xác thực bằng cơ chế ẩn..." : "Đang thiết lập kết nối mã hoá...")
+                        Text(dashboardVM.connectionState == .authenticating ? "Đang xác thực bảo mật..." : "Đang kết nối...")
                             .font(.headline)
                             .foregroundColor(.gray)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
                     } else {
-                        Button(action: { showingNFCPrompt = true }) {
+                        // Idle — nút bắt đầu tìm xe
+                        Button(action: { dashboardVM.connectBike() }) {
                             HStack(spacing: 12) {
-                                Image(systemName: "plus.circle.fill")
+                                Image(systemName: "magnifyingglass")
                                     .font(.title2)
-                                Text("Thêm xe / Kết nối")
+                                Text("Tìm xe")
                                     .font(.headline)
                             }
                             .foregroundColor(.white)
@@ -226,14 +279,28 @@ struct ConnectingSplashView: View {
                             .clipShape(Capsule())
                             .shadow(color: .orange.opacity(0.3), radius: 10, y: 5)
                         }
-                        
-                        Text("Sử dụng kiến trúc IoT V2")
-                            .font(.caption)
-                            .foregroundColor(.gray.opacity(0.6))
                     }
                 }
                 .frame(minHeight: 100)
             }
         }
     }
+    
+    private func bikeSignalIcon(rssi: Int) -> some View {
+        let (bars, color): (Int, Color) = {
+            if rssi >= -60 { return (4, .green) }
+            if rssi >= -75 { return (3, .green) }
+            if rssi >= -85 { return (2, .yellow) }
+            return (1, .red)
+        }()
+        
+        return HStack(alignment: .bottom, spacing: 2) {
+            ForEach(1...4, id: \.self) { level in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(level <= bars ? color : Color.gray.opacity(0.3))
+                    .frame(width: 4, height: CGFloat(level * 5))
+            }
+        }
+    }
 }
+

@@ -54,10 +54,6 @@ struct DashboardView: View {
                             )
                             
                             IoTLockStateLabel(lockStatus: viewModel.lockStatus)
-                            
-                            Text(viewModel.lockStatus.isLocked ? "Nhấn để \(viewModel.lockStatus == .armed ? "tắt" : "bật") chống trộm" : "Nhấn để tắt xe")
-                                .font(.caption)
-                                .foregroundColor(.gray)
                         }
                     }
                     

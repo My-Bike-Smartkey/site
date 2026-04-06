@@ -15,14 +15,7 @@ class SettingsViewModel: ObservableObject {
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
     
-    struct FakeBikeInfo {
-        var name = "Dat Bike Weaver"
-        var model = "Weaver 200"
-        var serial = "DB200021"
-        var deviceToken = "Token"
-        var isEmpty = false
-    }
-    @Published var bikeInfo = FakeBikeInfo()
+    @Published var bikeInfo = IoTVehicleInfo()
     @Published var logs: [BLELogEntry] = []
     
     private var cancellables = Set<AnyCancellable>()
@@ -54,11 +47,25 @@ class SettingsViewModel: ObservableObject {
             .dropFirst()
             .sink { [weak self] val in self?.preferences.isDebugModeEnabled = val }
             .store(in: &cancellables)
+        
+        core.$currentVehicleInfo
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.bikeInfo, on: self)
+            .store(in: &cancellables)
+        
+        core.connectionState
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                self?.isConnected = (state == .active)
+            }
+            .store(in: &cancellables)
     }
     
     func forgetBike() {
         core.disconnect()
-        // Cần truyền logic vào Core để xoá AccesssorySetupKit.
+        // Xoá PIN + UUID → lần ghép tiếp sẽ hiện bước NFC + scan mới
+        PreferencesManager.shared.savedPin = nil
+        PreferencesManager.shared.savedPeripheralUUID = nil
     }
     
     func syncTime() {

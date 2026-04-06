@@ -28,83 +28,6 @@ struct SettingsView: View {
                     .padding(.horizontal)
                     
 
-                    // Auto-unlock section
-                    settingsSection(title: "TỰ ĐỘNG MỞ KHÓA") {
-                        VStack(spacing: 0) {
-                            HStack {
-                                    HStack(spacing: 10) {
-                                        Image(systemName: "location.fill")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(.purple)
-                                            .frame(width: 28, height: 28)
-                                            .background(Color.purple.opacity(0.15))
-                                            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Auto Unlock")
-                                                .font(.subheadline)
-                                                .foregroundColor(.white)
-                                            Text("Tự mở khóa khi đến gần xe")
-                                                .font(.caption2)
-                                                .foregroundColor(.gray)
-                                        }
-                                    }
-                                    Button { showInfoAutoUnlock = true } label: {
-                                        Image(systemName: "info.circle")
-                                            .font(.system(size: 15))
-                                            .foregroundColor(.gray.opacity(0.6))
-                                    }
-                                    .popover(isPresented: $showInfoAutoUnlock) {
-                                        infoPopover(
-                                            title: "Auto Unlock",
-                                            icon: "location.fill",
-                                            iconColor: .purple,
-                                            body: "Khi bật, app đo tín hiệu Bluetooth (RSSI) liên tục khi mở app. Khi RSSI vượt ngưỡng cài đặt (tức là bạn đang đứng đủ gần xe), app tự tự động mở khoá."
-                                        )
-                                    }
-                                    Spacer()
-                                    Toggle("", isOn: Binding(
-                                        get: { viewModel.autoUnlockEnabled },
-                                        set: { viewModel.autoUnlockEnabled = $0 }
-                                    ))
-                                    .tint(.purple)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-
-                            if viewModel.autoUnlockEnabled {
-                                Divider().background(Color.white.opacity(0.06))
-                                
-                                VStack(spacing: 8) {
-                                    HStack {
-                                        Text("Ngưỡng RSSI")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                        Spacer()
-                                        Text("\(Int(viewModel.rssiThreshold)) dBm")
-                                            .font(.system(.caption, design: .monospaced))
-                                            .foregroundColor(.purple)
-                                    }
-                                    
-                                    Slider(value: $viewModel.rssiThreshold, in: -90...(-40), step: 5)
-                                        .tint(.purple)
-                                    
-                                    HStack {
-                                        Text("Xa hơn")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                        Spacer()
-                                        Text("Gần hơn")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                            }
-                        }
-                    }
-                    
                     // Device info section
                     if viewModel.isConnected && !viewModel.bikeInfo.isEmpty {
                         settingsSection(title: "THÔNG TIN XE") {
@@ -116,7 +39,12 @@ struct SettingsView: View {
                                            title: "Model", value: viewModel.bikeInfo.model)
                                 Divider().background(Color.white.opacity(0.06))
                                 settingsRow(icon: "number", iconColor: .cyan,
-                                           title: "Serial", value: viewModel.bikeInfo.serial)
+                                           title: "Số khung", value: viewModel.bikeInfo.serial)
+                                if !viewModel.bikeInfo.firmware.isEmpty {
+                                    Divider().background(Color.white.opacity(0.06))
+                                    settingsRow(icon: "gearshape.fill", iconColor: .cyan,
+                                               title: "Firmware", value: viewModel.bikeInfo.firmware)
+                                }
                                 if !viewModel.bikeInfo.deviceToken.isEmpty {
                                     Divider().background(Color.white.opacity(0.06))
                                     settingsRow(icon: "key", iconColor: .cyan,
@@ -197,37 +125,7 @@ struct SettingsView: View {
                     }
 
                     
-                    // Debug section
-                    settingsSection(title: "CÀI ĐẶT NHÀ PHÁT TRIỂN") {
-                        VStack(spacing: 0) {
-                            HStack {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "ladybug.fill")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.green)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.green.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    Text("Chế độ Nhà phát triển")
-                                        .font(.subheadline)
-                                        .foregroundColor(.white)
-                                }
-                                Spacer()
-                                Toggle("", isOn: $viewModel.isDebugModeEnabled)
-                                    .tint(.green)
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            
-                            if viewModel.isDebugModeEnabled {
-                                Divider().background(Color.white.opacity(0.06))
-                                settingsButton(icon: "list.bullet.rectangle", iconColor: .green, title: "Xem BLE Log") {
-                                    viewModel.logs = PersistentLogger.shared.loadLogs()
-                                    showLogs = true
-                                }
-                            }
-                        }
-                    }
+
                     
                     // Donate section
                     settingsSection(title: "ỦNG HỘ DỰ ÁN") {
@@ -282,7 +180,7 @@ struct SettingsView: View {
 
                     // App info
                     VStack(spacing: 4) {
-                        Text("MyBike Smartkey v2.0.0")
+                        Text("MyBike Smartkey v3.0.0")
                             .font(.caption)
                             .foregroundColor(.gray)
                         Text("Sản phẩm được tạo bởi tình yêu dành cho chiếc xe Datbike của tôi")

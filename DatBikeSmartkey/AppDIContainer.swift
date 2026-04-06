@@ -19,11 +19,18 @@ class AppDIContainer: ObservableObject {
         SettingsViewModel(core: bleCore, preferences: preferences)
     }()
     
+    private var cancellables = Set<AnyCancellable>()
+    
     init() {
         self.bleCore = DatBikeCore()
         self.preferences = PreferencesManager.shared
         
-        // Khởi động Bluetooth ngay lập tức nếu cần thiết
-        // (Tuỳ chọn: Nếu muốn tự kích hoạt)
+        // Forward dashboardViewModel.objectWillChange → container.objectWillChange
+        // Để MainView (observe container) re-render khi connectionState thay đổi
+        dashboardViewModel.objectWillChange
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
     }
 }

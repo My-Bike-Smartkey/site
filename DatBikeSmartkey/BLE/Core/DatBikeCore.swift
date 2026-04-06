@@ -14,6 +14,13 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     @Published private(set) var currentLockState: IoTLockState = .unknown(Data())
     var lockState: AnyPublisher<IoTLockState, Never> { $currentLockState.eraseToAnyPublisher() }
     
+    @Published private(set) var currentVehicleInfo = IoTVehicleInfo()
+    
+    @Published private(set) var currentRSSI: Int = 0
+    
+    /// Danh sách xe tìm thấy trong quá trình scan
+    @Published private(set) var discoveredBikes: [DiscoveredBike] = []
+    
     private var centralManager: CBCentralManager!
     private var activeContext: BLEConnectionContext?
     
@@ -23,6 +30,17 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     private var cancellables = Set<AnyCancellable>()
     
     private var isAuthenticating = false
+    
+    // Scan timeout & retry
+    private var scanTimer: DispatchWorkItem?
+    private var scanRetryCount = 0
+    private let maxScanRetries = 3
+    private let scanTimeoutSeconds: TimeInterval = 10
+    
+    // MIC failure auto-recovery — progressive delays: 3s, 5s, 8s, 12s, 18s, 25s
+    private var micRetryCount = 0
+    private let maxMICRetries = 6
+    private let micRetryDelays: [TimeInterval] = [3, 5, 8, 12, 18, 25]
     
     init(preferences: PreferencesManager = .shared) {
         self.preferences = preferences
@@ -35,7 +53,10 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     func initializeBluetoothHardware() {
         guard centralManager == nil else { return }
         let queue = DispatchQueue(label: "datbike.core.ble", qos: .userInitiated)
-        self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [CBCentralManagerOptionShowPowerAlertKey: true])
+        self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [
+            CBCentralManagerOptionRestoreIdentifierKey: "datbike.core.central",
+            CBCentralManagerOptionShowPowerAlertKey: true
+        ])
     }
     
     private func setupLogging() {
@@ -57,21 +78,18 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     
     func connect() {
         guard let central = centralManager else {
-            // Khởi tạo phần cứng tự động nếu UI quên gọi
             initializeBluetoothHardware()
             stateMachine.transition(to: .scanning)
             return
         }
         
-        // Trạng thái của centralManager phải được đánh giá trên đúng luồng khởi tạo để tránh gãy state.
-        // CBCentralManager có thể báo .poweredOff giả trên MainThread trong lúc boot.
         let state = central.state
         
         switch state {
         case .poweredOn:
-            break // Sẵn sàng
+            break
         case .unknown, .resetting:
-            stateMachine.transition(to: .scanning) // Ghi nhận trạng thái chờ OS boot
+            stateMachine.transition(to: .scanning)
             return
         case .poweredOff:
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
@@ -82,7 +100,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
                     self.connect()
                 }
             }
-            stateMachine.transition(to: .scanning) // Ghi nhận đợi debounce
+            stateMachine.transition(to: .scanning)
             return
         case .unauthorized:
             stateMachine.transition(to: .error("Ứng dụng chưa được cấp quyền Bluetooth."))
@@ -94,12 +112,122 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
             return
         }
         
+        // Reset state cho lần scan mới
+        DispatchQueue.main.async {
+            self.discoveredBikes = []
+        }
+        scanRetryCount = 0
+        
+        // Đã pair trước đó → thử retrieve (giống 7c3227a tryReconnectKnown)
+        if preferences.savedPin != nil,
+           let savedUUIDStr = preferences.savedPeripheralUUID,
+           let savedUUID = UUID(uuidString: savedUUIDStr) {
+            
+            // Step 1: retrieveConnectedPeripherals — xe đang kết nối ở tầng iOS?
+            let connected = central.retrieveConnectedPeripherals(withServices: BLEService.allServices)
+            if let p = connected.first(where: { $0.identifier.uuidString == savedUUIDStr }) {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "Xe đang kết nối (live session): \(p.name ?? savedUUIDStr.prefix(8).description)"))
+                connectPeripheral(p, central: central)
+                return
+            }
+            
+            // Step 2: retrievePeripherals — lấy từ iOS cache (giống 2e6ad99)
+            // Với State Restoration, iOS duy trì encryption context → an toàn connect
+            let known = central.retrievePeripherals(withIdentifiers: [savedUUID])
+            if let p = known.first {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "Retrieve peripheral từ cache: \(p.name ?? savedUUIDStr.prefix(8).description)"))
+                connectPeripheral(p, central: central)
+                return
+            }
+            
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "Không tìm thấy xe trong cache — fallback sang scan"))
+        }
+        
+        startScanWithTimeout(central: central)
+    }
+    
+    /// Thiết lập context + kết nối peripheral (dùng chung cho retrieve và scan)
+    private func connectPeripheral(_ p: CBPeripheral, central: CBCentralManager) {
+        stateMachine.transition(to: .connecting)
+        
+        let context = BLEConnectionContext(peripheral: p)
+        self.activeContext = context
+        p.delegate = self
+        self.commandDispatcher = BLECommandDispatcher(context: context)
+        self.pollingEngine = BLEPollingEngine(context: context)
+        self.isAuthenticating = false
+        
+        central.connect(p, options: [
+            CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+            CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
+        ])
+    }
+    
+    /// Bắt đầu quét BLE với timeout
+    private func startScanWithTimeout(central: CBCentralManager) {
+        cancelScanTimer()
+        
         stateMachine.transition(to: .scanning)
-        // 1. Phục hồi Scanner: Quét các thiết bị quảng bá Service BLE của Dat Bike (nếu biết UUID, nếu không thì nil)
-        central.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        
+        let allowDupes = scanRetryCount > 0
+        central.scanForPeripherals(withServices: BLEService.scanUUIDs, options: [
+            CBCentralManagerScanOptionAllowDuplicatesKey: allowDupes
+        ])
+        
+        // Timer: Hết thời gian quét → kiểm tra kết quả
+        let timer = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            central.stopScan()
+            
+            // Nếu đã tìm thấy xe → dừng, chờ user chọn
+            if !self.discoveredBikes.isEmpty {
+                return
+            }
+            
+            // Chưa tìm thấy → retry hoặc báo lỗi
+            self.scanRetryCount += 1
+            if self.scanRetryCount < self.maxScanRetries {
+                self.startScanWithTimeout(central: central)
+            } else {
+                self.stateMachine.transition(to: .error("Không tìm thấy xe. Hãy kiểm tra xe đã bật chưa."))
+            }
+        }
+        self.scanTimer = timer
+        DispatchQueue.main.asyncAfter(deadline: .now() + scanTimeoutSeconds, execute: timer)
+    }
+    
+    private func cancelScanTimer() {
+        scanTimer?.cancel()
+        scanTimer = nil
+    }
+    
+    /// User chọn xe từ danh sách → kết nối
+    func selectBike(_ bikeId: String) {
+        guard let bike = discoveredBikes.first(where: { $0.id == bikeId }),
+              let central = centralManager else { return }
+        
+        cancelScanTimer()
+        central.stopScan()
+        stateMachine.transition(to: .connecting)
+        
+        let peripheral = bike.peripheral
+        let context = BLEConnectionContext(peripheral: peripheral)
+        self.activeContext = context
+        peripheral.delegate = self
+        
+        self.commandDispatcher = BLECommandDispatcher(context: context)
+        self.pollingEngine = BLEPollingEngine(context: context)
+        self.isAuthenticating = false
+        
+        central.connect(peripheral, options: nil)
     }
     
     func disconnect() {
+        cancelScanTimer()
+        centralManager?.stopScan()
         stateMachine.transition(to: .idle)
         pollingEngine?.stopPolling()
         if let ctx = activeContext {
@@ -109,6 +237,9 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
         commandDispatcher = nil
         pollingEngine = nil
         isAuthenticating = false
+        DispatchQueue.main.async {
+            self.discoveredBikes = []
+        }
     }
     
     func getDispatcher() throws -> IoTCommandService {
@@ -116,14 +247,79 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
         return d
     }
     
+    /// Đọc telemetry + lock state từ xe
+    func queryTelemetry() {
+        guard let ctx = activeContext else { return }
+        Task {
+            do {
+                // Đọc Dashboard Telemetry
+                if let dashChar = try? ctx.requireCharacteristic(BLECharacteristic.dashboardData) {
+                    let data = try await ctx.queue.enqueue {
+                        try await ctx.io.readValue(from: dashChar)
+                    }
+                    let tele = DashboardTelemetry(from: data)
+                    DispatchQueue.main.async {
+                        self.currentTelemetry.motorTemp = tele.motorTemp
+                        self.currentTelemetry.controllerTemp = tele.controllerTemp
+                        self.currentTelemetry.odometerKm = tele.odometerKm
+                        self.currentTelemetry.speedKmh = tele.speedKmh
+                    }
+                }
+                
+                // Đọc Battery SOC (JSON)
+                if let batChar = try? ctx.requireCharacteristic(BLECharacteristic.batteryData) {
+                    let data = try await ctx.queue.enqueue {
+                        try await ctx.io.readValue(from: batChar)
+                    }
+                    if let json = String(bytes: data, encoding: .utf8) {
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                            message: "Battery JSON: \(json.prefix(200))"))
+                        if let jsonData = json.data(using: .utf8),
+                           let decoded = try? JSONDecoder().decode(BatteryTelemetry.self, from: jsonData),
+                           let socValue = decoded.soc?.soc {
+                            // SOC từ firmware là tỉ lệ 0.0–1.0 → nhân 100 = %
+                            let percent = Int(socValue * 100)
+                            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                                message: "Battery SOC: \(socValue) → \(percent)%"))
+                            DispatchQueue.main.async {
+                                self.currentTelemetry.soc = Float(percent)
+                            }
+                        }
+                    }
+                }
+                
+                // Đọc Lock State (smartkeyEcho)
+                if let echoChar = try? ctx.requireCharacteristic(BLECharacteristic.smartkeyEcho) {
+                    let data = try await ctx.queue.enqueue {
+                        try await ctx.io.readValue(from: echoChar)
+                    }
+                    let status = IoTLockState.parse(from: data)
+                    DispatchQueue.main.async { self.currentLockState = status }
+                }
+            } catch {
+                PersistentLogger.shared.append(BLELogEntry(
+                    timestamp: Date(), level: .warning,
+                    message: "Query telemetry lỗi: \(error.localizedDescription)"
+                ))
+            }
+        }
+    }
+    
     // MARK: - Auto Unlock Wiring
     private func setupAutoUnlock(engine: BLEPollingEngine) {
+        // Forward RSSI to published property for UI
+        engine.$currentRSSI
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] rssi in
+                self?.currentRSSI = Int(rssi)
+            }
+            .store(in: &cancellables)
+        
         engine.$currentRSSI
             .combineLatest(preferences.$autoUnlockEnabled, preferences.$rssiThreshold)
-            .debounce(for: .seconds(1), scheduler: DispatchQueue.main) // Chống dội
+            .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
             .sink { [weak self] (rssi, isAutoUnlockOn, threshold) in
                 guard let self = self, isAutoUnlockOn else { return }
-                // Nếu RSSI vào vùng phủ sóng và xe đang tắt
                 if rssi >= threshold, case .locked = self.currentLockState {
                     Task {
                         try? await self.commandDispatcher?.turnOnBike()
@@ -135,17 +331,40 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
 }
 
 extension DatBikeCore: CBCentralManagerDelegate {
+    
+    /// State Restoration: iOS khôi phục peripheral khi app bị kill + relaunch
+    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        if let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral],
+           let restored = peripherals.first {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "State Restoration: khôi phục \(restored.name ?? "unknown") (state: \(restored.state.rawValue))"))
+            
+            restored.delegate = self
+            let ctx = BLEConnectionContext(peripheral: restored)
+            activeContext = ctx
+            commandDispatcher = BLECommandDispatcher(context: ctx)
+            
+            if restored.state == .connected {
+                // Peripheral vẫn connected → discover lại services
+                restored.discoverServices(BLEService.allServices)
+            }
+        }
+    }
+    
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
-            // Tự quét nếu đang chờ
             if stateMachine.state == .scanning {
                 connect()
+            } else if stateMachine.state == .idle {
+                // BLE sẵn sàng lần đầu — auto-scan nếu đã pair
+                if preferences.savedPin != nil {
+                    connect()
+                }
             }
         case .poweredOff:
             if stateMachine.state != .idle {
-                // Workaround iOS bug: CoreBluetooth có thể flash qua .poweredOff
-                // trong mốc thời gian vài trăm ms khi boot, dù đang bật. Cần debounce.
+                cancelScanTimer()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                     guard let self = self else { return }
                     if self.centralManager.state == .poweredOff && self.stateMachine.state != .idle {
@@ -164,38 +383,178 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 stateMachine.transition(to: .error("Thiết bị không hỗ trợ Bluetooth."))
             }
         default:
-            // .unknown hoặc .resetting -> Chờ tiếp, không báo lỗi
             break
         }
     }
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        guard let name = peripheral.name, (name.contains("Dat Bike") || name.contains("QT_")) else { return }
+        // Scan đã filter theo datBikeService UUID → peripheral ở đây chắc chắn là xe Dat Bike
+        let advName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let deviceName = peripheral.name ?? advName ?? "Dat Bike"
         
-        central.stopScan()
-        stateMachine.transition(to: .connecting)
+        // Đã pair trước đó (có savedPin) → auto-connect luôn, không cần chọn
+        if preferences.savedPin != nil {
+            cancelScanTimer()
+            central.stopScan()
+            connectPeripheral(peripheral, central: central)
+            return
+        }
         
-        let context = BLEConnectionContext(peripheral: peripheral)
-        self.activeContext = context
-        peripheral.delegate = self
+        // Chưa pair → gom vào danh sách cho user chọn
+        let bike = DiscoveredBike(
+            peripheral: peripheral,
+            name: deviceName,
+            rssi: RSSI.intValue
+        )
         
-        self.commandDispatcher = BLECommandDispatcher(context: context)
-        self.pollingEngine = BLEPollingEngine(context: context)
-        self.isAuthenticating = false // Reset cờ
-        
-        central.connect(peripheral, options: nil)
+        DispatchQueue.main.async {
+            if let idx = self.discoveredBikes.firstIndex(where: { $0.id == bike.id }) {
+                self.discoveredBikes[idx] = bike
+            } else {
+                self.discoveredBikes.append(bike)
+            }
+        }
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        peripheral.discoverServices(nil)
+        micRetryCount = 0
+        peripheral.discoverServices(BLEService.allServices)
+    }
+    
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        let errorMsg = error?.localizedDescription ?? "unknown"
+        PersistentLogger.shared.append(BLELogEntry(
+            timestamp: Date(), level: .error,
+            message: "Kết nối thất bại: \(errorMsg)"
+        ))
+        
+        activeContext = nil
+        commandDispatcher = nil
+        pollingEngine = nil
+        isAuthenticating = false
+        
+        // MIC failure = iOS BLE encryption cache bị lệch với xe
+        // Root cause đã fix: không connect peripheral từ cache nếu chưa connected
+        // Retry bằng scan mới — iOS sẽ negotiate fresh encryption
+        let isMICFailure = errorMsg.contains("MIC failure")
+            || (error as NSError?)?.code == 31
+        
+        // Error 14: Peer removed pairing
+        if let cbError = error as? CBError, cbError.code == .peerRemovedPairingInformation {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
+                message: "Xe đã xóa bonding (code 14). Cần ghép đôi lại."))
+            preferences.savedPeripheralUUID = nil
+            stateMachine.transition(to: .error(
+                "Xe đã xóa kết nối BLE.\n" +
+                "Vào Cài đặt → Bluetooth → chọn xe → Quên thiết bị này.\n" +
+                "Sau đó quay lại app để ghép đôi lại."
+            ))
+            return
+        }
+        
+        if isMICFailure {
+            if micRetryCount < maxMICRetries {
+                let delay = micRetryDelays[micRetryCount]
+                micRetryCount += 1
+                PersistentLogger.shared.append(BLELogEntry(
+                    timestamp: Date(), level: .warning,
+                    message: "MIC failure — retry \(micRetryCount)/\(maxMICRetries) sau \(Int(delay))s (scan mới)..."
+                ))
+                stateMachine.transition(to: .scanning)
+                // Scan lại sau delay — iOS sẽ negotiate encryption mới
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                    guard let self, let central = self.centralManager, central.state == .poweredOn else { return }
+                    self.startScanWithTimeout(central: central)
+                }
+            } else {
+                micRetryCount = 0
+                stateMachine.transition(to: .error(
+                    "Lỗi bộ nhớ đệm Bluetooth (MIC failure).\n" +
+                    "Vào Cài đặt → Bluetooth → chọn xe → Quên thiết bị này.\n" +
+                    "Sau đó quay lại app."
+                ))
+            }
+        } else if scanRetryCount < maxScanRetries {
+            scanRetryCount += 1
+            startScanWithTimeout(central: central)
+        } else {
+            stateMachine.transition(to: .error("Kết nối thất bại. Hãy thử lại."))
+        }
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        disconnect()
+        pollingEngine?.stopPolling()
+        isAuthenticating = false
+        
+        guard let error = error else {
+            // User-initiated disconnect → dọn dẹp hoàn toàn
+            disconnect()
+            return
+        }
+        
+        let errorMsg = error.localizedDescription
+        let nsError = error as NSError
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+            message: "Ngắt kết nối: \(errorMsg) (code \(nsError.code))"))
+        
+        // MIC failure từ didDisconnect (iOS có thể fire ở đây thay vì didFailToConnect)
+        let isMICFailure = errorMsg.contains("MIC failure") || nsError.code == 31
+        if isMICFailure {
+            // Delegate lên cùng handler
+            activeContext = nil
+            commandDispatcher = nil
+            pollingEngine = nil
+            centralManager(central, didFailToConnect: peripheral, error: error)
+            return
+        }
+        
+        // Error 14: Peer removed pairing — xe đã xóa bond, cần ghép lại
+        if let cbError = error as? CBError, cbError.code.rawValue == 14 {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
+                message: "Xe đã xóa bonding (code 14). Cần ghép đôi lại."))
+            preferences.savedPeripheralUUID = nil
+            activeContext = nil
+            commandDispatcher = nil
+            pollingEngine = nil
+            stateMachine.transition(to: .error(
+                "Xe đã xóa kết nối BLE.\n" +
+                "Vào Cài đặt → Bluetooth → chọn xe → Quên thiết bị này.\n" +
+                "Sau đó quay lại app để ghép đôi lại."
+            ))
+            return
+        }
+        
+        // Disconnect thông thường → pending reconnect
+        stateMachine.transition(to: .scanning)
+        central.connect(peripheral, options: [
+            CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+            CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
+        ])
+        
+        // Fallback: connect() sau 3s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self else { return }
+            if case .scanning = self.stateMachine.state {
+                self.connect()
+            }
+        }
     }
 }
 
 extension DatBikeCore: CBPeripheralDelegate {
+    
+    /// Xử lý khi xe thay đổi GATT table — xóa cache cũ + discover lại
+    func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+            message: "GATT table thay đổi — discover lại services..."))
+        // Xóa characteristic cache cũ
+        if let ctx = activeContext {
+            ctx.clearState()
+        }
+        isAuthenticating = false
+        peripheral.discoverServices(BLEService.allServices)
+    }
+    
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         guard error == nil, let services = peripheral.services else { return }
         for service in services {
@@ -209,8 +568,11 @@ extension DatBikeCore: CBPeripheralDelegate {
             ctx.register(characteristic: char)
         }
         
-        // 3. Kích hoạt luồng Authenticator ngay khi thấy đủ characteristic c8eaf27b...
-        if !isAuthenticating, (try? ctx.requireCharacteristic(BLECharacteristic.authChallenge)) != nil {
+        // Kích hoạt auth CHỈ KHI ĐỦ cả 3 characteristic cần thiết (có thể nằm ở nhiều service khác nhau)
+        if !isAuthenticating,
+           (try? ctx.requireCharacteristic(BLECharacteristic.authChallenge)) != nil,
+           (try? ctx.requireCharacteristic(BLECharacteristic.timeSync)) != nil,
+           (try? ctx.requireCharacteristic(BLECharacteristic.autoUnlock)) != nil {
             isAuthenticating = true
             
             if let savedPin = PreferencesManager.shared.savedPin, !savedPin.isEmpty {
@@ -221,33 +583,134 @@ extension DatBikeCore: CBPeripheralDelegate {
         }
     }
     
-    /// Nhận mã PIN ảo lập lập từ luồng NFC (giả lập)
     func submitPairingPin(_ pin: String) {
         guard stateMachine.state == .pairingRequired, let ctx = activeContext else { return }
         PreferencesManager.shared.savedPin = pin
-        executeAuthProtocol(ctx: ctx, pin: pin)
+        executeAuthProtocol(ctx: ctx, pin: pin, isKnownDevice: false)
     }
     
-    private func executeAuthProtocol(ctx: BLEConnectionContext, pin: String) {
-        let authenticator = BLEAuthenticator(context: ctx, pin: pin)
+    private func executeAuthProtocol(ctx: BLEConnectionContext, pin: String, isKnownDevice: Bool = true) {
+        let authenticator = BLEAuthenticator(context: ctx, pin: pin, isKnownDevice: isKnownDevice)
         
         Task {
             do {
                 stateMachine.transition(to: .authenticating)
                 try await authenticator.authenticate()
                 
-                // Thành công -> Bật engine Polling & Cắm cờ Auto Unlock
                 if let engine = self.pollingEngine {
                     engine.startPolling()
                     self.setupAutoUnlock(engine: engine)
                 }
                 
                 stateMachine.transition(to: .active)
+                
+                // Lưu UUID để lần sau dùng retrievePeripherals (tránh MIC failure)
+                if let ctx = self.activeContext {
+                    self.preferences.savedPeripheralUUID = ctx.peripheral.identifier.uuidString
+                }
+                
+                // Post-auth: đọc lock status + device info + telemetry
+                self.readLockStatus()
+                self.readDeviceInfo()
+                self.queryTelemetry()
+                
+                // Auto sync time 1 lần/ngày
+                if self.preferences.needsTimeSyncToday, let dispatcher = self.commandDispatcher {
+                    Task {
+                        do {
+                            try await dispatcher.syncTime()
+                            self.preferences.lastTimeSyncDate = Date()
+                            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
+                                message: "Auto time sync hàng ngày ✅"))
+                        } catch {
+                            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                                message: "Auto time sync thất bại: \(error.localizedDescription)"))
+                        }
+                    }
+                }
+            } catch IoTError.shaChallengeFailed {
+                disconnect()
+                stateMachine.transition(to: .error("Xác thực thất bại. Thử lại hoặc tắt/bật Bluetooth."))
             } catch {
                 disconnect()
-                stateMachine.transition(to: .error("Xác thực thất bại do sai mã ẩn."))
-                // Xoá mã PIN rác nếu có
-                PreferencesManager.shared.savedPin = nil
+                stateMachine.transition(to: .error("Lỗi xác thực: \(error.localizedDescription)"))
+            }
+        }
+    }
+    
+    // MARK: - Post-Auth Data Reads
+    
+    /// Public — gọi từ ViewModel sau khi bật/tắt xe để cập nhật dashboard
+    func refreshLockState() {
+        readLockStatus()
+    }
+    
+    private func readLockStatus() {
+        guard let ctx = activeContext else { return }
+        Task {
+            if let char = try? ctx.requireCharacteristic(BLECharacteristic.smartkeyEcho) {
+                do {
+                    let data = try await ctx.queue.enqueue {
+                        try await ctx.io.readValue(from: char)
+                    }
+                    let status = IoTLockState.parse(from: data)
+                    DispatchQueue.main.async { self.currentLockState = status }
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                        message: "Trang thái xe: \(status.description) (raw: \(data.hexString))"))
+                } catch {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "Đọc lock status lỗi: \(error.localizedDescription)"))
+                }
+            }
+        }
+    }
+    
+    private func readDeviceInfo() {
+        guard let ctx = activeContext else { return }
+        Task {
+            var name = ""
+            var serial = ""
+            var model = ""
+            var fw = ""
+            
+            // Device name (vehicleStatus)
+            if let char = try? ctx.requireCharacteristic(BLECharacteristic.vehicleStatus),
+               let data = try? await ctx.queue.enqueue(task: { try await ctx.io.readValue(from: char) }),
+               let str = String(data: data, encoding: .utf8) {
+                name = str.trimmingCharacters(in: .controlCharacters)
+            }
+            
+            // Serial
+            if let char = try? ctx.requireCharacteristic(BLECharacteristic.deviceSerialAlt),
+               let data = try? await ctx.queue.enqueue(task: { try await ctx.io.readValue(from: char) }),
+               let str = String(data: data, encoding: .utf8) {
+                serial = str.trimmingCharacters(in: .controlCharacters)
+            }
+            
+            // Model
+            if let char = try? ctx.requireCharacteristic(BLECharacteristic.deviceModelAlt),
+               let data = try? await ctx.queue.enqueue(task: { try await ctx.io.readValue(from: char) }),
+               let str = String(data: data, encoding: .utf8) {
+                model = str.trimmingCharacters(in: .controlCharacters)
+            }
+            
+            // Firmware version
+            if let char = try? ctx.requireCharacteristic(BLECharacteristic.fwVersion),
+               let data = try? await ctx.queue.enqueue(task: { try await ctx.io.readValue(from: char) }),
+               let str = String(data: data, encoding: .utf8) {
+                fw = str.trimmingCharacters(in: .controlCharacters)
+            }
+            
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
+                message: "Xe: \(name) / \(model) / \(serial) / FW: \(fw)"))
+            
+            DispatchQueue.main.async {
+                self.currentVehicleInfo = IoTVehicleInfo(
+                    name: name.isEmpty ? "Dat Bike" : name,
+                    serialNumber: serial,
+                    modelNumber: model,
+                    firmwareVersion: fw
+                )
             }
         }
     }
@@ -255,11 +718,9 @@ extension DatBikeCore: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         Task { await activeContext?.io.didReceiveReadResponse(for: characteristic, error: error) }
         
-        // Cập nhật trạng thái Khoá từ Notify Ping / IO
         if characteristic.uuid == BLECharacteristic.smartkeyEcho {
             if let data = characteristic.value {
                 DispatchQueue.main.async {
-                    // Cắt phân tích nhanh Lock State (01 = On, 00 = Off)
                     if data.count >= 2 {
                         let lockByte = data[1]
                         if lockByte == 0x01 {

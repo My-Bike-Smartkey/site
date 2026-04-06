@@ -6,7 +6,7 @@ struct StatusCard: View {
     let connectionState: IoTConnectionState
     let rssi: Int
     let signalStrength: SignalStrength
-    let bikeInfo: DashboardViewModel.FakeBikeInfo
+    let bikeInfo: IoTVehicleInfo
     let batteryPercentage: Int
     let odometer: Float
     

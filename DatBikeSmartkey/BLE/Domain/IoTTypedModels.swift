@@ -52,7 +52,24 @@ enum IoTLockState: Equatable, CustomStringConvertible {
         case .locked: return "Đã tắt/khoá"
         case .unlocked: return "Đang bật"
         case .armed: return "Chống trộm (Arm)"
-        case .unknown(let d): return "Lạ \(d.hexString)"
+        case .unknown: return "Đang tải..."
+        }
+    }
+    
+    /// Parse từ raw data đọc từ smartkeyEcho/lockStatus (đồng bộ 64623aa)
+    /// 00 00 = LOCKED (xe đang tắt)
+    /// 02 00 = UNLOCKED (xe đang bật)
+    /// 07 00 = ARMED (chống trộm)
+    static func parse(from data: Data) -> IoTLockState {
+        switch data {
+        case Data(), Data([0x00]), Data([0x00, 0x00]), Data([0x30]), Data([0x30, 0x00]):
+            return .locked
+        case Data([0x02]), Data([0x02, 0x00]), Data([0x31]), Data([0x31, 0x00]):
+            return .unlocked
+        case Data([0x07]), Data([0x07, 0x00]):
+            return .armed
+        default:
+            return .unknown(data)
         }
     }
 }
@@ -71,4 +88,12 @@ struct IoTVehicleInfo: Equatable {
     var name: String = "Dat Bike"
     var serialNumber: String = ""
     var modelNumber: String = ""
+    var firmwareVersion: String = ""
+    var deviceToken: String = ""
+    
+    // Compat accessors cho Views
+    var serial: String { serialNumber }
+    var model: String { modelNumber }
+    var firmware: String { firmwareVersion }
+    var isEmpty: Bool { name == "Dat Bike" && serialNumber.isEmpty }
 }

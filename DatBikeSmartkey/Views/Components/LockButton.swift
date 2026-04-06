@@ -139,13 +139,41 @@ struct IoTLockStateLabel: View {
     
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: lockStatus.isLocked ? "lock.fill" : "lock.open.fill")
-                .foregroundColor(lockStatus.isLocked ? Color(red: 1.0, green: 0.6, blue: 0.2) : Color(red: 0.2, green: 0.85, blue: 0.5))
+            Image(systemName: lockStatus == .armed ? "shield.lefthalf.filled" : (lockStatus.isLocked ? "lock.fill" : "lock.open.fill"))
+                .foregroundColor(lockStatus == .armed ? Color(red: 1.0, green: 0.3, blue: 0.3) : (lockStatus.isLocked ? Color(red: 1.0, green: 0.6, blue: 0.2) : Color(red: 0.2, green: 0.85, blue: 0.5)))
                 .font(.title2)
-            Text(lockStatus.description)
-                .font(.title3)
-                .fontWeight(.semibold)
-                .foregroundColor(.white)
+            
+            if case .armed = lockStatus {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Đã bật chống trộm")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    Text("Nhấn để tắt chống trộm")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            } else if lockStatus.isLocked {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Đã tắt")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    Text("Nhấn để bật lại xe")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Đang bật")
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                    Text("Nhấn để tắt")
+                        .font(.caption)
+                        .foregroundColor(.gray)
+                }
+            }
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)

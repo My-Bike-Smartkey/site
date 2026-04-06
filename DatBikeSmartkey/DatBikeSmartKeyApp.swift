@@ -1,7 +1,7 @@
 // DatBikeSmartKeyApp.swift — App entry point (AccessorySetupKit)
 
 import SwiftUI
-import UserNotifications
+
 
 // MARK: - App
 
@@ -14,9 +14,7 @@ struct DatBikeSmartKeyApp: App {
         WindowGroup {
             MainView()
                 .environmentObject(container) // Truyền ngang dọc từ gốc
-                .onAppear {
-                    requestNotificationPermission()
-                }
+                .onAppear { }
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }
@@ -28,7 +26,7 @@ struct DatBikeSmartKeyApp: App {
         switch url.host {
         case "lock":      
             if let dispatcher = try? container.bleCore.getDispatcher() {
-                Task { try? await dispatcher.toggleLock() }
+                Task { try? await dispatcher.toggleLock(currentState: self.container.dashboardViewModel.lockState) }
             }
         case "unlock":    
             if let dispatcher = try? container.bleCore.getDispatcher() {
@@ -40,11 +38,4 @@ struct DatBikeSmartKeyApp: App {
         }
     }
     
-    private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if granted {
-                print("✅ Notification permission granted")
-            }
-        }
-    }
 }

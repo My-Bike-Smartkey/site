@@ -22,6 +22,22 @@ class PreferencesManager {
         didSet { UserDefaults.standard.set(savedPin, forKey: "savedPin") }
     }
     
+    @Published var savedPeripheralUUID: String? {
+        didSet { UserDefaults.standard.set(savedPeripheralUUID, forKey: "lastPeripheralUUID") }
+    }
+    
+    /// Ngày cuối cùng đã sync time với xe — dùng để auto sync 1 lần/ngày
+    var lastTimeSyncDate: Date? {
+        get { UserDefaults.standard.object(forKey: "lastTimeSyncDate") as? Date }
+        set { UserDefaults.standard.set(newValue, forKey: "lastTimeSyncDate") }
+    }
+    
+    /// Kiểm tra hôm nay đã sync time chưa
+    var needsTimeSyncToday: Bool {
+        guard let last = lastTimeSyncDate else { return true }
+        return !Calendar.current.isDateInToday(last)
+    }
+    
     private init() {
         let storedRssi = UserDefaults.standard.double(forKey: "rssiThreshold")
         self.rssiThreshold = storedRssi == 0 ? -65.0 : storedRssi
@@ -29,5 +45,6 @@ class PreferencesManager {
         self.autoUnlockEnabled = UserDefaults.standard.bool(forKey: "autoUnlockEnabled")
         self.isDebugModeEnabled = UserDefaults.standard.object(forKey: "isDebugModeEnabled") as? Bool ?? true
         self.savedPin = UserDefaults.standard.string(forKey: "savedPin")
+        self.savedPeripheralUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")
     }
 }

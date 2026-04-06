@@ -17,13 +17,13 @@ protocol IoTCoordinatorProtocol: AnyObject {
 
 /// Dịch vụ Điều khiển (Commands)
 protocol IoTCommandService {
-    func turnOnBike() async throws
-    func turnOffBike() async throws
-    func toggleLock() async throws
-    
-    func armAntiTheft() async throws
+    @discardableResult func turnOnBike() async throws -> IoTLockState
+    @discardableResult func turnOffBike() async throws -> IoTLockState
+    @discardableResult func armAntiTheft() async throws -> IoTLockState
+    func toggleLock(currentState: IoTLockState) async throws -> IoTLockState
     func findBike(start: Bool) async throws
     func syncTime() async throws
+    func readLockStatus() async throws -> IoTLockState
 }
 
 /// Dịch vụ lấy cấu hình xe

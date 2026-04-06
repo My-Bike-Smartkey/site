@@ -21,13 +21,10 @@ class DashboardViewModel: ObservableObject {
     @Published var errorMessage: String = ""
     @Published var rssi: Int = 0
     
-    // Stub
-    struct FakeBikeInfo {
-        var name = "My Dat Bike"
-        var serial = "12345ABC"
-        var isEmpty = false
-    }
-    @Published var bikeInfo = FakeBikeInfo()
+    /// Danh sách xe BLE tìm thấy trong quá trình scan
+    @Published var discoveredBikes: [DiscoveredBike] = []
+    
+    @Published var bikeInfo = IoTVehicleInfo()
     
     // Accessor cho View
     var batteryPercentage: Int { Int(telemetry.soc) }
@@ -78,6 +75,21 @@ class DashboardViewModel: ObservableObject {
                 self?.isProcessing = false
             }
             .store(in: &cancellables)
+        
+        core.$discoveredBikes
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.discoveredBikes, on: self)
+            .store(in: &cancellables)
+        
+        core.$currentVehicleInfo
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.bikeInfo, on: self)
+            .store(in: &cancellables)
+        
+        core.$currentRSSI
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.rssi, on: self)
+            .store(in: &cancellables)
     }
     
     // MARK: - Tiền Trình Bấm Nút
@@ -91,9 +103,16 @@ class DashboardViewModel: ObservableObject {
         core.connect()
     }
     
+    /// User chọn xe từ danh sách
+    func selectBike(_ bikeId: String) {
+        isProcessing = true
+        core.selectBike(bikeId)
+    }
+    
     func refreshStatus() {
-        // Trigger ASK and Connect wrapper
-        core.connect()
+        isProcessing = true
+        core.queryTelemetry()
+        // isProcessing sẽ tự tắt khi lockState cập nhật (trong setupBindings)
     }
     
     func submitPairingPin(_ pin: String) {
@@ -101,12 +120,13 @@ class DashboardViewModel: ObservableObject {
     }
     
     func lock() {
-        // ...
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {
-            try? await dispatcher.turnOffBike()
-            DispatchQueue.main.async { self.isProcessing = false }
+            if let state = try? await dispatcher.armAntiTheft() {
+                self.lockState = state
+            }
+            self.isProcessing = false
         }
     }
     
@@ -114,8 +134,10 @@ class DashboardViewModel: ObservableObject {
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {
-            try? await dispatcher.turnOnBike()
-            DispatchQueue.main.async { self.isProcessing = false }
+            if let state = try? await dispatcher.turnOnBike() {
+                self.lockState = state
+            }
+            self.isProcessing = false
         }
     }
     
@@ -123,8 +145,10 @@ class DashboardViewModel: ObservableObject {
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {
-            try? await dispatcher.turnOffBike()
-            DispatchQueue.main.async { self.isProcessing = false }
+            if let state = try? await dispatcher.turnOffBike() {
+                self.lockState = state
+            }
+            self.isProcessing = false
         }
     }
     
@@ -132,7 +156,10 @@ class DashboardViewModel: ObservableObject {
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {
-            try? await dispatcher.toggleLock()
+            if let state = try? await dispatcher.toggleLock(currentState: lockState) {
+                self.lockState = state
+            }
+            self.isProcessing = false
         }
     }
     

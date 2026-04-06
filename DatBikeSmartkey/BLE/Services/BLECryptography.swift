@@ -19,6 +19,9 @@ struct BLECryptography {
         
         // Hợp nhất `shiftedValue` và `PIN`
         let hashInputStr = String(shiftedValue) + pin
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "Auth crypto: raw=\(littleEndianValue) >> 1 = \(shiftedValue), input=\"\(hashInputStr)\""))
+        
         guard let inputData = hashInputStr.data(using: .utf8) else {
             throw IoTError.invalidResponseFormat
         }
