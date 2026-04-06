@@ -10,7 +10,7 @@
 |---|---|
 | **Phiên bản** | 3.0.0 |
 | **Nền tảng** | iOS 14+, Swift 5.9, SwiftUI |
-| **BLE Stack** | CoreBluetooth + State Restoration (background mode) |
+| **BLE Stack** | CoreBluetooth + Background BLE (State Restoration) |
 | **Mã hóa** | SHA-256 (CryptoKit), PIN challenge-response |
 | **PIN** | 12 ký tự ngẫu nhiên (chữ thường + hoa + số + đặc biệt), SecRandomCopyBytes |
 | **Mô hình** | Native GATT client — reverse-engineered từ `btsnoop_hci.log` |
@@ -42,8 +42,9 @@
 ### Mô hình hoạt động
 
 - **Foreground**: Scan → Connect → Auth → Dashboard điều khiển
-- **Background**: iOS duy trì encryption context + pending reconnect
+- **Background**: iOS duy trì kết nối + pending reconnect vô thời hạn
 - **App bị kill**: State Restoration khôi phục peripheral đã kết nối
+- **Xe quay lại tầm**: iOS tự động reconnect (pending connect)
 
 ---
 
@@ -96,6 +97,7 @@ User → Quẹt thẻ NFC lên xe → Xác nhận Bonding
 | Pairing NFC + secure PIN (12 chars) | ✅ |
 | Reconnect SHA-256 (odd/even counter) | ✅ |
 | Background BLE (State Restoration) | ✅ |
+| Auto-reconnect khi xe vào tầm (pending connect) | ✅ |
 | MIC failure auto-recovery (6 retries) | ✅ |
 | Bật / Tắt xe | ✅ |
 | Khóa chống trộm (Arm) | ✅ |
@@ -154,7 +156,7 @@ DatBikeSmartkey/
 
 - **Xóa bonding từ iOS**: iOS không cho phép app xóa LTK. Khi xe xóa bonding (MIC failure), phải vào **Settings → Bluetooth → Quên thiết bị** rồi pair lại NFC.
 - **PIN cứng**: PIN phải khớp với lần pair đầu. Đổi PIN cần can thiệp firmware.
-- **Background giới hạn**: App giữ encryption context ở background nhưng không chủ động scan/auto-unlock.
+- **Không có auto-unlock proximity**: App chạy ngầm và tự reconnect, nhưng không tự mở khóa khi tới gần xe.
 
 ---
 

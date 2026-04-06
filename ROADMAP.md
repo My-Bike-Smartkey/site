@@ -2,60 +2,67 @@
 
 ## So sánh tổng quát
 
-| | **v3.0 (Hiện tại)** | **v3.5 (+ ASK)** | **v4.0 (Background hoàn hảo)** |
+| | **v3.0 (Hiện tại)** | **v3.5 (+ ASK)** | **v4.0 (Auto Unlock)** |
 |---|---|---|---|
-| **Mô hình** | Foreground-first + State Restoration | ASK pairing + Foreground | Full background BLE |
+| **Mô hình** | Background BLE + State Restoration | ASK pairing + Background BLE | Background BLE + Proximity Unlock |
 | **Pairing** | Scan thủ công + NFC PIN | Apple system picker (ASK) | ASK + background auto |
 | **Reconnect khi mở app** | ✅ Tự động | ✅ Tự động | ✅ Tự động |
-| **Reconnect khi app bị kill** | ⚠️ Partial (state restore) | ⚠️ Partial (state restore) | ✅ Hoàn toàn tự động |
-| **Auto-unlock khi tới gần** | ❌ | ❌ | ✅ |
+| **Reconnect khi app bị kill** | ✅ State Restoration + pending connect | ✅ State Restoration + pending connect | ✅ Hoàn toàn tự động |
+| **Auto-reconnect khi xe vào tầm** | ✅ Pending connect (iOS tự reconnect) | ✅ Pending connect | ✅ Pending connect |
+| **Auto-unlock khi tới gần** | ❌ | ❌ | ✅ RSSI-based proximity |
 | **iOS tối thiểu** | 14.0 | 17.0 | 14.0 |
-| **App Store review** | Dễ duyệt | Dễ (ASK = chuẩn Apple) | Cần giải trình background |
-| **Pin tiêu thụ** | Thấp | Thấp | Trung bình–Cao |
+| **App Store review** | Cần giải trình background | Dễ (ASK = chuẩn Apple) | Cần giải trình background |
+| **Pin tiêu thụ** | Thấp–Trung bình | Thấp–Trung bình | Trung bình–Cao |
 | **Độ phức tạp** | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
 
 ---
 
-## v3.0 — Foreground-first + State Restoration *(Hiện tại)*
+## v3.0 — Background BLE + State Restoration *(Hiện tại)*
 
 ### Kiến trúc
 
 ```
-User mở App
-    ↓
-CBCentralManager (RestoreID)
-    ↓              ↓
-Scan/Retrieve    willRestore
-    ↓              ↓
- Connect → Auth (SHA-256) → Dashboard
+FOREGROUND (khi mở app)
+   Scan/Retrieve → Connect → Auth (SHA-256) → Dashboard
+
+BACKGROUND (app ẩn hoặc bị kill)
+   ├── bluetooth-central background mode
+   ├── CBCentralManager State Restoration (RestoreID)
+   ├── Pending connect vô thời hạn (NotifyOnConnection)
+   ├── willRestoreState → khôi phục peripheral
+   └── didConnect → tự động auth lại
 ```
 
 ### Tính năng
 
 - Bật / Tắt xe, Khóa chống trộm, Tìm xe (còi)
 - Xác thực SHA-256 challenge-response (odd/even counter)
-- PIN bảo mật 12 ký tự (chữ thường + hoa + số + đặc biệt, SecRandomCopyBytes)
+- PIN bảo mật 12 ký tự (SecRandomCopyBytes)
+- **Background BLE hoạt động đầy đủ**:
+  - `bluetooth-central` background mode
+  - State Restoration khi iOS kill app
+  - Pending connect — iOS tự reconnect khi xe vào tầm
+  - MIC failure auto-recovery (6 retries, progressive delay)
 - Đọc telemetry: % pin (SOC), odo, nhiệt độ motor/controller
 - Đọc thông tin xe: tên, model, số khung, firmware
 - Tự động đồng bộ giờ xe 1 lần/ngày
-- State restoration khi iOS kill app
 
 ### Ưu điểm
 
-- **Ổn định nhất** — ít edge case, ít race condition
-- **Tiết kiệm pin** — BLE chỉ active khi user dùng app
-- **Dễ debug** — mọi thứ xảy ra trong foreground
-- **App Store**: không câu hỏi về background usage
+- **Chạy ngầm tốt** — iOS tự reconnect khi xe quay lại tầm BLE
+- **State Restoration** — app bị kill vẫn khôi phục kết nối
+- **Tiết kiệm pin hợp lý** — chỉ pending connect, không scan liên tục
+- **MIC failure tự phục hồi** — retry 6 lần với delay tăng dần
 
 ### Hạn chế
 
-- Phải mở app để điều khiển xe
-- Rời xa xe > vài giờ → cần tap app để reconnect
-- Không có auto-unlock proximity
+- Không có auto-unlock proximity (tới gần xe → tự mở khóa)
+- Phải mở app để điều khiển (bấm nút bật/tắt/chống trộm)
+- Pairing lần đầu cần chọn xe thủ công từ danh sách scan
 
 ### Phù hợp với
 
-> User dùng app **khi cần** (bấm khóa/mở trước khi đi). Như điều khiển TV — bấm remote khi cần.
+> User dùng app **khi cần** (bấm khóa/mở trước khi đi), nhưng app **tự duy trì kết nối ngầm** với xe mà không cần mở lại.
 
 ---
 
@@ -82,20 +89,29 @@ ASK (iOS 17+) là framework Apple cho phép:
 
 - **Pairing đẹp hơn** — system picker thay vì custom list
 - **Không cần hỏi quyền Bluetooth** trước khi scan
-- **Apple-approved pattern** — dễ duyệt App Store
+- **Apple-approved pattern** — dễ duyệt App Store hơn
 - **Automatic discovery** — ASK tự tìm thiết bị theo descriptor
+- Giữ nguyên toàn bộ background BLE capabilities của v3.0
 
 ### Hạn chế
 
 - **iOS 17+ only** — mất user iOS 14-16
-- **Vẫn foreground** — không giải quyết auto-reconnect ngầm
 - **Phức tạp hơn** — dual path (ASK + fallback CBCentralManager)
+- Vẫn không có auto-unlock proximity
 
-> **Lưu ý:** ASK **không hỗ trợ background reconnect**. Nó chỉ cải thiện pairing UX.
+> **Lưu ý:** ASK cải thiện **pairing UX**, không thay đổi gì về background reconnect (đã có sẵn ở v3.0).
 
 ---
 
-## v4.0 — Background BLE hoàn hảo
+## v4.0 — Auto Unlock Proximity
+
+### Khác biệt so với v3.0
+
+v3.0 đã có background reconnect. v4.0 bổ sung thêm:
+- **RSSI proximity monitoring** — đo khoảng cách tới xe liên tục
+- **Auto unlock** — tự mở khóa khi user đến gần (<2m)
+- **Local notification** — thông báo "Xe đã mở khóa" khi auto-unlock
+- **Thread-safe state machine** — Actor-based cho background reliability
 
 ### Kiến trúc
 
