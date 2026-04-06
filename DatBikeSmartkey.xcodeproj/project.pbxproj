@@ -26,7 +26,6 @@
 		884B9C4CFA2D537F7EA18B02C6B0F43D /* DatBikeSmartKeyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA4F56BF3C02A8F164BE1CBAD119AE /* DatBikeSmartKeyApp.swift */; };
 		A8A7D9CD2580F244342951F0CFF56636 /* SignalIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C12AC83C26941D4927CCA134AF380F /* SignalIndicator.swift */; };
 		B70A1A05B1955B2C297575F53D7FF7CA /* BLETelemetryParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7002A3AC9A896F9AFF52C1C9A878F12B /* BLETelemetryParser.swift */; };
-		B8840C572601A76FF04EC460BA76B32B /* BLEAccessorySetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8747A5AE7C5FCE2E30624D18F7C4C09D /* BLEAccessorySetup.swift */; };
 		BE91CF90E3A3E224415AC3DEA7B802BB /* BLEPollingEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AF1CEB9359552D533990522A6E6B9F7 /* BLEPollingEngine.swift */; };
 		BF847A169DFB356A0C7FD427AFECCDCA /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FCC6E9C8A2D8043FD4DBDF83350CCE5 /* DashboardView.swift */; };
 		C4076E2138EA08D7E6F6FA04F5DEE6B9 /* BLETaskQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD261BDC2093921FE38BE7486E9F7E91 /* BLETaskQueue.swift */; };
@@ -56,7 +55,6 @@
 		6FCC6E9C8A2D8043FD4DBDF83350CCE5 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		7002A3AC9A896F9AFF52C1C9A878F12B /* BLETelemetryParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLETelemetryParser.swift; sourceTree = "<group>"; };
 		71F03AD5480391835B46E7593B112134 /* PreferencesManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesManager.swift; sourceTree = "<group>"; };
-		8747A5AE7C5FCE2E30624D18F7C4C09D /* BLEAccessorySetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLEAccessorySetup.swift; sourceTree = "<group>"; };
 		8D5BFF499347F9F3C5AB86837FD85D1B /* BLECommandDispatcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLECommandDispatcher.swift; sourceTree = "<group>"; };
 		8D8A4DD9F679F79F85EBCC1EEBC0E8AE /* MainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainView.swift; sourceTree = "<group>"; };
 		97A617757174092E8071FDE590A4848C /* LockButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockButton.swift; sourceTree = "<group>"; };
@@ -148,7 +146,6 @@
 		95210A7872648BF4FFD37A64FC475C36 /* Core */ = {
 			isa = PBXGroup;
 			children = (
-				8747A5AE7C5FCE2E30624D18F7C4C09D /* BLEAccessorySetup.swift */,
 				D8653E8961F943307958265B058C12AD /* BLEStateMachine.swift */,
 				E2CABFAD4D80894A59FE01B37DBD967C /* DatBikeCore.swift */,
 				71F03AD5480391835B46E7593B112134 /* PreferencesManager.swift */,
@@ -266,7 +263,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				1317C389CF45A175FE36A45ABDEEB886 /* AppDIContainer.swift in Sources */,
-				B8840C572601A76FF04EC460BA76B32B /* BLEAccessorySetup.swift in Sources */,
 				461BE7C18B7E80BB5C7582003E7FD7DE /* BLEAuthenticator.swift in Sources */,
 				55999D0909BE9EA7A2549D9782828282 /* BLECharacteristicIO.swift in Sources */,
 				59D6C63F16CC19FFEFCBF257C12539AF /* BLECommandDispatcher.swift in Sources */,

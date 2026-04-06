@@ -1,4 +1,4 @@
-// DatBikeSmartKeyApp.swift — App entry point (AccessorySetupKit)
+// DatBikeSmartKeyApp.swift — App entry point
 
 import SwiftUI
 
