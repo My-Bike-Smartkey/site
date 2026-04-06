@@ -187,7 +187,7 @@ struct SettingsView: View {
 
                     // App info
                     VStack(spacing: 4) {
-                        Text("MyBike Smartkey v3.0.0")
+                        Text("MyBike Smartkey v3.0.1")
                             .font(.caption)
                             .foregroundColor(.gray)
                         Text("Sản phẩm được tạo bởi tình yêu dành cho chiếc xe Datbike của tôi")

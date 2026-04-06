@@ -350,7 +350,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 3;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 3.0.1;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};
@@ -361,7 +361,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 3;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 2.0.0;
+				MARKETING_VERSION = 3.0.1;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};
