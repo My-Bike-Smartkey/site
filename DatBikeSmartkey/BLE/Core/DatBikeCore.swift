@@ -44,11 +44,6 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private let maxScanRetries = 3
     private let scanTimeoutSeconds: TimeInterval = 6
     
-    // MIC failure auto-recovery — progressive delays: 3s, 5s, 8s, 12s, 18s, 25s
-    private var micRetryCount = 0
-    private let maxMICRetries = 6
-    private let micRetryDelays: [TimeInterval] = [3, 5, 8, 12, 18, 25]
-    
     init(preferences: PreferencesManager = .shared) {
         self.preferences = preferences
         super.init()
@@ -436,18 +431,27 @@ extension DatBikeCore: CBCentralManagerDelegate {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                 message: "State Restoration: khôi phục \(restored.name ?? "unknown") (state: \(restored.state.rawValue))"))
             
-            restored.delegate = self
-            let ctx = BLEConnectionContext(peripheral: restored)
-            activeContext = ctx
-            commandDispatcher = BLECommandDispatcher(context: ctx)
-            pollingEngine = BLEPollingEngine(context: ctx)
-            
-            // Lưu UUID để connect() không cần scan lại
+            // Lưu UUID để connect() dùng scan nếu cần
             preferences.savedPeripheralUUID = restored.identifier.uuidString
             
-            // KHÔNG gọi discoverServices() ở đây — BLE chưa poweredOn
-            // Đánh dấu để centralManagerDidUpdateState xử lý
-            stateMachine.transition(to: .connecting)
+            // ═══ CHỈ TIN TƯỞNG peripheral ĐANG CONNECTED ═══
+            // state == .connected (2): encryption keys vẫn sống → an toàn dùng tiếp
+            // state != .connected (0, 1): kết nối đã đứt → encryption keys CÓ THỂ stale
+            //   → KHÔNG dùng làm activeContext, để connect() scan mới tránh MIC failure
+            if restored.state == .connected {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "Xe đang kết nối (live session): \(restored.name ?? "unknown")"))
+                restored.delegate = self
+                let ctx = BLEConnectionContext(peripheral: restored)
+                activeContext = ctx
+                commandDispatcher = BLECommandDispatcher(context: ctx)
+                pollingEngine = BLEPollingEngine(context: ctx)
+                stateMachine.transition(to: .connecting)
+            } else {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "Peripheral restore nhưng đã disconnect (state: \(restored.state.rawValue)) → bỏ qua, sẽ scan mới"))
+                // Không gán activeContext → poweredOn sẽ chạy connect() → scan fresh
+            }
         }
     }
     
@@ -553,7 +557,6 @@ extension DatBikeCore: CBCentralManagerDelegate {
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        micRetryCount = 0
         peripheral.discoverServices(BLEService.allServices)
     }
     
@@ -589,28 +592,15 @@ extension DatBikeCore: CBCentralManagerDelegate {
         }
         
         if isMICFailure {
-            if micRetryCount < maxMICRetries {
-                let delay = micRetryDelays[micRetryCount]
-                micRetryCount += 1
-                PersistentLogger.shared.append(BLELogEntry(
-                    timestamp: Date(), level: .warning,
-                    message: "MIC failure — retry \(micRetryCount)/\(maxMICRetries) sau \(Int(delay))s (scan mới)..."
-                ))
-                stateMachine.transition(to: .scanning)
-                // Scan lại sau delay — iOS sẽ negotiate encryption mới
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-                    guard let self, let central = self.centralManager, central.state == .poweredOn else { return }
-                    guard self.stateMachine.state != .connecting else { return } // Tránh đụng độ nếu user bấm kết nối thủ công
-                    self.startScanWithTimeout(central: central)
-                }
-            } else {
-                micRetryCount = 0
-                stateMachine.transition(to: .error(
-                    "Lỗi bộ nhớ đệm Bluetooth (MIC failure).\n" +
-                    "Vào Cài đặt → Bluetooth → chọn xe → Quên thiết bị này.\n" +
-                    "Sau đó quay lại app."
-                ))
-            }
+            // MIC failure = encryption cache lệch với xe
+            // Scan mới lập tức — iOS sẽ negotiate fresh link-layer encryption
+            PersistentLogger.shared.append(BLELogEntry(
+                timestamp: Date(), level: .warning,
+                message: "MIC failure → scan mới ngay (không retry cache)"
+            ))
+            btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
+            stateMachine.transition(to: .scanning)
+            startScanWithTimeout(central: central)
         } else if scanRetryCount < maxScanRetries {
             scanRetryCount += 1
             startScanWithTimeout(central: central)
