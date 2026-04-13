@@ -3,7 +3,7 @@ import CoreBluetooth
 import Combine
 
 /// LỚP BỌC TỐI THƯỢNG (FACADE) - MANAGER MỚI (V2)
-class DatBikeCore: NSObject, IoTCoordinatorProtocol {
+class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     
     private let stateMachine = BLEStateMachine()
     var connectionState: AnyPublisher<IoTConnectionState, Never> { stateMachine.statePublisher }
@@ -31,7 +31,12 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     private let preferences: PreferencesManager
     private var cancellables = Set<AnyCancellable>()
     
-    private var isAuthenticating = false
+    private var isAuthenticating: Bool = false
+    private var pendingASKUUID: UUID?
+    
+    /// Cờ phát hiện Bluetooth đã trải qua poweredOff → poweredOn.
+    /// Khi cờ này bật, PHẢI scan mới thay vì dùng cache (tránh MIC failure).
+    private var btWasPoweredOff: Bool = false
     
     // Scan timeout & retry
     private var scanTimer: DispatchWorkItem?
@@ -125,6 +130,18 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
            let savedUUIDStr = preferences.savedPeripheralUUID,
            let savedUUID = UUID(uuidString: savedUUIDStr) {
             
+            // ═══ GUARD: Nếu BT vừa bị tắt/bật → BẮT BUỘC scan mới ═══
+            // Lý do: iOS cache encryption keys cũ (LTK) cho peripheral UUID.
+            // Sau khi BT reset, xe đã xóa keys nhưng iOS vẫn giữ → MIC failure.
+            // Scan mới buộc iOS negotiate fresh link-layer encryption.
+            if btWasPoweredOff {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "BT vừa power-cycle → bỏ qua cache, scan mới để tránh MIC failure"))
+                btWasPoweredOff = false
+                startScanWithTimeout(central: central)
+                return
+            }
+            
             // Step 1: retrieveConnectedPeripherals — xe đang kết nối ở tầng iOS?
             let connected = central.retrieveConnectedPeripherals(withServices: BLEService.allServices)
             if let p = connected.first(where: { $0.identifier.uuidString == savedUUIDStr }) {
@@ -149,6 +166,29 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
         }
         
         startScanWithTimeout(central: central)
+    }
+    
+    func connect(to uuid: UUID) {
+        guard let central = centralManager else { return }
+        preferences.savedPeripheralUUID = uuid.uuidString
+        
+        guard central.state == .poweredOn else {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "ASK connect: Hoãn gọi API vì Bluetooth chưa poweredOn (\(central.state.rawValue))"))
+            self.pendingASKUUID = uuid
+            return
+        }
+        
+        let known = central.retrievePeripherals(withIdentifiers: [uuid])
+        if let p = known.first {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "ASK Retrieve peripheral thành công: \(p.name ?? uuid.uuidString.prefix(8).description)"))
+            connectPeripheral(p, central: central)
+        } else {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "ASK UUID không tìm thấy trong cache, kích hoạt fallback scan"))
+            startScanWithTimeout(central: central)
+        }
     }
     
     /// Thiết lập context + kết nối peripheral (dùng chung cho retrieve và scan)
@@ -414,7 +454,22 @@ extension DatBikeCore: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         switch central.state {
         case .poweredOn:
-            // Nếu đã có activeContext từ willRestoreState → discover services
+            // ═══ PHÁT HIỆN power-cycle: nếu BT vừa tắt → xóa sạch context cũ ═══
+            if btWasPoweredOff {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "BT poweredOn sau power-cycle → xóa context cũ, chuẩn bị scan mới"))
+                // Hủy kết nối cũ nếu có — buộc iOS xóa encryption cache
+                if let ctx = activeContext {
+                    central.cancelPeripheralConnection(ctx.peripheral)
+                }
+                activeContext = nil
+                commandDispatcher = nil
+                pollingEngine = nil
+                isAuthenticating = false
+                // btWasPoweredOff vẫn giữ = true để connect() biết phải scan
+            }
+            
+            // Nếu đã có activeContext từ willRestoreState VÀ KHÔNG qua power-cycle → discover services
             if let ctx = activeContext, case .connecting = stateMachine.state {
                 if ctx.peripheral.state == .connected {
                     // Peripheral vẫn connected → discover ngay
@@ -428,14 +483,22 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 }
                 return
             }
-            if stateMachine.state == .scanning {
+            
+            if let uuid = pendingASKUUID {
+                pendingASKUUID = nil
+                connect(to: uuid)
+                return
+            }
+            
+            // Xử lý thông minh: Cứ có sóng lại, chưa ổn định và đã từng pair -> reconnect cưỡng chế
+            if !stateMachine.state.isConnected && preferences.savedPin != nil {
                 connect()
-            } else if stateMachine.state == .idle {
-                if preferences.savedPin != nil {
-                    connect()
-                }
+            } else if stateMachine.state == .scanning {
+                connect()
             }
         case .poweredOff:
+            // ═══ ĐÁNH DẤU: BT đã tắt → lần poweredOn tiếp theo phải scan mới ═══
+            btWasPoweredOff = true
             if stateMachine.state != .idle {
                 cancelScanTimer()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
@@ -537,6 +600,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 // Scan lại sau delay — iOS sẽ negotiate encryption mới
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                     guard let self, let central = self.centralManager, central.state == .poweredOn else { return }
+                    guard self.stateMachine.state != .connecting else { return } // Tránh đụng độ nếu user bấm kết nối thủ công
                     self.startScanWithTimeout(central: central)
                 }
             } else {
@@ -668,7 +732,7 @@ extension DatBikeCore: CBPeripheralDelegate {
         Task {
             do {
                 stateMachine.transition(to: .authenticating)
-                try await authenticator.authenticate()
+                _ = try await authenticator.authenticate()
                 
                 if let engine = self.pollingEngine {
                     engine.startPolling()
@@ -676,6 +740,7 @@ extension DatBikeCore: CBPeripheralDelegate {
                 }
                 
                 stateMachine.transition(to: .active)
+                NotificationManager.shared.sendConnectNotification(bikeName: ctx.peripheral.name ?? "Xe máy điện DATBIKE")
                 
                 // Lưu UUID để lần sau dùng retrievePeripherals (tránh MIC failure)
                 if let ctx = self.activeContext {

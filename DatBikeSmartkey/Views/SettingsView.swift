@@ -69,8 +69,7 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Logs section (Hidden for Beta/Release)
-#if DEBUG
+                    // Logs section
                     settingsSection(title: "NHẬT KÝ") {
                         VStack(spacing: 0) {
                             settingsButton(icon: "list.bullet.rectangle.portrait", iconColor: .blue, title: "Xem nhật ký đầy đủ (Full Logs)") {
@@ -78,7 +77,6 @@ struct SettingsView: View {
                             }
                         }
                     }
-#endif
 
                     // Time Sync section
                     settingsSection(title: "ĐỒNG BỘ GIỜ XE") {
@@ -138,9 +136,23 @@ struct SettingsView: View {
                             .disabled(!viewModel.isConnected || viewModel.isSyncingTime)
                         }
                     }
-
-                    
-
+                    settingsSection(title: "GỠ LỖI (NÂNG CAO)") {
+                        Toggle(isOn: $viewModel.isDebugModeEnabled) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "terminal.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.purple)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.purple.opacity(0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                Text("Bật Nhật Ký BLE (Logs)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.white)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                    }
                     
                     // Donate section
                     settingsSection(title: "ỦNG HỘ DỰ ÁN") {
@@ -393,8 +405,15 @@ struct QRCodeView: View {
 // MARK: - Log View
 
 struct LogView: View {
-    let logs: [BLELogEntry]
+    @State var logs: [BLELogEntry]
     @Environment(\.dismiss) private var dismiss
+    @State private var showClearConfirm = false
+    @State private var showShareSheet = false
+    @State private var shareURL: URL? = nil
+    
+    init(logs: [BLELogEntry]) {
+        self._logs = State(initialValue: logs)
+    }
     
     /// Danh sách keyword nhạy cảm — log chứa keyword này sẽ bị ẩn
     private static let sensitiveKeywords = [
@@ -458,22 +477,81 @@ struct LogView: View {
             .navigationTitle("BLE Log")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItemGroup(placement: .navigationBarLeading) {
                     Button {
                         let fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
                         UIPasteboard.general.string = fullString
                     } label: {
                         Image(systemName: "doc.on.doc")
                     }
+                    
+                    Button {
+                        let text = PersistentLogger.shared.exportAllAsText()
+                        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("datbike_ble_logs.txt")
+                        try? text.write(to: tempFile, atomically: true, encoding: .utf8)
+                        shareURL = tempFile
+                        showShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        showClearConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
+                    
                     Button("Đóng") { dismiss() }
                         .foregroundColor(.blue)
                 }
             }
+            .alert("Xóa toàn bộ Log?", isPresented: $showClearConfirm) {
+                Button("Xóa", role: .destructive) {
+                    PersistentLogger.shared.clearAll()
+                    logs.removeAll()
+                }
+                Button("Hủy", role: .cancel) {}
+            } message: {
+                Text("Hành động này sẽ xóa vĩnh viễn toàn bộ lịch sử kết nối lưu trên máy.")
+            }
+            .background(
+                ActivityViewPresenter(isPresented: $showShareSheet, activityItems: [shareURL].compactMap { $0 })
+            )
         }
         .navigationViewStyle(.stack)
         .preferredColorScheme(.dark)
+    }
+}
+
+struct ActivityViewPresenter: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    var activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIViewController {
+        let vc = UIViewController()
+        vc.view.backgroundColor = .clear
+        return vc
+    }
+    
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        let isActivityShown = uiViewController.presentedViewController is UIActivityViewController
+        
+        if isPresented && !isActivityShown {
+            let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            controller.completionWithItemsHandler = { _, _, _, _ in
+                self.isPresented = false
+            }
+            
+            if let popover = controller.popoverPresentationController {
+                popover.sourceView = uiViewController.view
+                popover.sourceRect = CGRect(x: uiViewController.view.bounds.midX, y: uiViewController.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            
+            uiViewController.present(controller, animated: true)
+        }
     }
 }
 

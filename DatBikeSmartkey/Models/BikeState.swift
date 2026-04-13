@@ -345,7 +345,7 @@ final class PersistentLogger {
     private let dateFormatter: DateFormatter
     private let queue = DispatchQueue(label: "com.jedix.mybikesmartkey.persistentlogger", qos: .utility)
     private let sessionMarker = "────────── Phiên mới ──────────"
-    private let maxKeepDays = 90
+    private let maxKeepDays = 365
     
     // Current day's file handle
     private var currentHandle: FileHandle?

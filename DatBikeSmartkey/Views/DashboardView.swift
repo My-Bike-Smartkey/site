@@ -76,7 +76,6 @@ struct DashboardView: View {
             Text(viewModel.errorMessage)
         }
         .sheet(isPresented: $showingLogs) {
-            // DebugLogView sẽ được cấu hình sau
             Text("Debug Logs V2 - View from Settings")
         }
         .sheet(isPresented: $showingSettings) {

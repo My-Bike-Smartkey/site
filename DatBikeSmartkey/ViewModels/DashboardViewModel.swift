@@ -33,6 +33,14 @@ class DashboardViewModel: ObservableObject {
     var isConnected: Bool { connectionState.isConnected }
     var lockStatus: IoTLockState { lockState }
     
+    var hasAuthorizedAccessory: Bool {
+        if preferences.savedPeripheralUUID != nil { return true }
+        if #available(iOS 18.0, *) {
+            return ASKManager.shared.hasAuthorizedAccessory
+        }
+        return false // iOS 17 trở xuống không hỗ trợ ASK
+    }
+    
     // Signal
     var signalStrength: SignalStrength {
         if rssi >= -60 { return .excellent }
@@ -95,15 +103,60 @@ class DashboardViewModel: ObservableObject {
     // MARK: - Tiền Trình Bấm Nút
     
     func initializeHardware() {
-        core.initializeBluetoothHardware()
+        if #available(iOS 18.0, *) {
+            let ask = ASKManager.shared
+            if ask.hasAuthorizedAccessory {
+                core.initializeBluetoothHardware()
+            } else {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "Trì hoãn khởi tạo Bluetooth (iOS 18) để tránh xung đột ASK Picker."))
+            }
+        } else {
+            core.initializeBluetoothHardware()
+        }
     }
     
     func connectBike() {
-        isProcessing = true
-        core.connect()
+        self.pairingError = nil
+        self.showError = false
+        
+        // Nếu xe đã được ghép đôi từ trước, kết nối thẳng không mở màn hình cấu hình
+        if preferences.savedPeripheralUUID != nil {
+            isProcessing = true
+            core.initializeBluetoothHardware()
+            core.connect()
+            return
+        }
+        
+        if #available(iOS 18.0, *) {
+            ASKManager.shared.onAccessorySelected = { [weak self] uuid in
+                DispatchQueue.main.async {
+                    self?.core.initializeBluetoothHardware()
+                    self?.core.connect(to: uuid)
+                }
+            }
+            ASKManager.shared.onPickerDismissed = { [weak self] error in
+                DispatchQueue.main.async {
+                    self?.isProcessing = false
+                    if let error = error {
+                        self?.pairingError = error.localizedDescription
+                        self?.errorMessage = error.localizedDescription
+                        self?.showError = true
+                    }
+                }
+            }
+            isProcessing = true
+            
+            // Xoá mờ ranh giới animation của SwiftUI Button, đảm bảo UIWindow hoàn toàn sẵn sàng tiếp nhận XPC.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                ASKManager.shared.showPicker()
+            }
+        } else {
+            isProcessing = true
+            core.connect()
+        }
     }
     
-    /// User chọn xe từ danh sách
+    /// User chọn xe từ danh sách (Fallback cho iOS 15/16)
     func selectBike(_ bikeId: String) {
         isProcessing = true
         core.selectBike(bikeId)

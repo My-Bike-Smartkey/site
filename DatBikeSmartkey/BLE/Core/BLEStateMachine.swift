@@ -21,7 +21,9 @@ class BLEStateMachine {
             // Lỗi loop
             return
         default:
-            self.state = newState
+            DispatchQueue.main.async {
+                self.state = newState
+            }
         }
     }
 }

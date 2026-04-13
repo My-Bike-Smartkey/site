@@ -28,6 +28,8 @@ struct MainView: View {
         .animation(.easeInOut, value: container.dashboardViewModel.isConnected)
         .preferredColorScheme(.dark)
         .onAppear {
+            NotificationManager.shared.requestPermission()
+            
             if !UserDefaults.standard.bool(forKey: "disclaimerAccepted") {
                 showingDisclaimer = true
             } else {
@@ -62,11 +64,15 @@ struct MainView: View {
             Button("Hủy", role: .cancel) {
                 // Do nothing
             }
-            Button("Bắt đầu") {
-                container.dashboardViewModel.connectBike()
+            Button("Bắt đầu ghép đôi") {
+                // Trì hoãn 0.5s để hộp thoại (Alert) kịp đóng lại hoàn toàn.
+                // Tránh lỗi "Application is not in foreground" của AccessorySetupKit trên iOS 18.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    container.dashboardViewModel.connectBike()
+                }
             }
         } message: {
-            Text("Vui lòng chuẩn bị thẻ NFC và đưa lại gần điện thoại để tiến hành xác thực khi được yêu cầu.")
+            Text("Đảm bảo thẻ NFC đã được đặt sẵn trên mặt đồng hồ xe. Bấm xác nhận để bắt đầu tìm xe và ghép đôi Bluetooth.")
         }
     }
 }
@@ -259,25 +265,64 @@ struct ConnectingSplashView: View {
                             .padding(.horizontal)
                     } else {
                         // Idle — nút bắt đầu tìm xe
-                        Button(action: { dashboardVM.connectBike() }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.title2)
-                                Text("Tìm xe")
+                        if #available(iOS 18.0, *) {
+                            if dashboardVM.hasAuthorizedAccessory {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .orange))
+                                    .scaleEffect(1.2)
+                                
+                                Text("Đang kết nối lại xe...")
                                     .font(.headline)
+                                    .foregroundColor(.gray)
+                            } else {
+                                Button(action: { dashboardVM.connectBike() }) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.title2)
+                                        Text("Thêm xe")
+                                            .font(.headline)
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 30)
+                                    .padding(.vertical, 14)
+                                    .background(
+                                        LinearGradient(
+                                            colors: [.orange, .orange.opacity(0.8)],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .clipShape(Capsule())
+                                    .shadow(color: .orange.opacity(0.3), radius: 10, y: 5)
+                                }
+                                
+                                Text("Hướng dẫn: Quẹt sẵn thẻ NFC lên đồng hồ xe trước khi bấm")
+                                    .font(.caption)
+                                    .foregroundColor(.orange.opacity(0.8))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.top, 4)
                             }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 30)
-                            .padding(.vertical, 14)
-                            .background(
-                                LinearGradient(
-                                    colors: [.orange, .orange.opacity(0.8)],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
+                        } else {
+                            Button(action: { dashboardVM.connectBike() }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.title2)
+                                    Text("Tìm xe")
+                                        .font(.headline)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 30)
+                                .padding(.vertical, 14)
+                                .background(
+                                    LinearGradient(
+                                        colors: [.orange, .orange.opacity(0.8)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
                                 )
-                            )
-                            .clipShape(Capsule())
-                            .shadow(color: .orange.opacity(0.3), radius: 10, y: 5)
+                                .clipShape(Capsule())
+                                .shadow(color: .orange.opacity(0.3), radius: 10, y: 5)
+                            }
                         }
                     }
                 }
