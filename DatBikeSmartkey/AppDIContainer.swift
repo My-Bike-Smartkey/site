@@ -19,6 +19,10 @@ class AppDIContainer: ObservableObject {
         SettingsViewModel(core: bleCore, preferences: preferences)
     }()
     
+    lazy var batteryViewModel: BatteryViewModel = {
+        BatteryViewModel(core: bleCore)
+    }()
+    
     private var cancellables = Set<AnyCancellable>()
     
     init() {

@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		091AB28D2C6697E5C12F62CC307F6D50 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05562CDF9B9DBFC719F257DD560252B /* SettingsView.swift */; };
+		0A1BMS01AA000001A0000001BMS00001 /* BatteryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1BMS01AA000002A0000001BMS00002 /* BatteryViewModel.swift */; };
+		0A1BMS01AA000003A0000001BMS00003 /* BatteryAnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1BMS01AA000004A0000001BMS00004 /* BatteryAnalyticsView.swift */; };
+		0A1BMS01AA000005A0000001BMS00005 /* BatteryGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1BMS01AA000006A0000001BMS00006 /* BatteryGaugeView.swift */; };
+		0A1BMS01AA000007A0000001BMS00007 /* TemperatureBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1BMS01AA000008A0000001BMS00008 /* TemperatureBarView.swift */; };
 		1317C389CF45A175FE36A45ABDEEB886 /* AppDIContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9199096C02324C14D9AFEA1B8548F24 /* AppDIContainer.swift */; };
 		2BFF2E5A7B82271FAB05C0307935B45E /* LockButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A617757174092E8071FDE590A4848C /* LockButton.swift */; };
 		32FE182834CB327E643E603CC1D3A002 /* IoTError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61550F75A7B3022BC7FA942A039DECF4 /* IoTError.swift */; };
@@ -38,6 +42,10 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0A1BMS01AA000002A0000001BMS00002 /* BatteryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryViewModel.swift; sourceTree = "<group>"; };
+		0A1BMS01AA000004A0000001BMS00004 /* BatteryAnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryAnalyticsView.swift; sourceTree = "<group>"; };
+		0A1BMS01AA000006A0000001BMS00006 /* BatteryGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatteryGaugeView.swift; sourceTree = "<group>"; };
+		0A1BMS01AA000008A0000001BMS00008 /* TemperatureBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TemperatureBarView.swift; sourceTree = "<group>"; };
 		16CBCE3CABCBDE15A8ECC284F25F5F33 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		1D497B3507E68C262F4CDF89CE93BC73 /* IoTProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IoTProtocols.swift; sourceTree = "<group>"; };
 		21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -84,9 +92,11 @@
 		2C7B919E938ADAAC5315A045A31F1A41 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				0A1BMS01AA000006A0000001BMS00006 /* BatteryGaugeView.swift */,
 				97A617757174092E8071FDE590A4848C /* LockButton.swift */,
 				B1C12AC83C26941D4927CCA134AF380F /* SignalIndicator.swift */,
 				3B85AA99388E35EDABEC8870823D6958 /* StatusCard.swift */,
+				0A1BMS01AA000008A0000001BMS00008 /* TemperatureBarView.swift */,
 			);
 			path = Components;
 			sourceTree = "<group>";
@@ -112,6 +122,7 @@
 		53418555D3043C5424A56A4B3FC7C60D /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				0A1BMS01AA000004A0000001BMS00004 /* BatteryAnalyticsView.swift */,
 				6FCC6E9C8A2D8043FD4DBDF83350CCE5 /* DashboardView.swift */,
 				8D8A4DD9F679F79F85EBCC1EEBC0E8AE /* MainView.swift */,
 				C05562CDF9B9DBFC719F257DD560252B /* SettingsView.swift */,
@@ -156,6 +167,7 @@
 		9F7B242263F3F5A9764766106E51960A /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				0A1BMS01AA000002A0000001BMS00002 /* BatteryViewModel.swift */,
 				4EDA91550F458545D616A31C725B1849 /* DashboardViewModel.swift */,
 				CA0DEFCC8C5F879C56FF954B6F94414F /* SettingsViewModel.swift */,
 			);
@@ -263,6 +275,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				1317C389CF45A175FE36A45ABDEEB886 /* AppDIContainer.swift in Sources */,
+				0A1BMS01AA000003A0000001BMS00003 /* BatteryAnalyticsView.swift in Sources */,
+				0A1BMS01AA000005A0000001BMS00005 /* BatteryGaugeView.swift in Sources */,
+				0A1BMS01AA000001A0000001BMS00001 /* BatteryViewModel.swift in Sources */,
 				461BE7C18B7E80BB5C7582003E7FD7DE /* BLEAuthenticator.swift in Sources */,
 				55999D0909BE9EA7A2549D9782828282 /* BLECharacteristicIO.swift in Sources */,
 				59D6C63F16CC19FFEFCBF257C12539AF /* BLECommandDispatcher.swift in Sources */,
@@ -289,6 +304,7 @@
 				436627ECB43EC3016EF6D667546308FA /* SharedBikeState.swift in Sources */,
 				A8A7D9CD2580F244342951F0CFF56636 /* SignalIndicator.swift in Sources */,
 				55A3C90094AF2C3EADE958317EBB769D /* StatusCard.swift in Sources */,
+				0A1BMS01AA000007A0000001BMS00007 /* TemperatureBarView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -348,9 +364,9 @@
 		AAA0CCA643B5F37CC60C23F5622DD718 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.0.2;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};
@@ -361,7 +377,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 4;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
-				MARKETING_VERSION = 3.0.1;
+				MARKETING_VERSION = 3.0.2;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};

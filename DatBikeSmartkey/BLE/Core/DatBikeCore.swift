@@ -16,6 +16,8 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
     
     @Published private(set) var currentVehicleInfo = IoTVehicleInfo()
     
+    @Published private(set) var currentBatteryTelemetry: BatteryTelemetry?
+    
     @Published private(set) var currentRSSI: Int = 0
     
     /// Danh sách xe tìm thấy trong quá trình scan
@@ -266,27 +268,8 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
                     }
                 }
                 
-                // Đọc Battery SOC (JSON)
-                if let batChar = try? ctx.requireCharacteristic(BLECharacteristic.batteryData) {
-                    let data = try await ctx.queue.enqueue {
-                        try await ctx.io.readValue(from: batChar)
-                    }
-                    if let json = String(bytes: data, encoding: .utf8) {
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                            message: "Battery JSON: \(json.prefix(200))"))
-                        if let jsonData = json.data(using: .utf8),
-                           let decoded = try? JSONDecoder().decode(BatteryTelemetry.self, from: jsonData),
-                           let socValue = decoded.soc?.soc {
-                            // SOC từ firmware là tỉ lệ 0.0–1.0 → nhân 100 = %
-                            let percent = Int(socValue * 100)
-                            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                                message: "Battery SOC: \(socValue) → \(percent)%"))
-                            DispatchQueue.main.async {
-                                self.currentTelemetry.soc = Float(percent)
-                            }
-                        }
-                    }
-                }
+                // Đọc Battery SOC (JSON) — cũng cập nhật BMS detail
+                await readBatteryJSON(ctx: ctx)
                 
                 // Đọc Lock State (smartkeyEcho)
                 if let echoChar = try? ctx.requireCharacteristic(BLECharacteristic.smartkeyEcho) {
@@ -302,6 +285,80 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol {
                     message: "Query telemetry lỗi: \(error.localizedDescription)"
                 ))
             }
+        }
+    }
+    
+    /// Đọc chi tiết BMS — gọi được độc lập từ BatteryViewModel
+    func queryBatteryDetail() {
+        guard let ctx = activeContext else { return }
+        Task {
+            await readBatteryJSON(ctx: ctx)
+        }
+    }
+    
+    /// Logic chung đọc Battery JSON từ BLE characteristic
+    private func readBatteryJSON(ctx: BLEConnectionContext) async {
+        do {
+            guard let batChar = try? ctx.requireCharacteristic(BLECharacteristic.batteryData) else { return }
+            let data = try await ctx.queue.enqueue {
+                try await ctx.io.readValue(from: batChar)
+            }
+            if let json = String(bytes: data, encoding: .utf8) {
+                // Log RAW toàn bộ JSON (không truncate) để debug
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "BMS RAW JSON (\(data.count) bytes): \(json)"))
+                
+                if let jsonData = json.data(using: .utf8),
+                   let decoded = try? JSONDecoder().decode(BatteryTelemetry.self, from: jsonData) {
+                    if let socValue = decoded.soc?.soc {
+                        let percent = Int(socValue * 100)
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                            message: "Battery SOC: \(socValue) → \(percent)%"))
+                        DispatchQueue.main.async {
+                            self.currentTelemetry.soc = Float(percent)
+                        }
+                    }
+                    
+                    // Log cell voltages nếu có
+                    if let cells = decoded.cells {
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                            message: "BMS Cells: \(cells.count) cells — \(cells.map { String(format: "%.3f", $0) }.joined(separator: ", "))"))
+                    }
+                    
+                    // Log BMS Diagnostics & Core Metrics
+                    var diagInfo: [String] = []
+                    if let v = decoded.voltage { diagInfo.append("Voltage: \(String(format: "%.1f", v))V") }
+                    if let c = decoded.current { diagInfo.append("Current: \(String(format: "%.2f", c))A") }
+                    if let fet = decoded.fet { diagInfo.append("FET: \(fet)") }
+                    if let err = decoded.error { diagInfo.append("Error: \(err)") }
+                    if let bal = decoded.balancing { diagInfo.append("Balancing: \(bal)") }
+                    if let prot = decoded.protection { diagInfo.append("Protection: \(prot)") }
+                    if let prots = decoded.protections { diagInfo.append("Protections: \(prots)") }
+                    if let res = decoded.resistor { diagInfo.append("Resistor: \(res)") }
+                    if let dis = decoded.discharge { diagInfo.append("Discharge: \(dis)") }
+                    if let chg = decoded.charge { diagInfo.append("Charge: \(chg)") }
+                    
+                    if !diagInfo.isEmpty {
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                            message: "BMS Diagnostics: \(diagInfo.joined(separator: " | "))"))
+                    }
+                    
+                    // Log extra keys chưa decode được (giúp discover thêm data)
+                    if let extra = decoded.rawExtraKeys, !extra.isEmpty {
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                            message: "BMS JSON keys chưa decode: \(extra.joined(separator: ", ")) — cần bổ sung model!"))
+                    }
+                    
+                    DispatchQueue.main.async {
+                        self.currentBatteryTelemetry = decoded
+                    }
+                }
+            }
+        } catch {
+            PersistentLogger.shared.append(BLELogEntry(
+                timestamp: Date(), level: .warning,
+                message: "Đọc BMS lỗi: \(error.localizedDescription)"
+            ))
         }
     }
     

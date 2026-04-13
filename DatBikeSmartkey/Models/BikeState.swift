@@ -19,15 +19,206 @@ struct BikeInfo: Equatable {
 
 // MARK: - Telemetry Data
 
-struct BatteryTelemetry: Codable, Equatable {
+struct BatteryTelemetry: Decodable, Equatable {
     var voltage: Double?
     var current: Double?
     var soc: BatterySOC?
     var NTCs: [Double]?
     
+    /// Dung lượng từng cell pin (mV hoặc V tuỳ firmware)
+    /// Firmware Dat Bike thực tế dùng key: "cellVols"
+    var cells: [Double]?
+    
+    // Các thông số bổ sung từ Firmware
+    var fet: Double?
+    var error: Double?
+    var balancing: Double?
+    var protections: Double?
+    var protection: Double?
+    var resistor: Double?
+    var discharge: Double?
+    var charge: Double?
+    
+    /// Raw JSON keys chưa decode được (để debug/discover)
+    var rawExtraKeys: [String]?
+    
     struct BatterySOC: Codable, Equatable {
         var soc: Double?
         var cycles: Double?
+    }
+    
+    enum CodingKeys: String, CodingKey {
+        case voltage, current, soc, NTCs
+        case cells
+        // Các key alias thường gặp 
+        case cellVoltages, cellsVoltage, Cells, cell_voltages, volts, cellVols
+        // Các key bổ sung
+        case fet, error, balancing, protections, protection, resistor, discharge, charge
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        voltage = try container.decodeIfPresent(Double.self, forKey: .voltage)
+        current = try container.decodeIfPresent(Double.self, forKey: .current)
+        soc = try container.decodeIfPresent(BatterySOC.self, forKey: .soc)
+        NTCs = try container.decodeIfPresent([Double].self, forKey: .NTCs)
+        
+        // Thử decode cell voltages từ nhiều key khác nhau, ưu tiên key thực tế 'cellVols' trước
+        if let decoded = try container.decodeIfPresent([Double].self, forKey: .cellVols) {
+            cells = decoded
+        } else if let decoded = try container.decodeIfPresent([Double].self, forKey: .cells) {
+            cells = decoded
+        } else if let decoded = try container.decodeIfPresent([Double].self, forKey: .volts) {
+            cells = decoded
+        } else if let decoded = try container.decodeIfPresent([Double].self, forKey: .cellVoltages) {
+            cells = decoded
+        } else if let decoded = try container.decodeIfPresent([Double].self, forKey: .cellsVoltage) {
+            cells = decoded
+        } else if let decoded = try container.decodeIfPresent([Double].self, forKey: .Cells) {
+            cells = decoded
+        } else if let decoded = try container.decodeIfPresent([Double].self, forKey: .cell_voltages) {
+            cells = decoded
+        } else {
+            cells = nil
+        }
+        
+        // Decode các key bổ sung (dùng try? để tránh crash nếu firmware đổi kiểu dữ liệu thành Int hay String)
+        fet = try? container.decodeIfPresent(Double.self, forKey: .fet)
+        error = try? container.decodeIfPresent(Double.self, forKey: .error)
+        balancing = try? container.decodeIfPresent(Double.self, forKey: .balancing)
+        protections = try? container.decodeIfPresent(Double.self, forKey: .protections)
+        protection = try? container.decodeIfPresent(Double.self, forKey: .protection)
+        resistor = try? container.decodeIfPresent(Double.self, forKey: .resistor)
+        discharge = try? container.decodeIfPresent(Double.self, forKey: .discharge)
+        charge = try? container.decodeIfPresent(Double.self, forKey: .charge)
+        
+        // Thu thập tất cả keys đã biết để log (debug discovery)
+        let knownKeys: Set<String> = [
+            "voltage", "current", "soc", "NTCs",
+            "cells", "cellVoltages", "cellsVoltage", "Cells", "cell_voltages", "volts", "cellVols",
+            "fet", "error", "balancing", "protections", "protection", "resistor", "discharge", "charge"
+        ]
+        // Dùng DynamicCodingKeys để tìm keys chưa biết
+        if let dynamicContainer = try? decoder.container(keyedBy: DynamicCodingKey.self) {
+            let allKeys = dynamicContainer.allKeys.map { $0.stringValue }
+            let extra = allKeys.filter { !knownKeys.contains($0) }
+            rawExtraKeys = extra.isEmpty ? nil : extra
+        }
+    }
+    
+    init() {}
+    
+    // Equatable: bỏ qua rawExtraKeys
+    static func == (lhs: BatteryTelemetry, rhs: BatteryTelemetry) -> Bool {
+        lhs.voltage == rhs.voltage && lhs.current == rhs.current
+        && lhs.soc == rhs.soc && lhs.NTCs == rhs.NTCs && lhs.cells == rhs.cells
+    }
+}
+
+/// Dynamic CodingKey cho việc discover JSON keys chưa biết
+struct DynamicCodingKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+    init?(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { self.stringValue = "\(intValue)"; self.intValue = intValue }
+}
+
+// MARK: - Battery Charging State
+
+enum BatteryChargingState: Equatable {
+    case charging, discharging, idle
+    
+    var label: String {
+        switch self {
+        case .charging: return "Đang sạc"
+        case .discharging: return "Đang xả"
+        case .idle: return "Chờ"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .charging: return "bolt.fill"
+        case .discharging: return "arrow.down.circle.fill"
+        case .idle: return "pause.circle.fill"
+        }
+    }
+}
+
+// MARK: - BatteryTelemetry Analytics Extension
+
+extension BatteryTelemetry {
+    /// SOC dạng phần trăm (0–100)
+    var socPercent: Int {
+        guard let s = soc?.soc else { return 0 }
+        return min(100, max(0, Int(s * 100)))
+    }
+    
+    /// Tổng số chu kỳ sạc
+    var cycleCount: Int {
+        Int(soc?.cycles ?? 0)
+    }
+    
+    /// Sức khoẻ pin ước tính từ số chu kỳ
+    /// 100% ở 0 cycles, giảm tuyến tính ~20% sau 1000 cycles
+    var healthPercent: Int {
+        let cycles = soc?.cycles ?? 0
+        let health = max(0, 100 - (cycles / 1000.0) * 20)
+        return min(100, Int(health))
+    }
+    
+    /// Công suất tiêu thụ (W) = voltage × |current|
+    var powerWatts: Double {
+        (voltage ?? 0) * abs(current ?? 0)
+    }
+    
+    /// Trạng thái sạc/xả dựa trên dòng điện
+    var chargingState: BatteryChargingState {
+        guard let c = current else { return .idle }
+        if c > 0.5 { return .charging }
+        if c < -0.5 { return .discharging }
+        return .idle
+    }
+    
+    /// Nhiệt độ trung bình NTC
+    var avgTemp: Double? {
+        guard let temps = NTCs, !temps.isEmpty else { return nil }
+        return temps.reduce(0, +) / Double(temps.count)
+    }
+    
+    /// Nhiệt độ cao nhất
+    var maxTemp: Double? {
+        NTCs?.max()
+    }
+    
+    /// Nhiệt độ thấp nhất
+    var minTemp: Double? {
+        NTCs?.min()
+    }
+    
+    /// Chênh lệch nhiệt độ giữa các sensor
+    var tempDelta: Double? {
+        guard let temps = NTCs, temps.count >= 2,
+              let max = temps.max(), let min = temps.min() else { return nil }
+        return max - min
+    }
+    
+    /// Cảnh báo nhiệt độ cao (> 45°C)
+    var hasHighTempWarning: Bool {
+        guard let max = maxTemp else { return false }
+        return max > 45.0
+    }
+    
+    /// Cảnh báo chênh lệch nhiệt độ (> 5°C) — possible cell imbalance
+    var hasTempImbalanceWarning: Bool {
+        guard let delta = tempDelta else { return false }
+        return delta > 5.0
+    }
+    
+    /// Ước tính phạm vi (km) dựa trên SOC — max range 100km cho Quantum S3
+    var estimatedRangeKm: Int {
+        guard let s = soc?.soc else { return 0 }
+        return Int(s * 100.0) // 100km max range
     }
 }
 

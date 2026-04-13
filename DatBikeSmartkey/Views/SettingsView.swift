@@ -4,8 +4,10 @@ import SwiftUI
 import CoreImage.CIFilterBuiltins
 
 struct SettingsView: View {
+    @EnvironmentObject var container: AppDIContainer
     @ObservedObject var viewModel: SettingsViewModel
     @State private var showLogs = false
+    @State private var showBatteryAnalytics = false
     @State private var showForgetConfirm = false
     @State private var showInfoAutoConnect = false
     @State private var showInfoBgReconnect = false
@@ -32,6 +34,10 @@ struct SettingsView: View {
                     if viewModel.isConnected && !viewModel.bikeInfo.isEmpty {
                         settingsSection(title: "THÔNG TIN XE") {
                             VStack(spacing: 0) {
+                                settingsButton(icon: "battery.100.bolt", iconColor: .green, title: "Phân tích Pin (BMS)") {
+                                    showBatteryAnalytics = true
+                                }
+                                Divider().background(Color.white.opacity(0.06))
                                 settingsRow(icon: "bicycle", iconColor: .cyan,
                                            title: "Tên", value: viewModel.bikeInfo.name)
                                 Divider().background(Color.white.opacity(0.06))
@@ -63,14 +69,16 @@ struct SettingsView: View {
                         }
                     }
 
-                    // Logs section
+                    // Logs section (Hidden for Beta/Release)
+#if DEBUG
                     settingsSection(title: "NHẬT KÝ") {
                         VStack(spacing: 0) {
-                            settingsButton(icon: "exclamationmark.triangle.fill", iconColor: .orange, title: "Xem lỗi kết nối") {
+                            settingsButton(icon: "list.bullet.rectangle.portrait", iconColor: .blue, title: "Xem nhật ký đầy đủ (Full Logs)") {
                                 showLogs = true
                             }
                         }
                     }
+#endif
 
                     // Time Sync section
                     settingsSection(title: "ĐỒNG BỘ GIỜ XE") {
@@ -203,7 +211,10 @@ struct SettingsView: View {
             }
         }
         .sheet(isPresented: $showLogs) {
-            LogView(logs: viewModel.logs)
+            LogView(logs: PersistentLogger.shared.loadLogs(daysBack: 1))
+        }
+        .sheet(isPresented: $showBatteryAnalytics) {
+            BatteryAnalyticsView(viewModel: container.batteryViewModel)
         }
         .alert("Bỏ liên kết xe", isPresented: $showForgetConfirm) {
             Button("Quên", role: .destructive) {
@@ -393,18 +404,9 @@ struct LogView: View {
         "NOTIFY", "serviceChanged"
     ]
     
-    /// Chỉ hiện error + warning, ẩn nội dung nhạy cảm
+    /// Hiển thị toàn bộ nhật ký theo yêu cầu
     private var filteredLogs: [BLELogEntry] {
-        logs.filter { entry in
-            // Chỉ giữ error và warning
-            guard entry.level == .error || entry.level == .warning else { return false }
-            // Ẩn log chứa nội dung nhạy cảm
-            let msg = entry.message
-            for keyword in Self.sensitiveKeywords {
-                if msg.contains(keyword) { return false }
-            }
-            return true
-        }
+        return logs
     }
     
     var body: some View {
