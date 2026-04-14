@@ -116,10 +116,70 @@ class BLEAuthenticator: IoTAuthService {
         }
         
         if !authVerified {
+            // Kiểm tra: counter CÓ THAY ĐỔI không? Nếu nhảy sang chẵn MỚI → xe từ chối hash
+            // nhưng sẵn sàng cho lần auth mới → retry 1 lần với counter mới
+            let lastVerifyData = try? await context.queue.enqueue {
+                try await self.context.io.readValue(from: authChar)
+            }
+            if let data = lastVerifyData, data.count >= 4 {
+                let latestCounter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+                if latestCounter != currentCounter && latestCounter % 2 == 0 {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "Auth: Counter nhảy \(currentCounter) → \(latestCounter) (chẵn mới) — retry auth với counter mới"))
+                    // Retry 1 lần với counter mới
+                    try await retrySHAWithNewCounter(authChar: authChar, newCounter: latestCounter)
+                    return
+                }
+            }
+            
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
                 message: "Auth: Counter vẫn chẵn sau \(retryDelays.count) lần verify — xác thực thất bại."))
             throw IoTError.shaChallengeFailed
         }
+    }
+    
+    /// Retry SHA auth 1 lần khi counter nhảy sang chẵn mới (xe từ chối hash trước đó)
+    private func retrySHAWithNewCounter(authChar: CBCharacteristic, newCounter: UInt32) async throws {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "Auth retry: counter = \(newCounter), tính hash mới..."))
+        
+        // Tạo challenge data giả từ counter mới
+        var counterLE = newCounter.littleEndian
+        let challengeData = Data(bytes: &counterLE, count: 4)
+        
+        let hashHexStr = try BLECryptography.solveChallenge(challengeBytes: challengeData, pin: pin)
+        
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "Auth retry: Gửi hash response..."))
+        try await context.queue.enqueue {
+            try await self.context.io.writeValue(Data(hashHexStr.utf8), to: authChar, type: .withResponse)
+        }
+        
+        // Verify counter chuyển lẻ
+        let retryDelays: [UInt64] = [300, 600, 1000, 1500]
+        for (attempt, delayMs) in retryDelays.enumerated() {
+            try await Task.sleep(nanoseconds: delayMs * 1_000_000)
+            
+            let verifyData = try await context.queue.enqueue {
+                try await self.context.io.readValue(from: authChar)
+            }
+            guard verifyData.count >= 4 else { continue }
+            
+            let counter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+            let isOdd = counter % 2 != 0
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "Auth retry verify \(attempt+1): counter \(newCounter) → \(counter) (\(isOdd ? "lẻ ✓" : "chẵn ✗"))"))
+            
+            if isOdd {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
+                    message: "Auth retry: Counter lẻ → xác thực thành công ✅"))
+                return
+            }
+        }
+        
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
+            message: "Auth retry: Vẫn thất bại sau retry — cần quẹt thẻ NFC."))
+        throw IoTError.shaChallengeFailed
     }
     
     // MARK: - NFC Pairing Flow

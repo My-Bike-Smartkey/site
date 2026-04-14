@@ -450,7 +450,8 @@ extension DatBikeCore: CBCentralManagerDelegate {
             } else {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                     message: "Peripheral restore nhưng đã disconnect (state: \(restored.state.rawValue)) → bỏ qua, sẽ scan mới"))
-                // Không gán activeContext → poweredOn sẽ chạy connect() → scan fresh
+                // Đánh dấu để connect() biết PHẢI scan mới, không dùng cache
+                btWasPoweredOff = true
             }
         }
     }
@@ -572,11 +573,10 @@ extension DatBikeCore: CBCentralManagerDelegate {
         pollingEngine = nil
         isAuthenticating = false
         
-        // MIC failure = iOS BLE encryption cache bị lệch với xe
-        // Root cause đã fix: không connect peripheral từ cache nếu chưa connected
-        // Retry bằng scan mới — iOS sẽ negotiate fresh encryption
+        // MIC failure hoặc "Failed to encrypt" = encryption cache lệch
         let isMICFailure = errorMsg.contains("MIC failure")
             || (error as NSError?)?.code == 31
+        let isEncryptionFailure = errorMsg.contains("Failed to encrypt")
         
         // Error 14: Peer removed pairing
         if let cbError = error as? CBError, cbError.code == .peerRemovedPairingInformation {
@@ -591,16 +591,19 @@ extension DatBikeCore: CBCentralManagerDelegate {
             return
         }
         
-        if isMICFailure {
-            // MIC failure = encryption cache lệch với xe
-            // Scan mới lập tức — iOS sẽ negotiate fresh link-layer encryption
+        if isMICFailure || isEncryptionFailure {
+            // Scan mới SAU 2 GIÂY — cho iOS thời gian flush encryption cache
+            // Không scan ngay vì iOS cần thời gian reset link-layer keys
             PersistentLogger.shared.append(BLELogEntry(
                 timestamp: Date(), level: .warning,
-                message: "MIC failure → scan mới ngay (không retry cache)"
+                message: "\(isMICFailure ? "MIC failure" : "Encryption failure") → chờ 2s rồi scan mới"
             ))
             btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
             stateMachine.transition(to: .scanning)
-            startScanWithTimeout(central: central)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self, let central = self.centralManager, central.state == .poweredOn else { return }
+                self.startScanWithTimeout(central: central)
+            }
         } else if scanRetryCount < maxScanRetries {
             scanRetryCount += 1
             startScanWithTimeout(central: central)
