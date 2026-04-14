@@ -229,6 +229,19 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             if self.scanRetryCount < self.maxScanRetries {
                 self.startScanWithTimeout(central: central)
             } else {
+                // Hết quota scan -> Không báo chết ngay. 
+                // Cắm lệnh kết nối chờ (pending connect) của iOS để nó tự bắt nếu tới gần.
+                if let savedUUIDStr = self.preferences.savedPeripheralUUID,
+                   let savedUUID = UUID(uuidString: savedUUIDStr) {
+                    let known = central.retrievePeripherals(withIdentifiers: [savedUUID])
+                    if let p = known.first {
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                            message: "Hết hạn quét xe — chuyển sang bám sóng nền (pending connect)"))
+                        self.connectPeripheral(p, central: central)
+                        return
+                    }
+                }
+                
                 self.stateMachine.transition(to: .error("Không tìm thấy xe. Hãy kiểm tra xe đã bật chưa."))
             }
         }
@@ -535,6 +548,9 @@ extension DatBikeCore: CBCentralManagerDelegate {
         
         // Đã pair trước đó (có savedPin) → auto-connect luôn, không cần chọn
         if preferences.savedPin != nil {
+            if preferences.connectOnlyWhenNear && Double(RSSI.intValue) < preferences.rssiThreshold {
+                return // Bỏ qua sóng yếu, không stopScan, chờ tới gần
+            }
             cancelScanTimer()
             central.stopScan()
             connectPeripheral(peripheral, central: central)
@@ -592,16 +608,13 @@ extension DatBikeCore: CBCentralManagerDelegate {
         }
         
         if isMICFailure || isEncryptionFailure {
-            // Scan mới SAU 2 GIÂY — cho iOS thời gian flush encryption cache
-            // Không scan ngay vì iOS cần thời gian reset link-layer keys
             PersistentLogger.shared.append(BLELogEntry(
                 timestamp: Date(), level: .warning,
-                message: "\(isMICFailure ? "MIC failure" : "Encryption failure") → chờ 2s rồi scan mới"
+                message: "\(isMICFailure ? "MIC failure" : "Encryption failure") → scan mới ngay (không retry cache)"
             ))
             btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
             stateMachine.transition(to: .scanning)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                guard let self, let central = self.centralManager, central.state == .poweredOn else { return }
+            if let central = self.centralManager, central.state == .poweredOn {
                 self.startScanWithTimeout(central: central)
             }
         } else if scanRetryCount < maxScanRetries {

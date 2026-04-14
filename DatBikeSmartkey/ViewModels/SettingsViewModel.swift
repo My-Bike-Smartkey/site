@@ -10,6 +10,7 @@ class SettingsViewModel: ObservableObject {
     // Outputs cho giao diện Cài đặt
     @Published var rssiThreshold: Double
     @Published var autoUnlockEnabled: Bool
+    @Published var connectOnlyWhenNear: Bool
     @Published var isDebugModeEnabled: Bool
     
     @Published var isConnected: Bool = false
@@ -26,6 +27,7 @@ class SettingsViewModel: ObservableObject {
         
         self.rssiThreshold = preferences.rssiThreshold
         self.autoUnlockEnabled = preferences.autoUnlockEnabled
+        self.connectOnlyWhenNear = preferences.connectOnlyWhenNear
         self.isDebugModeEnabled = preferences.isDebugModeEnabled
         
         setupBindings()
@@ -41,6 +43,11 @@ class SettingsViewModel: ObservableObject {
         $autoUnlockEnabled
             .dropFirst()
             .sink { [weak self] val in self?.preferences.autoUnlockEnabled = val }
+            .store(in: &cancellables)
+            
+        $connectOnlyWhenNear
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.connectOnlyWhenNear = val }
             .store(in: &cancellables)
             
         $isDebugModeEnabled

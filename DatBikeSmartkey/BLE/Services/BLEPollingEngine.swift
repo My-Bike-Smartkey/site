@@ -37,11 +37,11 @@ class BLEPollingEngine {
                     }
                 }
                 
-                // Vòng lặp 2: Keep-Alive / Telemetry (Mỗi 30s)
+                // Vòng lặp 2: Keep-Alive / Telemetry (Mỗi 10s)
                 group.addTask { [weak self] in
                     while !Task.isCancelled {
                         do {
-                            try await Task.sleep(nanoseconds: 30_000_000_000) // Sleep 30s
+                            try await Task.sleep(nanoseconds: 10_000_000_000) // Sleep 10s
                             guard let self = self else { break }
                             
                             // ĐẨY VÀO QUEUE ĐỂ ĐẢM BẢO KHÔNG XUNG ĐỘT (GATT COLLISION)

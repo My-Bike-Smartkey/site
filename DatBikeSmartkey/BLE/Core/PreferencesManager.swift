@@ -18,6 +18,10 @@ class PreferencesManager {
         didSet { UserDefaults.standard.set(isDebugModeEnabled, forKey: "isDebugModeEnabled") }
     }
     
+    @Published var connectOnlyWhenNear: Bool {
+        didSet { UserDefaults.standard.set(connectOnlyWhenNear, forKey: "connectOnlyWhenNear") }
+    }
+    
     @Published var savedPin: String? {
         didSet { UserDefaults.standard.set(savedPin, forKey: "savedPin") }
     }
@@ -40,9 +44,16 @@ class PreferencesManager {
     
     private init() {
         let storedRssi = UserDefaults.standard.double(forKey: "rssiThreshold")
-        self.rssiThreshold = storedRssi == 0 ? -65.0 : storedRssi
+        // Nới lỏng ngưỡng từ -65 xuống -80 để bắt được xe từ xa hơn (dễ kết nối hơn)
+        if storedRssi == 0 || storedRssi == -65.0 {
+            self.rssiThreshold = -80.0
+            UserDefaults.standard.set(-80.0, forKey: "rssiThreshold")
+        } else {
+            self.rssiThreshold = storedRssi
+        }
         
         self.autoUnlockEnabled = UserDefaults.standard.bool(forKey: "autoUnlockEnabled")
+        self.connectOnlyWhenNear = UserDefaults.standard.bool(forKey: "connectOnlyWhenNear")
         self.isDebugModeEnabled = UserDefaults.standard.object(forKey: "isDebugModeEnabled") as? Bool ?? true
         self.savedPin = UserDefaults.standard.string(forKey: "savedPin")
         self.savedPeripheralUUID = UserDefaults.standard.string(forKey: "lastPeripheralUUID")

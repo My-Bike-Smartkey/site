@@ -86,6 +86,7 @@ class BLEAuthenticator: IoTAuthService {
         // Thành công = counter chuyển từ chẵn → lẻ
         let retryDelays: [UInt64] = [200, 400, 700, 1200]
         var authVerified = false
+        var latestVerifiedCounter: UInt32? = nil
         
         for (attempt, delayMs) in retryDelays.enumerated() {
             try await Task.sleep(nanoseconds: delayMs * 1_000_000)
@@ -100,6 +101,8 @@ class BLEAuthenticator: IoTAuthService {
             }
             
             let newCounter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+            latestVerifiedCounter = newCounter
+            
             let isOdd = newCounter % 2 != 0
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                 message: "Auth verify \(attempt+1): counter \(currentCounter) → \(newCounter) (\(isOdd ? "lẻ ✓" : "chẵn ✗"))"))
@@ -118,11 +121,7 @@ class BLEAuthenticator: IoTAuthService {
         if !authVerified {
             // Kiểm tra: counter CÓ THAY ĐỔI không? Nếu nhảy sang chẵn MỚI → xe từ chối hash
             // nhưng sẵn sàng cho lần auth mới → retry 1 lần với counter mới
-            let lastVerifyData = try? await context.queue.enqueue {
-                try await self.context.io.readValue(from: authChar)
-            }
-            if let data = lastVerifyData, data.count >= 4 {
-                let latestCounter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+            if let latestCounter = latestVerifiedCounter {
                 if latestCounter != currentCounter && latestCounter % 2 == 0 {
                     PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
                         message: "Auth: Counter nhảy \(currentCounter) → \(latestCounter) (chẵn mới) — retry auth với counter mới"))

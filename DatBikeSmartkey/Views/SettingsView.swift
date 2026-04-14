@@ -63,6 +63,29 @@ struct SettingsView: View {
                     // Security section
                     settingsSection(title: "BẢO MẬT") {
                         VStack(spacing: 0) {
+                            Toggle(isOn: $viewModel.connectOnlyWhenNear) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "antenna.radiowaves.left.and.right")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.green)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.green.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Chỉ kết nối khi ở gần")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                        Text("Tự động từ chối nếu sóng quá yếu")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            
+                            Divider().background(Color.white.opacity(0.06))
+                            
                             settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
                                 showForgetConfirm = true
                             }

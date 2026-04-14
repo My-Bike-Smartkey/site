@@ -3,10 +3,19 @@
 import SwiftUI
 
 
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func applicationWillTerminate(_ application: UIApplication) {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "App bị vuốt tắt (Terminated)"))
+    }
+}
+
 // MARK: - App
 
 @main
 struct DatBikeSmartKeyApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @Environment(\.scenePhase) var scenePhase
     
     @StateObject private var container = AppDIContainer()
     
@@ -17,6 +26,18 @@ struct DatBikeSmartKeyApp: App {
                 .onAppear { }
                 .onOpenURL { url in
                     handleDeepLink(url)
+                }
+                .onChange(of: scenePhase) { newPhase in
+                    switch newPhase {
+                    case .active:
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "App được mở lên (Foreground Active)"))
+                    case .background:
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "App ẩn xuống chạy ngầm (Background)"))
+                    case .inactive:
+                        break
+                    @unknown default:
+                        break
+                    }
                 }
         }
     }
