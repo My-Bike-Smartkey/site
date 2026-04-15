@@ -229,8 +229,17 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             if self.scanRetryCount < self.maxScanRetries {
                 self.startScanWithTimeout(central: central)
             } else {
-                // Hết quota scan -> Không báo chết ngay. 
-                // Cắm lệnh kết nối chờ (pending connect) của iOS để nó tự bắt nếu tới gần.
+                // Hết quota scan -> Cắm lệnh kết nối chờ (pending connect) của iOS.
+                // ═══ GUARD: Nếu đang trong trạng thái power-cycle, KHÔNG dùng cache ═══
+                // Dùng cache sau power-cycle sẽ gây encryption failure / MIC failure.
+                if self.btWasPoweredOff {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "Hết hạn quét xe (power-cycle) — tiếp tục scan, không dùng cache"))
+                    self.scanRetryCount = 0
+                    self.startScanWithTimeout(central: central)
+                    return
+                }
+                
                 if let savedUUIDStr = self.preferences.savedPeripheralUUID,
                    let savedUUID = UUID(uuidString: savedUUIDStr) {
                     let known = central.retrievePeripherals(withIdentifiers: [savedUUID])
@@ -492,14 +501,20 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 if ctx.peripheral.state == .connected {
                     // Peripheral vẫn connected → discover ngay
                     ctx.peripheral.discoverServices(BLEService.allServices)
+                    return
                 } else {
-                    // Peripheral đã disconnect → reconnect
-                    central.connect(ctx.peripheral, options: [
-                        CBConnectPeripheralOptionNotifyOnConnectionKey: true,
-                        CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
-                    ])
+                    // Peripheral đã disconnect → KHÔNG reconnect cached peripheral
+                    // (encryption keys có thể stale) → xóa context, để connect() scan mới
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "Restored peripheral đã disconnect → xóa context, scan mới"))
+                    central.cancelPeripheralConnection(ctx.peripheral)
+                    activeContext = nil
+                    commandDispatcher = nil
+                    pollingEngine = nil
+                    isAuthenticating = false
+                    // Fall through để connect() xử lý (sẽ scan mới vì btWasPoweredOff=true
+                    // hoặc vì không có activeContext)
                 }
-                return
             }
             
             if let uuid = pendingASKUUID {
@@ -593,6 +608,8 @@ extension DatBikeCore: CBCentralManagerDelegate {
         let isMICFailure = errorMsg.contains("MIC failure")
             || (error as NSError?)?.code == 31
         let isEncryptionFailure = errorMsg.contains("Failed to encrypt")
+        // Connection timeout (code 6) cũng có thể do stale encryption
+        let isConnectionTimeout = errorMsg.contains("timed out") || (error as NSError?)?.code == 6
         
         // Error 14: Peer removed pairing
         if let cbError = error as? CBError, cbError.code == .peerRemovedPairingInformation {
@@ -607,12 +624,14 @@ extension DatBikeCore: CBCentralManagerDelegate {
             return
         }
         
-        if isMICFailure || isEncryptionFailure {
+        if isMICFailure || isEncryptionFailure || isConnectionTimeout {
+            let failureType = isMICFailure ? "MIC failure" : isEncryptionFailure ? "Encryption failure" : "Connection timeout"
             PersistentLogger.shared.append(BLELogEntry(
                 timestamp: Date(), level: .warning,
-                message: "\(isMICFailure ? "MIC failure" : "Encryption failure") → scan mới ngay (không retry cache)"
+                message: "\(failureType) → scan mới ngay (không retry cache)"
             ))
             btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
+            scanRetryCount = 0 // Reset retry count để scan có đủ quota
             stateMachine.transition(to: .scanning)
             if let central = self.centralManager, central.state == .poweredOn {
                 self.startScanWithTimeout(central: central)
@@ -621,7 +640,14 @@ extension DatBikeCore: CBCentralManagerDelegate {
             scanRetryCount += 1
             startScanWithTimeout(central: central)
         } else {
-            stateMachine.transition(to: .error("Kết nối thất bại. Hãy thử lại."))
+            // Hết quota retry scan → pending connect thay vì chết cứng
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "Hết quota retry — chuyển sang pending connect nền"))
+            stateMachine.transition(to: .scanning)
+            central.connect(peripheral, options: [
+                CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+                CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
+            ])
         }
     }
     
