@@ -225,4 +225,26 @@ class BLEAuthenticator: IoTAuthService {
         }
         try await Task.sleep(nanoseconds: 500_000_000)
     }
+    
+    /// Huỷ xác thực (De-authenticate) bằng cách gửi mã SHA sai cho xe.
+    /// Giúp ngắt bảo mật nhưng không ngắt kết nối vật lý.
+    func invalidateSession() async throws {
+        let authChar = try context.requireCharacteristic(BLECharacteristic.authChallenge)
+        
+        let challengeData = try await context.queue.enqueue {
+            try await self.context.io.readValue(from: authChar)
+        }
+        
+        guard challengeData.count >= 4 else { return }
+        
+        // Tạo một hash rác dài 64 ký tự (giả mạo hash SHA256)
+        let garbageHash = String(repeating: "F", count: 64)
+        
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "Auth: Đã nhả quyền điều khiển (Ghi đè session)..."))
+            
+        try await context.queue.enqueue {
+            try await self.context.io.writeValue(Data(garbageHash.utf8), to: authChar, type: .withResponse)
+        }
+    }
 }

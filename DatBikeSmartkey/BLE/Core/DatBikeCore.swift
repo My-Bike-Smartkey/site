@@ -1,6 +1,7 @@
 import Foundation
 import CoreBluetooth
 import Combine
+import UIKit
 
 /// LỚP BỌC TỐI THƯỢNG (FACADE) - MANAGER MỚI (V2)
 class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
@@ -31,7 +32,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private let preferences: PreferencesManager
     private var cancellables = Set<AnyCancellable>()
     
-    private var isAuthenticating: Bool = false
+    var isAuthenticating = false
     private var pendingASKUUID: UUID?
     
     /// Cờ phát hiện Bluetooth đã trải qua poweredOff → poweredOn.
@@ -47,6 +48,9 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private let maxScanRetries = 3
     private let scanTimeoutSeconds: TimeInterval = 6
     
+    // Background execution state
+    private var isAppInBackground = false
+    
     init(preferences: PreferencesManager = .shared) {
         self.preferences = preferences
         super.init()
@@ -58,10 +62,18 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     func initializeBluetoothHardware() {
         guard centralManager == nil else { return }
         let queue = DispatchQueue(label: "datbike.core.ble", qos: .userInitiated)
-        self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [
-            CBCentralManagerOptionRestoreIdentifierKey: "datbike.core.central",
+        self.centralManager = CBCentralManager(delegate: self, queue: nil, options: [
+            CBCentralManagerOptionRestoreIdentifierKey: "DatBikeCentralManagerRestoreID",
             CBCentralManagerOptionShowPowerAlertKey: true
         ])
+        
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        standbyTimer?.invalidate()
     }
     
     private func setupLogging() {
@@ -100,7 +112,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                 guard let self = self else { return }
                 if self.centralManager.state == .poweredOff {
-                    self.stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
+                    self.stateMachine.transition(to: .error("Bluetooth đang tắt. Xin bật lại."))
                 } else if self.centralManager.state == .poweredOn {
                     self.connect()
                 }
@@ -108,10 +120,10 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             stateMachine.transition(to: .scanning)
             return
         case .unauthorized:
-            stateMachine.transition(to: .error("Ứng dụng chưa được cấp quyền Bluetooth."))
+            stateMachine.transition(to: .error("Chưa cấp quyền Bluetooth cho ứng dụng."))
             return
         case .unsupported:
-            stateMachine.transition(to: .error("Thiết bị không hỗ trợ Bluetooth."))
+            stateMachine.transition(to: .error("Thiết bị không hỗ trợ Bluetooth LE."))
             return
         @unknown default:
             return
@@ -446,9 +458,8 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             .store(in: &cancellables)
         
         engine.$currentRSSI
-            .combineLatest(preferences.$autoUnlockEnabled, preferences.$rssiThreshold)
-            .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
-            .sink { [weak self] (rssi, isAutoUnlockOn, threshold) in
+            .combineLatest($currentLockState, preferences.$autoUnlockEnabled, preferences.$autoTurnOnThreshold)
+            .sink { [weak self] (rssi, lockState, isAutoUnlockOn, threshold) in
                 guard let self = self, isAutoUnlockOn else { return }
                 if rssi >= threshold, case .locked = self.currentLockState {
                     Task {
@@ -461,11 +472,10 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         // Logic downgrading từ Active về Standby khi rời khỏi xe
         engine.$currentRSSI
             .combineLatest($currentLockState, preferences.$rssiThreshold)
-            .debounce(for: .seconds(5), scheduler: DispatchQueue.main)
             .sink { [weak self] (rssi, lockState, threshold) in
                 guard let self = self else { return }
                 if lockState == .locked || lockState == .armed {
-                    let farThreshold = threshold - 10.0 // Xa hơn điểm unlock 10dBm
+                    let farThreshold = threshold - 3.0 // Vừa bước ra khỏi vùng kết nối 3dBm sẽ ngắt (có độ trễ hysteresis tránh chớp nháy)
                     if rssi < farThreshold && self.stateMachine.state == .active {
                         self.downgradeToStandby()
                     }
@@ -475,19 +485,39 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     }
     
     private func downgradeToStandby() {
-        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                                                   message: "Xe đã tắt và đi xa -> Hạ kết nối về Standby"))
         pollingEngine?.stopPolling()
-        stateMachine.transition(to: .standby)
         isAuthenticating = false
         
+        if isAppInBackground {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "App đang chạy ngầm → Ngắt vật lý bắt buộc để nhường quyền cho Background Scanner (Tránh đóng băng RSSI timer)"))
+            if let ctx = activeContext {
+                centralManager?.cancelPeripheralConnection(ctx.peripheral)
+            } else {
+                connect()
+            }
+            return
+        }
+        
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "Hạ kết nối về Standby (Xoá phiên xác thực nội bộ)..."))
+            
         if let ctx = activeContext {
+            // Huỷ phiên xác thực bằng cách ghi rác
+            let authenticator = BLEAuthenticator(context: ctx, pin: preferences.savedPin ?? "", isKnownDevice: true)
+            Task {
+                try? await authenticator.invalidateSession()
+            }
+            
+            stateMachine.transition(to: .standby)
             DispatchQueue.main.async {
                 self.standbyTimer?.invalidate()
                 self.standbyTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak ctx] _ in
                     ctx?.peripheral.readRSSI()
                 }
             }
+        } else {
+            connect()
         }
     }
 }
@@ -611,9 +641,14 @@ extension DatBikeCore: CBCentralManagerDelegate {
         
         // Đã pair trước đó (có savedPin) → auto-connect luôn, không cần chọn
         if preferences.savedPin != nil {
-            if preferences.connectOnlyWhenNear && Double(RSSI.intValue) < preferences.rssiThreshold {
-                return // Bỏ qua sóng yếu, không stopScan, chờ tới gần
+            if isAppInBackground {
+                // Background: BẮT BUỘC bỏ qua các sóng yếu và tiếp tục Scan bằng hạ tầng hệ điều hành.
+                // Nếu kết nối ở xa trong Background, Timer bị đóng băng -> App không bao giờ xác thực được!
+                if Double(RSSI.intValue) < preferences.rssiThreshold {
+                    return
+                }
             }
+            
             cancelScanTimer()
             central.stopScan()
             connectPeripheral(peripheral, central: central)
