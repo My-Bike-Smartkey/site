@@ -55,7 +55,7 @@ class BLEAuthenticator: IoTAuthService {
     
     private func authenticateWithSHA(authChar: CBCharacteristic) async throws {
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Auth: SHA-256 reconnect mode. PIN=\(pin)"))
+            message: "Auth: SHA-256 reconnect mode. PIN=***"))
         
         // 1. Read challenge (counter)
         let challengeData = try await context.queue.enqueue {
@@ -67,7 +67,7 @@ class BLEAuthenticator: IoTAuthService {
         
         let currentCounter = challengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Auth: Challenge counter = \(currentCounter) (raw: \(challengeData.prefix(4).hexString))"))
+            message: "Auth: Challenge counter = \(currentCounter)"))
         
         // 2. SHA-256(counter >> 1 + PIN)
         let hashHexStr = try BLECryptography.solveChallenge(challengeBytes: challengeData, pin: pin)

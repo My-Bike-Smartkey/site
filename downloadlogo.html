@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tải xuống Logo SmartKey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0a0f1a;
+            color: #e2e8f0;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full">
+        <div class="text-center mb-8">
+            <h1 class="text-2xl font-bold text-white mb-2">Bộ Logo D-SmartKey</h1>
+            <p class="text-slate-400">Nhấn vào các nút bên dưới để lưu file về máy tính của bạn.</p>
+        </div>
+
+        <div class="space-y-4">
+            <!-- Nút tải SVG Trong suốt -->
+            <button onclick="downloadFile('logo-transparent.svg', svgTransparent, 'image/svg+xml')"
+                class="w-full flex items-center justify-between px-6 py-4 bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl group border border-slate-700">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
+                            </path>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <h3 class="text-white font-medium">Logo Trong suốt (SVG)</h3>
+                        <p class="text-sm text-slate-400">Dùng cho Web / UI App</p>
+                    </div>
+                </div>
+                <svg class="w-6 h-6 text-slate-500 group-hover:text-orange-500 transition-colors" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+            </button>
+
+            <!-- Nút tải Android XML -->
+            <button onclick="downloadFile('ic_launcher_logo.xml', androidXml, 'text/xml')"
+                class="w-full flex items-center justify-between px-6 py-4 bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl group border border-slate-700">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <h3 class="text-white font-medium">Logo Android (XML)</h3>
+                        <p class="text-sm text-slate-400">Vector Drawable cho Android Studio</p>
+                    </div>
+                </div>
+                <svg class="w-6 h-6 text-slate-500 group-hover:text-green-500 transition-colors" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+            </button>
+
+            <!-- Nút tải iOS SVG -->
+            <button onclick="downloadFile('logo-ios-app-icon.svg', iosSvg, 'image/svg+xml')"
+                class="w-full flex items-center justify-between px-6 py-4 bg-slate-800 hover:bg-slate-700 transition-colors rounded-xl group border border-slate-700">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <h3 class="text-white font-medium">Logo iOS (SVG nền tối)</h3>
+                        <p class="text-sm text-slate-400">Xuất PNG 1024x1024 cho Xcode</p>
+                    </div>
+                </div>
+                <svg class="w-6 h-6 text-slate-500 group-hover:text-blue-500 transition-colors" fill="none"
+                    stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-8 pt-6 border-t border-slate-800">
+            <button onclick="downloadAll()"
+                class="w-full py-4 bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-xl transition-colors shadow-[0_0_15px_rgba(234,88,12,0.3)] hover:shadow-[0_0_25px_rgba(234,88,12,0.5)]">
+                Tải xuống cả 3 file
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Nội dung của 3 file
+        const svgTransparent = `<svg width="512" height="512" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="50,5 89,27.5 89,72.5 50,95 11,72.5 11,27.5" stroke="#f97316" stroke-width="4" stroke-linejoin="round"/>
+  <g stroke="#f97316" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="45" cy="39" r="3" />
+    <path d="M 45 42 L 45 65" />
+    <path d="M 45 55 L 51 55" />
+    <path d="M 45 61 L 51 61" />
+    <path d="M 41 28 L 59 28 L 75 44 L 75 56 L 59 72 L 41 72" />
+  </g>
+</svg>`;
+
+        const androidXml = `<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path android:pathData="M 50,5 L 89,27.5 L 89,72.5 L 50,95 L 11,72.5 L 11,27.5 Z" android:strokeWidth="4" android:strokeColor="#f97316" android:strokeLineJoin="round" />
+    <path android:pathData="M 45,36 A 3,3 0 1,0 45,42 A 3,3 0 1,0 45,36" android:strokeWidth="3" android:strokeColor="#f97316" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M 45,42 L 45,65 M 45,55 L 51,55 M 45,61 L 51,61" android:strokeWidth="3" android:strokeColor="#f97316" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M 41,28 L 59,28 L 75,44 L 75,56 L 59,72 L 41,72" android:strokeWidth="3" android:strokeColor="#f97316" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>`;
+
+        const iosSvg = `<svg width="1024" height="1024" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="100" fill="#15100d" />
+  <g transform="translate(15, 15) scale(0.7)">
+    <polygon points="50,5 89,27.5 89,72.5 50,95 11,72.5 11,27.5" stroke="#f97316" stroke-width="4" stroke-linejoin="round"/>
+    <g stroke="#f97316" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="45" cy="39" r="3" />
+      <path d="M 45 42 L 45 65" />
+      <path d="M 45 55 L 51 55" />
+      <path d="M 45 61 L 51 61" />
+      <path d="M 41 28 L 59 28 L 75 44 L 75 56 L 59 72 L 41 72" />
+    </g>
+  </g>
+</svg>`;
+
+        // Hàm xử lý tạo file và tự động tải xuống
+        function downloadFile(filename, content, type) {
+            const blob = new Blob([content], { type: type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Hàm tải cả 3 với độ trễ nhỏ để trình duyệt không chặn
+        function downloadAll() {
+            downloadFile('logo-transparent.svg', svgTransparent, 'image/svg+xml');
+            setTimeout(() => downloadFile('ic_launcher_logo.xml', androidXml, 'text/xml'), 300);
+            setTimeout(() => downloadFile('logo-ios-app-icon.svg', iosSvg, 'image/svg+xml'), 600);
+        }
+    </script>
+</body>
+
+</html>

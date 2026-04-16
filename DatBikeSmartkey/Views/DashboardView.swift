@@ -8,6 +8,7 @@ struct DashboardView: View {
     @State private var showingSettings = false
     @State private var isRefreshing = false
     @State private var pulseAnimation = false
+    @State private var showExitConfirm = false
     
     // Dynamic accent colors based on lock state
     private var accentColor: Color {
@@ -21,6 +22,9 @@ struct DashboardView: View {
     private var statusText: String {
         if viewModel.connectionState == .standby {
             return "Kết nối chờ (Chờ gần)"
+        }
+        if viewModel.connectionState == .authenticating {
+            return "Đang xác thực bảo mật..."
         }
         switch viewModel.lockStatus {
         case .armed:
@@ -37,6 +41,9 @@ struct DashboardView: View {
     private var actionText: String {
         if viewModel.connectionState == .standby {
             return "Chạm để đánh thức xe"
+        }
+        if viewModel.connectionState == .authenticating {
+            return "Vui lòng đợi..."
         }
         switch viewModel.lockStatus {
         case .armed:
@@ -87,6 +94,18 @@ struct DashboardView: View {
             Button("OK") {}
         } message: {
             Text(viewModel.errorMessage)
+        }
+        .alert("Thoát ứng dụng", isPresented: $showExitConfirm) {
+            Button("Hủy", role: .cancel) { }
+            Button("Thoát", role: .destructive) {
+                // Suspend to background first for a smoother exit, then kill process
+                UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    exit(0)
+                }
+            }
+        } message: {
+            Text("Bạn có chắc chắn muốn ngắt kết nối và đóng hoàn toàn ứng dụng không?")
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: container.settingsViewModel)
@@ -150,28 +169,7 @@ struct DashboardView: View {
             Spacer()
             
             HStack(spacing: 12) {
-                // Kill app button
-                Button(action: {
-                    // Suspend to background first for a smoother exit, then kill process
-                    UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        exit(0)
-                    }
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.red)
-                        .frame(width: 44, height: 44)
-                        .background(
-                            Circle()
-                                .fill(Color.red.opacity(0.1))
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.red.opacity(0.2), lineWidth: 1)
-                                )
-                        )
-                }
-                .buttonStyle(PlainButtonStyle())
+                // Removed Kill app button per user request
                 
                 // Settings button
                 Button(action: { showingSettings = true }) {
@@ -257,6 +255,7 @@ struct DashboardView: View {
                                 .scaleEffect(2.0)
                         } else {
                             Image("VHexaLogoWhite")
+                                .renderingMode(.template)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .frame(width: 56, height: 56)
@@ -303,12 +302,12 @@ struct DashboardView: View {
                 showsDivider: true
             )
             
-            // Range remaining (calculated from battery and typical consumption)
+            // QuickStatItem cho Nhiệt độ motor
             QuickStatItem(
-                icon: "chart.line.uptrend.xyaxis",
-                value: viewModel.batteryPercentage > 0 ? "\(Int(Float(viewModel.batteryPercentage) * 0.73))" : "—",
-                label: "KM CÒN LẠI",
-                color: .blue,
+                icon: "thermometer.sun.fill",
+                value: viewModel.motorTemp > 0 ? String(format: "%.0f°", viewModel.motorTemp) : "—",
+                label: "NHIỆT ĐỘ MOTOR",
+                color: .orange,
                 showsDivider: true
             )
             
@@ -360,8 +359,8 @@ struct DashboardView: View {
                         color: .red,
                         colSpan: 2,
                         isSquare: false,
-                        isActive: viewModel.lockStatus == .armed,
-                        isDisabled: false,
+                        isActive: viewModel.lockStatus == .armed && viewModel.connectionState != .standby,
+                        isDisabled: viewModel.connectionState == .standby,
                         action: { viewModel.lock() }
                     )
                     .frame(width: bigButtonWidth, height: buttonHeight)
@@ -374,8 +373,8 @@ struct DashboardView: View {
                         color: Color(red: 0.4, green: 0.6, blue: 1.0),
                         colSpan: 1,
                         isSquare: true,
-                        isActive: viewModel.isFinding,
-                        isDisabled: false,
+                        isActive: viewModel.isFinding && viewModel.connectionState != .standby,
+                        isDisabled: viewModel.connectionState == .standby,
                         action: { viewModel.findBike() }
                     )
                     .frame(width: smallButtonWidth, height: buttonHeight)
@@ -389,7 +388,7 @@ struct DashboardView: View {
                         colSpan: 1,
                         isSquare: true,
                         isActive: false,
-                        isDisabled: isRefreshing,
+                        isDisabled: isRefreshing || viewModel.connectionState == .standby,
                         isRotating: isRefreshing,
                         action: {
                             isRefreshing = true
@@ -412,8 +411,8 @@ struct DashboardView: View {
                         color: Color(red: 0.0, green: 0.898, blue: 1.0),
                         colSpan: 2,
                         isSquare: false,
-                        isActive: viewModel.lockStatus == .locked,     // KHI TẮT -> NỔI BẬT NÚT BẬT LÊN
-                        isDisabled: viewModel.lockStatus == .unlocked, // Disable khi xe ĐÃ BẬT
+                        isActive: viewModel.lockStatus == .locked && viewModel.connectionState != .standby,     // KHI TẮT -> NỔI BẬT NÚT BẬT LÊN
+                        isDisabled: viewModel.lockStatus == .unlocked || viewModel.connectionState == .standby, // Disable khi xe ĐÃ BẬT hoặc CHỜ KẾT NỐI
                         action: { viewModel.turnOnBike() }
                     )
                     .frame(width: bigButtonWidth, height: buttonHeight)
@@ -426,8 +425,8 @@ struct DashboardView: View {
                         color: .red,
                         colSpan: 2,
                         isSquare: false,
-                        isActive: viewModel.lockStatus == .unlocked, // KHI BẬT -> NỔI BẬT NÚT TẮT LÊN
-                        isDisabled: viewModel.lockStatus == .locked, // Disable khi xe ĐÃ TẮT
+                        isActive: viewModel.lockStatus == .unlocked && viewModel.connectionState != .standby, // KHI BẬT -> NỔI BẬT NÚT TẮT LÊN
+                        isDisabled: viewModel.lockStatus == .locked || viewModel.connectionState == .standby, // Disable khi xe ĐÃ TẮT hoặc CHỜ KẾT NỐI
                         action: { viewModel.turnOffBike() }
                     )
                     .frame(width: bigButtonWidth, height: buttonHeight)

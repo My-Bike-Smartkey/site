@@ -6,18 +6,25 @@
 import Foundation
 import UserNotifications
 
-class NotificationManager: NSObject, @unchecked Sendable {
+class NotificationManager: NSObject, @unchecked Sendable, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
     
-    // Lưu lại thời gian đã gửi thông báo để tránh spam (Debounce 60 giây)
-    private var lastNotificationTime: Date?
-    private let debounceInterval: TimeInterval = 60.0
+    private var lastNotificationTimes: [String: Date] = [:]
+    private let debounceInterval: TimeInterval = 10.0 // 10 giây debounce cho tất cả
     
     private override init() {
         super.init()
+        UNUserNotificationCenter.current().delegate = self
     }
     
-    func requestPermission() {
+    // Bắt buộc thực thi hàm này để hiển thị Notification ngay cả khi App đang mở trên màn hình (Foreground)
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound, .badge])
+    }
+    
+    func requestPermission(completion: @escaping () -> Void = {}) {
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {
@@ -25,39 +32,39 @@ class NotificationManager: NSObject, @unchecked Sendable {
             } else {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "Quyền thông báo hệ thống: \(granted ? "Đã cấp" : "Từ chối")"))
             }
+            DispatchQueue.main.async {
+                completion()
+            }
         }
     }
     
-    func sendConnectNotification(bikeName: String = "Xe máy điện DATBIKE") {
+    func sendNotification(title: String, body: String, identifier: String) {
         if !PreferencesManager.shared.notificationsEnabled {
             return
         }
         
-        // Kiểm tra cơ chế chống Spam
         let now = Date()
-        if let lastTime = lastNotificationTime {
+        if let lastTime = lastNotificationTimes[identifier] {
             if now.timeIntervalSince(lastTime) < debounceInterval {
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "Bỏ qua thông báo kết nối do ngắt quãng quá ngắn (< \(Int(debounceInterval))s)"))
                 return
             }
         }
         
-        lastNotificationTime = now
+        lastNotificationTimes[identifier] = now
         
         let content = UNMutableNotificationContent()
-        content.title = "Đã kết nối thành công"
-        content.body = "Điện thoại của bạn đã lấy lại sóng Bluetooth với \(bikeName). Sẵn sàng sử dụng!"
+        content.title = title
+        content.body = body
         content.sound = UNNotificationSound.default
         
-        // Push ngay lập tức (1 giây)
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
-        let request = UNNotificationRequest(identifier: "DatBikeConnection", content: content, trigger: trigger)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
         
         UNUserNotificationCenter.current().add(request) { error in
             if let error = error {
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error, message: "Lỗi gửi Local Notification: \(error.localizedDescription)"))
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error, message: "Lỗi Local Notification: \(error.localizedDescription)"))
             } else {
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success, message: "Đã bật Notification Background báo kết nối thành công."))
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success, message: "Đã push: \(title)"))
             }
         }
     }

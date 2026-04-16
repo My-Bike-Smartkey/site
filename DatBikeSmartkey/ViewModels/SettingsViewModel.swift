@@ -10,9 +10,11 @@ class SettingsViewModel: ObservableObject {
     // Outputs cho giao diện Cài đặt
     @Published var rssiThreshold: Double
     @Published var autoUnlockEnabled: Bool
+    @Published var autoTurnOnThreshold: Double
     @Published var connectOnlyWhenNear: Bool
     @Published var isDebugModeEnabled: Bool
     @Published var notificationsEnabled: Bool
+    @Published var widgetAndLiveActivityEnabled: Bool
     
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
@@ -28,9 +30,11 @@ class SettingsViewModel: ObservableObject {
         
         self.rssiThreshold = preferences.rssiThreshold
         self.autoUnlockEnabled = preferences.autoUnlockEnabled
+        self.autoTurnOnThreshold = preferences.autoTurnOnThreshold
         self.connectOnlyWhenNear = preferences.connectOnlyWhenNear
         self.isDebugModeEnabled = preferences.isDebugModeEnabled
         self.notificationsEnabled = preferences.notificationsEnabled
+        self.widgetAndLiveActivityEnabled = preferences.widgetAndLiveActivityEnabled
         
         setupBindings()
     }
@@ -39,12 +43,31 @@ class SettingsViewModel: ObservableObject {
         // Đồng bộ 2 chiều: Khi gạt toggle trên Màn hình, nó đẩy thẳng vào Singleton Preferences
         $rssiThreshold
             .dropFirst()
-            .sink { [weak self] val in self?.preferences.rssiThreshold = val }
+            .sink { [weak self] val in
+                guard let self = self else { return }
+                self.preferences.rssiThreshold = val
+                // Ngưỡng bật xe phải GẦN HƠN (lớn hơn) ngưỡng kết nối
+                if self.autoTurnOnThreshold < val {
+                    self.autoTurnOnThreshold = val
+                }
+            }
             .store(in: &cancellables)
             
         $autoUnlockEnabled
             .dropFirst()
             .sink { [weak self] val in self?.preferences.autoUnlockEnabled = val }
+            .store(in: &cancellables)
+            
+        $autoTurnOnThreshold
+            .dropFirst()
+            .sink { [weak self] val in
+                guard let self = self else { return }
+                self.preferences.autoTurnOnThreshold = val
+                // Ngưỡng kết nối phải XA HƠN (nhỏ hơn) hoặc bằng ngưỡng bật xe
+                if val < self.rssiThreshold {
+                    self.rssiThreshold = val
+                }
+            }
             .store(in: &cancellables)
             
         $connectOnlyWhenNear
@@ -60,6 +83,11 @@ class SettingsViewModel: ObservableObject {
         $notificationsEnabled
             .dropFirst()
             .sink { [weak self] val in self?.preferences.notificationsEnabled = val }
+            .store(in: &cancellables)
+            
+        $widgetAndLiveActivityEnabled
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.widgetAndLiveActivityEnabled = val }
             .store(in: &cancellables)
         
         core.$currentVehicleInfo

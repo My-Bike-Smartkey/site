@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
@@ -20,37 +18,28 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.dsmartkey</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>dsmartkey</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>UIBackgroundModes</key>
+	<key>NSAccessorySetupBluetoothNames</key>
 	<array>
-		<string>bluetooth-central</string>
+		<string>Dat Bike</string>
+		<string>QT_</string>
 	</array>
-
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-	</dict>
-
-	<key>UILaunchScreen</key>
-	<dict/>
-	<key>UIRequiredDeviceCapabilities</key>
-	<array>
-		<string>bluetooth-le</string>
-	</array>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>D-SmartKey cần Bluetooth để kết nối và điều khiển xe của bạn, kể cả khi ứng dụng chạy nền.</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>D-SmartKey sử dụng Bluetooth Low Energy để giao tiếp với hệ thống khóa thông minh trên xe.</string>
-	<key>UIUserInterfaceStyle</key>
-	<string>Dark</string>
 	<key>NSAccessorySetupBluetoothServices</key>
 	<array>
 		<string>0000FCF1-0000-1000-8000-00805F9B34FB</string>
@@ -61,21 +50,32 @@
 	<array>
 		<string>Bluetooth</string>
 	</array>
-	<key>NSAccessorySetupBluetoothNames</key>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>D-SmartKey cần Bluetooth để kết nối và điều khiển xe của bạn, kể cả khi ứng dụng chạy nền.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>D-SmartKey sử dụng Bluetooth Low Energy để giao tiếp với hệ thống khóa thông minh trên xe.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>UIBackgroundModes</key>
 	<array>
-		<string>Dat Bike</string>
-		<string>QT_</string>
+		<string>bluetooth-central</string>
 	</array>
-	<key>CFBundleURLTypes</key>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiredDeviceCapabilities</key>
 	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>dsmartkey</string>
-			</array>
-			<key>CFBundleURLName</key>
-			<string>app.dsmartkey</string>
-		</dict>
+		<string>bluetooth-le</string>
 	</array>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 </dict>
 </plist>

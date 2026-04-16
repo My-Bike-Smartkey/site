@@ -1,10 +1,3 @@
-//
-//  DatBikeWidgetExtensionControl.swift
-//  DatBikeWidgetExtension
-//
-//  Created by Nguyen Tu on 16/4/26.
-//
-
 import AppIntents
 import SwiftUI
 import WidgetKit
@@ -18,60 +11,52 @@ struct DatBikeWidgetExtensionControl: ControlWidget {
             provider: Provider()
         ) { value in
             ControlWidgetToggle(
-                "Start Timer",
-                isOn: value.isRunning,
-                action: StartTimerIntent(value.name)
-            ) { isRunning in
-                Label(isRunning ? "On" : "Off", systemImage: "timer")
+                "Bật/Tắt Xe",
+                isOn: value.isOn,
+                action: ToggleBikeControlIntent()
+            ) { isOn in
+                Label(isOn ? "Đang Mở" : "Đã Khoá", systemImage: isOn ? "lock.open.fill" : "lock.fill")
             }
         }
-        .displayName("Timer")
-        .description("A an example control that runs a timer.")
+        .displayName("Dat Bike SmartKey")
+        .description("Bật hoặc tắt xe máy điện.")
     }
 }
 
 extension DatBikeWidgetExtensionControl {
     struct Value {
-        var isRunning: Bool
-        var name: String
+        var isOn: Bool
     }
 
     struct Provider: AppIntentControlValueProvider {
-        func previewValue(configuration: TimerConfiguration) -> Value {
-            DatBikeWidgetExtensionControl.Value(isRunning: false, name: configuration.timerName)
+        func previewValue(configuration: BikeControlConfiguration) -> Value {
+            Value(isOn: false)
         }
 
-        func currentValue(configuration: TimerConfiguration) async throws -> Value {
-            let isRunning = true // Check if the timer is running
-            return DatBikeWidgetExtensionControl.Value(isRunning: isRunning, name: configuration.timerName)
+        func currentValue(configuration: BikeControlConfiguration) async throws -> Value {
+            let defaults = UserDefaults(suiteName: "group.app.mybike.smartkey") ?? UserDefaults.standard
+            let state = defaults.string(forKey: "widgetCurrentState") ?? ""
+            let isOn = state.contains("Đã kết nối") || state.contains("active")
+            return Value(isOn: isOn)
         }
     }
 }
 
-struct TimerConfiguration: ControlConfigurationIntent {
-    static let title: LocalizedStringResource = "Timer Name Configuration"
-
-    @Parameter(title: "Timer Name", default: "Timer")
-    var timerName: String
+struct BikeControlConfiguration: ControlConfigurationIntent {
+    static let title: LocalizedStringResource = "Cấu hình SmartKey"
 }
 
-struct StartTimerIntent: SetValueIntent {
-    static let title: LocalizedStringResource = "Start a timer"
+struct ToggleBikeControlIntent: SetValueIntent {
+    static let title: LocalizedStringResource = "Bật/Tắt Xe"
 
-    @Parameter(title: "Timer Name")
-    var name: String
-
-    @Parameter(title: "Timer is running")
+    @Parameter(title: "Trạng thái")
     var value: Bool
 
     init() {}
 
-    init(_ name: String) {
-        self.name = name
-    }
-
     func perform() async throws -> some IntentResult {
-        // Start the timer…
+        let defaults = UserDefaults(suiteName: "group.app.mybike.smartkey") ?? UserDefaults.standard
+        defaults.set(value ? "Đang Mở" : "Đã Khoá", forKey: "widgetCurrentState")
         return .result()
     }
 }
