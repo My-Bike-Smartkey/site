@@ -230,7 +230,7 @@ struct SettingsView: View {
 
                     // App info
                     VStack(spacing: 4) {
-                        Text("MyBike Smartkey v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                        Text("D-SmartKey v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
                             .font(.caption)
                             .foregroundColor(.gray)
                         Text("Sản phẩm được tạo bởi tình yêu dành cho chiếc xe Datbike của tôi")

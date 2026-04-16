@@ -116,13 +116,15 @@ struct ConnectingSplashView: View {
                         .fill(Color.orange.opacity(0.1))
                         .frame(width: 140, height: 140)
                     
-                    Image(systemName: "bolt.shield.fill")
-                        .font(.system(size: 70))
+                    Image("VHexaLogoWhite")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 70, height: 70)
                         .foregroundColor(.orange)
                 }
                 
                 VStack(spacing: 12) {
-                    Text("MyBike Smartkey")
+                    Text("D-SmartKey")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)

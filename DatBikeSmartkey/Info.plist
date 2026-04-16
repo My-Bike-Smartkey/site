@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>MyBike Smartkey</string>
+	<string>D-SmartKey</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -46,9 +46,9 @@
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>MyBike Smartkey cần Bluetooth để kết nối và điều khiển xe của bạn, kể cả khi ứng dụng chạy nền.</string>
+	<string>D-SmartKey cần Bluetooth để kết nối và điều khiển xe của bạn, kể cả khi ứng dụng chạy nền.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>MyBike Smartkey sử dụng Bluetooth Low Energy để giao tiếp với hệ thống khóa thông minh trên xe.</string>
+	<string>D-SmartKey sử dụng Bluetooth Low Energy để giao tiếp với hệ thống khóa thông minh trên xe.</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
 	<key>NSAccessorySetupBluetoothServices</key>
@@ -71,10 +71,10 @@
 		<dict>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>mybikesmartkey</string>
+				<string>dsmartkey</string>
 			</array>
 			<key>CFBundleURLName</key>
-			<string>app.mybike.smartkey</string>
+			<string>app.dsmartkey</string>
 		</dict>
 	</array>
 </dict>

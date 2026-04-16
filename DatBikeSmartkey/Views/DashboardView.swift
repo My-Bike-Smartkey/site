@@ -1,85 +1,113 @@
-// DashboardView.swift — Main dashboard with lock control and status
+// DashboardView.swift — Premium remastered main dashboard with sophisticated design
 
 import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject var container: AppDIContainer
     @ObservedObject var viewModel: DashboardViewModel
-    @State private var showingLogs = false
     @State private var showingSettings = false
+    @State private var isRefreshing = false
+    @State private var pulseAnimation = false
+    
+    // Dynamic accent colors based on lock state
+    private var accentColor: Color {
+        viewModel.lockStatus.isLocked ? Color(red: 0.937, green: 0.267, blue: 0.267) : Color(red: 0.0, green: 0.898, blue: 1.0)
+    }
+    
+    private var accentGlow: Color {
+        viewModel.lockStatus.isLocked ? Color(red: 0.937, green: 0.267, blue: 0.267).opacity(0.5) : Color(red: 0.0, green: 0.898, blue: 1.0).opacity(0.5)
+    }
+    
+    private var statusText: String {
+        switch viewModel.lockStatus {
+        case .armed:
+            return "Xe đã bật chống trộm"
+        case .locked:
+            return "Xe đang tắt"
+        case .unlocked:
+            return "Xe đang bật"  
+        case .unknown:
+            return "Đang tải..."
+        }
+    }
+    
+    private var actionText: String {
+        switch viewModel.lockStatus {
+        case .armed:
+            return "Chạm để tắt chống trộm"
+        case .locked:
+            return "Chạm để mở khóa"
+        case .unlocked:
+            return "Chạm để khóa xe"
+        case .unknown:
+            return "Vui lòng đợi..."
+        }
+    }
     
     var body: some View {
-        ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [
-                    Color(red: 0.04, green: 0.04, blue: 0.08),
-                    Color(red: 0.06, green: 0.06, blue: 0.14),
-                    Color(red: 0.04, green: 0.04, blue: 0.08)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-            
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-                    // Header
+        GeometryReader { geometry in
+            ZStack {
+                // --- PREMIUM BACKGROUND WITH MESH GRADIENT ---
+                backgroundView
+                
+                VStack(spacing: 0) {
+                    // --- HEADER ---
                     headerView
+                        .padding(.top, geometry.safeAreaInsets.top)
+                        .padding(.horizontal, 24)
                     
-                    // Connection status card
-                    Button(action: {
-                        viewModel.refreshStatus()
-                    }) {
-                        StatusCard(
-                            connectionState: viewModel.connectionState,
-                            rssi: viewModel.rssi,
-                            signalStrength: viewModel.signalStrength,
-                            bikeInfo: viewModel.bikeInfo,
-                            batteryPercentage: viewModel.batteryPercentage,
-                            odometer: viewModel.odometer
-                        )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    
-                    Spacer(minLength: 20)
-                    
-                    // Lock button
-                    if viewModel.isConnected {
-                        VStack(spacing: 16) {
-                            LockButton(
-                                lockStatus: viewModel.lockStatus,
-                                isProcessing: viewModel.isProcessing,
-                                action: { viewModel.toggleLock() }
-                            )
+                    // --- MAIN CONTENT ---
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 32) {
+                            // --- MAIN CENTER ACTION (V-Hexa Logo with glowing rings) ---
+                            mainActionView
+                                .padding(.top, 20)
                             
-                            IoTLockStateLabel(lockStatus: viewModel.lockStatus)
+                            // --- QUICK STATS WIDGET ---
+                            quickStatsView
+                                .padding(.horizontal, 24)
+                            
+                            // --- BENTO GRID CONTROLS ---
+                            bentoControlsView
+                                .padding(.horizontal, 24)
                         }
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + 40)
                     }
-                    
-                    Spacer(minLength: 20)
-                    
-                    // Quick actions
-                    if viewModel.isConnected {
-                        quickActionsView
-                            .padding(.horizontal)
-                    }
-                    
-                    Spacer(minLength: 40)
                 }
-                .padding(.top, 8)
             }
+            .ignoresSafeArea(.all, edges: .all)
         }
         .alert("Lỗi", isPresented: $viewModel.showError) {
             Button("OK") {}
         } message: {
             Text(viewModel.errorMessage)
         }
-        .sheet(isPresented: $showingLogs) {
-            Text("Debug Logs V2 - View from Settings")
-        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(viewModel: container.settingsViewModel)
+        }
+    }
+    
+    // MARK: - Background with Mesh Gradient Effect
+    
+    private var backgroundView: some View {
+        ZStack {
+            // Base dark background
+            Color(red: 0.02, green: 0.02, blue: 0.02)
+                .ignoresSafeArea()
+            
+            // Grid pattern overlay (subtle)
+            GridPattern()
+                .opacity(0.05)
+            
+            // Dynamic accent glow from top
+            RadialGradient(
+                colors: [accentGlow, .clear],
+                center: .top,
+                startRadius: 50,
+                endRadius: 400
+            )
+            .opacity(0.2)
+            .animation(.easeInOut(duration: 1.0), value: accentColor)
         }
     }
     
@@ -87,110 +115,542 @@ struct DashboardView: View {
     
     private var headerView: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("MyBike Smartkey")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.white)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("D-Smartkey")
+                    .font(.system(size: 12, weight: .bold, design: .default))
+                    .foregroundColor(.gray)
+                    .textCase(.uppercase)
                 
-                if !viewModel.bikeInfo.name.isEmpty {
-                    Text(viewModel.bikeInfo.name)
-                        .font(.subheadline)
-                        .foregroundColor(.gray)
+                HStack(spacing: 0) {
+                    Text(viewModel.bikeInfo.name.isEmpty ? "Ngựa sắt" : viewModel.bikeInfo.name)
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                
+                HStack(spacing: 8) {
+                    // Connection status badge
+                    ConnectionStatusBadge(isConnected: viewModel.isConnected)
+                    
+                    // Signal strength indicator
+                    if viewModel.isConnected {
+                        SignalStrengthBadge(
+                            signalStrength: viewModel.signalStrength,
+                            rssi: viewModel.rssi
+                        )
+                    }
                 }
             }
             
             Spacer()
             
-            Button(action: { showingSettings = true }) {
-                Image(systemName: "gearshape.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.gray)
-                    .padding(10)
-                    .background(Circle().fill(Color.white.opacity(0.1)))
-            }
-            
-            // BLE status indicator
-            Circle()
-                .fill(viewModel.isConnected ? Color.green : Color.red)
-                .frame(width: 10, height: 10)
-                .overlay(
-                    Circle()
-                        .fill(viewModel.isConnected ? Color.green : Color.red)
-                        .frame(width: 10, height: 10)
-                        .opacity(viewModel.connectionState.isWorking ? 1 : 0)
-                        .scaleEffect(viewModel.connectionState.isWorking ? 2.5 : 1)
-                        .opacity(viewModel.connectionState.isWorking ? 0 : 1)
-                        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: viewModel.connectionState.isWorking)
-                )
-        }
-        .padding(.horizontal)
-    }
-    
-    // MARK: - Disconnected View
-    
-    
-    private var quickActionsView: some View {
-        VStack(spacing: 12) {
-            Text("ĐIỀU KHIỂN XE")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.gray)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            
             HStack(spacing: 12) {
-                ActionCard(
-                    icon: "shield.fill",
-                    title: "Chống trộm",
-                    subtitle: "Lock",
-                    color: .orange,
-                    isActive: viewModel.lockStatus == .armed,
-                    action: { viewModel.lock() }
-                )
-                .disabled(!viewModel.lockStatus.isLocked)
+                // Kill app button
+                Button(action: {
+                    // Suspend to background first for a smoother exit, then kill process
+                    UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        exit(0)
+                    }
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.red)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            Circle()
+                                .fill(Color.red.opacity(0.1))
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.red.opacity(0.2), lineWidth: 1)
+                                )
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
                 
-                // Tắt xe (0x30 → unlockCmd) — chỉ enable khi xe đang bật
-                ActionCard(
-                    icon: "power",
-                    title: "Tắt xe",
-                    subtitle: "Power OFF",
-                    color: .red,
-                    isActive: false,
-                    action: { viewModel.turnOffBike() }
-                )
-                .disabled(viewModel.lockStatus.isLocked || viewModel.isProcessing)
+                // Settings button
+                Button(action: { showingSettings = true }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.gray)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                                )
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.vertical, 8)
+    }
+    
+    // MARK: - Main Center Action (V-Hexa with glowing rings)
+    
+    private var mainActionView: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                // Outer radar ring
+                Circle()
+                    .stroke(accentColor.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [8, 8]))
+                    .frame(width: 300, height: 300)
+                    .rotationEffect(.degrees(viewModel.lockStatus.isLocked ? 0 : 180))
+                    .animation(.linear(duration: viewModel.lockStatus.isLocked ? 40 : 20).repeatForever(autoreverses: false), value: viewModel.lockStatus.isLocked)
                 
-                // Bật xe (0x31 → unlockCmd) — chỉ enable khi xe đang tắt
-                ActionCard(
-                    icon: "bolt.fill",
-                    title: "Bật xe",
-                    subtitle: "Power ON",
-                    color: .green,
-                    isActive: false,
-                    action: { viewModel.turnOnBike() }
-                )
-                .disabled(!viewModel.lockStatus.isLocked || viewModel.isProcessing)
+                // Inner background ring
+                Circle()
+                    .fill(Color.white.opacity(0.01))
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                    )
+                    .frame(width: 264, height: 264)
+                    .blur(radius: 1)
                 
-                ActionCard(
-                    icon: viewModel.isFinding ? "speaker.wave.3.fill" : "speaker.wave.2.fill",
-                    title: "Tìm xe",
-                    subtitle: viewModel.isFinding ? "Đang kêu" : "Tìm",
-                    color: .blue,
-                    isActive: viewModel.isFinding,
-                    action: { viewModel.findBike() }
-                )
-                .disabled(!viewModel.lockStatus.isLocked)
+                // Main center button
+                Button(action: {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
+                    impactFeedback.impactOccurred()
+                    viewModel.toggleLock()
+                }) {
+                    ZStack {
+                        // Glow background
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [accentGlow, .clear],
+                                    center: .center,
+                                    startRadius: 0,
+                                    endRadius: 90
+                                )
+                            )
+                            .frame(width: 144, height: 144)
+                        
+                        // Button background
+                        RoundedRectangle(cornerRadius: 60)
+                            .fill(viewModel.lockStatus.isLocked ? 
+                                  Color(red: 0.937, green: 0.267, blue: 0.267).opacity(0.1) :
+                                    Color(red: 0.0, green: 0.898, blue: 1.0).opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 60)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            )
+                            .frame(width: 120, height: 120)
+                        
+                        // V-Hexa Logo
+                        if viewModel.isProcessing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: accentColor))
+                                .scaleEffect(2.0)
+                        } else {
+                            Image("VHexaLogoWhite")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 56, height: 56)
+                                .foregroundColor(accentColor)
+                                .shadow(color: accentColor.opacity(0.5), radius: 8)
+                        }
+                    }
+                }
+                .buttonStyle(PlainButtonStyle())
+                .scaleEffect(pulseAnimation ? 1.02 : 1.0)
+                .disabled(viewModel.isProcessing)
+            }
+            .frame(width: 300, height: 300)
+            
+            // Action label with status + action
+            VStack(spacing: 4) {
+                Text(statusText)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.white)
                 
-                ActionCard(
-                    icon: "arrow.clockwise",
-                    title: "Làm mới",
-                    subtitle: "Query",
-                    color: .purple,
-                    isActive: false,
-                    action: { viewModel.refreshStatus() }
-                )
+                Text(actionText)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.gray)
+            }
+            .padding(.top, 32)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                pulseAnimation = true
             }
         }
     }
+    
+    // MARK: - Quick Stats Widget
+    
+    private var quickStatsView: some View {
+        HStack(spacing: 0) {
+            // Battery
+            QuickStatItem(
+                icon: "battery.100percent",
+                value: "\(viewModel.batteryPercentage)%",
+                label: "PIN",
+                color: .green,
+                showsDivider: true
+            )
+            
+            // Range remaining (calculated from battery and typical consumption)
+            QuickStatItem(
+                icon: "chart.line.uptrend.xyaxis",
+                value: viewModel.batteryPercentage > 0 ? "\(Int(Float(viewModel.batteryPercentage) * 0.73))" : "—",
+                label: "KM CÒN LẠI",
+                color: .blue,
+                showsDivider: true
+            )
+            
+            // Odometer
+            QuickStatItem(
+                icon: "number.square.fill",
+                value: viewModel.odometer > 0 ? String(format: "%.0f", viewModel.odometer) : "—",
+                label: "ODO",
+                color: .gray,
+                showsDivider: false
+            )
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 24)
+                .fill(Color.white.opacity(0.03))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24)
+                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 24))
+    }
+    
+    // MARK: - Bento Grid Controls
+    
+    private var bentoControlsView: some View {
+        GeometryReader { geometry in
+            let screenWidth = geometry.size.width
+            let buttonHeight: CGFloat = 60 // Reduced button height 
+            let spacing: CGFloat = 12 // Spacing between buttons in same row
+            let rowSpacing: CGFloat = 30 // Increased spacing between rows
+            
+            // Calculate widths for 4-column grid: 2+1+1 columns
+            let totalSpacing = spacing * 2 // 2 gaps in top row
+            let availableWidth = screenWidth - totalSpacing
+            let smallButtonWidth = availableWidth / 4 // 1/4 of available width
+            let bigButtonWidth = smallButtonWidth * 2 // 2/4 of available width
+            
+            VStack(spacing: rowSpacing) {
+                // Top row: Chống trộm (2 cols) + Tìm (1 col) + Tải lại (1 col)
+                HStack(spacing: spacing) {
+                    // Chống trộm - 2 columns wide
+                    BentoControlCard(
+                        icon: "shield.lefthalf.filled",
+                        title: "Chống trộm",
+                        subtitle: nil,
+                        color: .red,
+                        colSpan: 2,
+                        isSquare: false,
+                        isActive: viewModel.lockStatus == .armed,
+                        isDisabled: false,
+                        action: { viewModel.lock() }
+                    )
+                    .frame(width: bigButtonWidth, height: buttonHeight)
+                    
+                    // Tìm xe - 1 column square
+                    BentoControlCard(
+                        icon: "speaker.wave.2.fill", 
+                        title: "Tìm",
+                        subtitle: nil,
+                        color: Color(red: 0.4, green: 0.6, blue: 1.0),
+                        colSpan: 1,
+                        isSquare: true,
+                        isActive: viewModel.isFinding,
+                        isDisabled: false,
+                        action: { viewModel.findBike() }
+                    )
+                    .frame(width: smallButtonWidth, height: buttonHeight)
+                    
+                    // Tải lại - 1 column square
+                    BentoControlCard(
+                        icon: "arrow.clockwise",
+                        title: "Tải lại", 
+                        subtitle: nil,
+                        color: Color(red: 0.6, green: 0.4, blue: 1.0),
+                        colSpan: 1,
+                        isSquare: true,
+                        isActive: false,
+                        isDisabled: isRefreshing,
+                        isRotating: isRefreshing,
+                        action: {
+                            isRefreshing = true
+                            viewModel.refreshStatus()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                isRefreshing = false
+                            }
+                        }
+                    )
+                    .frame(width: smallButtonWidth, height: buttonHeight)
+                }
+                
+                // Bottom row: Bật xe (2 cols) + Tắt xe (2 cols)
+                HStack(spacing: spacing) {
+                    // Bật xe - 2 columns wide
+                    BentoControlCard(
+                        icon: "bolt.fill",
+                        title: "Bật xe",
+                        subtitle: "Power ON", 
+                        color: Color(red: 0.0, green: 0.898, blue: 1.0),
+                        colSpan: 2,
+                        isSquare: false,
+                        isActive: viewModel.lockStatus == .unlocked,
+                        isDisabled: viewModel.lockStatus == .unlocked, // Disable when bike is already ON
+                        action: { viewModel.turnOnBike() }
+                    )
+                    .frame(width: bigButtonWidth, height: buttonHeight)
+                    
+                    // Tắt xe - 2 columns wide
+                    BentoControlCard(
+                        icon: "power",
+                        title: "Tắt xe",
+                        subtitle: "Power OFF",
+                        color: .red,
+                        colSpan: 2,
+                        isSquare: false,
+                        isActive: viewModel.lockStatus == .locked,
+                        isDisabled: viewModel.lockStatus == .locked, // Disable when bike is already OFF
+                        action: { viewModel.turnOffBike() }
+                    )
+                    .frame(width: bigButtonWidth, height: buttonHeight)
+                }
+            }
+        }
+        .frame(height: 60 * 2 + 30 * 1) // Total height: 2 rows + 1 row spacing  
+    }
+    
+    // MARK: - Supporting Components
+    
+    // Grid Pattern for background
+    struct GridPattern: View {
+        var body: some View {
+            Canvas { context, size in
+                let gridSize: CGFloat = 24
+                
+                for x in stride(from: 0, through: size.width, by: gridSize) {
+                    context.stroke(
+                        Path { path in
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: size.height))
+                        },
+                        with: .color(Color.white.opacity(0.05)),
+                        lineWidth: 1
+                    )
+                }
+                
+                for y in stride(from: 0, through: size.height, by: gridSize) {
+                    context.stroke(
+                        Path { path in
+                            path.move(to: CGPoint(x: 0, y: y))
+                            path.addLine(to: CGPoint(x: size.width, y: y))
+                        },
+                        with: .color(Color.white.opacity(0.05)),
+                        lineWidth: 1
+                    )
+                }
+            }
+        }
+    }
+    
+    // Connection Status Badge
+    struct ConnectionStatusBadge: View {
+        let isConnected: Bool
+        
+        var body: some View {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isConnected ? Color.green : Color.red)
+                    .frame(width: 6, height: 6)
+                    .overlay(
+                        Circle()
+                            .fill(isConnected ? Color.green : Color.red)
+                            .frame(width: 6, height: 6)
+                            .scaleEffect(isConnected ? 2 : 1)
+                            .opacity(isConnected ? 0 : 1)
+                            .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: isConnected)
+                    )
+                
+                Text(isConnected ? "Đã kết nối" : "Chưa kết nối")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.1))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                    )
+            )
+        }
+    }
+    
+    // Signal Strength Badge
+    struct SignalStrengthBadge: View {
+        let signalStrength: SignalStrength
+        let rssi: Int
+        
+        var body: some View {
+            HStack(spacing: 6) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 10))
+                    .foregroundColor(.blue)
+                
+                // Signal bars
+                HStack(spacing: 1) {
+                    ForEach(1...4, id: \.self) { bar in
+                        RoundedRectangle(cornerRadius: 0.5)
+                            .fill(bar <= signalStrength.rawValue ? Color.blue : Color.white.opacity(0.2))
+                            .frame(width: 3, height: CGFloat(bar * 2 + 2))
+                    }
+                }
+                
+                Text("\(rssi) dBm")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.blue)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.blue.opacity(0.1))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+                    )
+            )
+        }
+    }
+    
+    // Quick Stat Item
+    struct QuickStatItem: View {
+        let icon: String
+        let value: String
+        let label: String
+        let color: Color
+        let showsDivider: Bool
+        
+        var body: some View {
+            HStack {
+                VStack(spacing: 4) {
+                    Image(systemName: icon)
+                        .font(.system(size: 18))
+                        .foregroundColor(color)
+                    
+                    Text(value)
+                        .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.white)
+                    
+                    Text(label)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.gray)
+                        .textCase(.uppercase)
+                }
+                .frame(maxWidth: .infinity)
+                
+                if showsDivider {
+                    Divider()
+                        .background(Color.white.opacity(0.05))
+                        .frame(height: 60)
+                }
+            }
+        }
+    }
+    
+    // Bento Control Card
+    struct BentoControlCard: View {
+        let icon: String
+        let title: String
+        let subtitle: String?
+        let color: Color
+        let colSpan: Int
+        let isSquare: Bool
+        let isActive: Bool
+        let isDisabled: Bool
+        var isRotating: Bool = false
+        let action: () -> Void
+        
+        @State private var isPressed = false
+        
+        var body: some View {
+            Button(action: {
+                if !isDisabled {
+                    let impactFeedback = UIImpactFeedbackGenerator(style: .light)
+                    impactFeedback.impactOccurred()
+                    action()
+                }
+            }) {
+                VStack(spacing: isSquare ? 3 : 8) {
+                    // Icon - centered for all button types
+                    Image(systemName: icon)
+                        .font(.system(size: isSquare ? 16 : 20, weight: .medium))
+                        .foregroundColor(isActive ? .white : (isDisabled ? .gray.opacity(0.5) : color))
+                        .rotationEffect(.degrees(isRotating ? 360 : 0))
+                        .animation(isRotating ? .linear(duration: 1.0).repeatForever(autoreverses: false) : .default, value: isRotating)
+                    
+                    if !isSquare {
+                        VStack(alignment: .center, spacing: 1) {
+                            Text(title)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(isActive ? .white : (isDisabled ? .gray.opacity(0.6) : .white))
+                                .multilineTextAlignment(.center)
+                            
+                            if let subtitle = subtitle {
+                                Text(subtitle)
+                                    .font(.system(size: 9, weight: .medium))
+                                    .foregroundColor(isActive ? Color.white.opacity(0.8) : (isDisabled ? Color.gray.opacity(0.5) : Color.gray))
+                                    .multilineTextAlignment(.center)
+                            }
+                        }
+                    } else {
+                        Text(title)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(isActive ? .white : (isDisabled ? .gray.opacity(0.6) : .white))
+                            .multilineTextAlignment(.center)
+                            .lineLimit(2)
+                    }
+                    
+                    if isSquare {
+                        Spacer(minLength: 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(isSquare ? 8 : 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(isActive ? color : Color.white.opacity(isDisabled ? 0.06 : 0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(isActive ? Color.clear : Color.white.opacity(isDisabled ? 0.08 : 0.05), lineWidth: 1)
+                        )
+                )
+                .scaleEffect(isPressed ? 0.96 : 1.0)
+                .disabled(isDisabled)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !isDisabled {
+                            withAnimation(.easeInOut(duration: 0.08)) { isPressed = true }
+                        }
+                    }
+                    .onEnded { _ in
+                        withAnimation(.easeInOut(duration: 0.1)) { isPressed = false }
+                    }
+            )
+        }
+    }
+    
+    
 }
-
-

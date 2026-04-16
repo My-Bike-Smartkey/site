@@ -336,8 +336,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey;
-				PRODUCT_NAME = DatBikeSmartkey;
+				PRODUCT_BUNDLE_IDENTIFIER = app.dsmartkey;
+				PRODUCT_NAME = "D-SmartKey";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -363,8 +363,8 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey;
-				PRODUCT_NAME = DatBikeSmartkey;
+				PRODUCT_BUNDLE_IDENTIFIER = app.dsmartkey;
+				PRODUCT_NAME = "D-SmartKey";
 				STRIP_INSTALLED_PRODUCT = YES;
 				STRIP_SWIFT_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
