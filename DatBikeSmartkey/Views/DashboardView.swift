@@ -19,6 +19,9 @@ struct DashboardView: View {
     }
     
     private var statusText: String {
+        if viewModel.connectionState == .standby {
+            return "Kết nối chờ (Chờ gần)"
+        }
         switch viewModel.lockStatus {
         case .armed:
             return "Xe đã bật chống trộm"
@@ -32,6 +35,9 @@ struct DashboardView: View {
     }
     
     private var actionText: String {
+        if viewModel.connectionState == .standby {
+            return "Chạm để đánh thức xe"
+        }
         switch viewModel.lockStatus {
         case .armed:
             return "Chạm để tắt chống trộm"
@@ -129,7 +135,7 @@ struct DashboardView: View {
                 
                 HStack(spacing: 8) {
                     // Connection status badge
-                    ConnectionStatusBadge(isConnected: viewModel.isConnected)
+                    ConnectionStatusBadge(isConnected: viewModel.isConnected, isStandby: viewModel.connectionState == .standby)
                     
                     // Signal strength indicator
                     if viewModel.isConnected {
@@ -214,7 +220,11 @@ struct DashboardView: View {
                 Button(action: {
                     let impactFeedback = UIImpactFeedbackGenerator(style: .heavy)
                     impactFeedback.impactOccurred()
-                    viewModel.toggleLock()
+                    if viewModel.connectionState == .standby {
+                        viewModel.forceAuthenticate()
+                    } else {
+                        viewModel.toggleLock()
+                    }
                 }) {
                     ZStack {
                         // Glow background
@@ -402,8 +412,8 @@ struct DashboardView: View {
                         color: Color(red: 0.0, green: 0.898, blue: 1.0),
                         colSpan: 2,
                         isSquare: false,
-                        isActive: viewModel.lockStatus == .unlocked,
-                        isDisabled: viewModel.lockStatus == .unlocked, // Disable when bike is already ON
+                        isActive: viewModel.lockStatus == .locked,     // KHI TẮT -> NỔI BẬT NÚT BẬT LÊN
+                        isDisabled: viewModel.lockStatus == .unlocked, // Disable khi xe ĐÃ BẬT
                         action: { viewModel.turnOnBike() }
                     )
                     .frame(width: bigButtonWidth, height: buttonHeight)
@@ -416,8 +426,8 @@ struct DashboardView: View {
                         color: .red,
                         colSpan: 2,
                         isSquare: false,
-                        isActive: viewModel.lockStatus == .locked,
-                        isDisabled: viewModel.lockStatus == .locked, // Disable when bike is already OFF
+                        isActive: viewModel.lockStatus == .unlocked, // KHI BẬT -> NỔI BẬT NÚT TẮT LÊN
+                        isDisabled: viewModel.lockStatus == .locked, // Disable khi xe ĐÃ TẮT
                         action: { viewModel.turnOffBike() }
                     )
                     .frame(width: bigButtonWidth, height: buttonHeight)
@@ -463,22 +473,26 @@ struct DashboardView: View {
     // Connection Status Badge
     struct ConnectionStatusBadge: View {
         let isConnected: Bool
+        let isStandby: Bool
         
         var body: some View {
+            let badgeColor: Color = isConnected ? (isStandby ? .orange : .green) : .red
+            let badgeText: String = isConnected ? (isStandby ? "Chờ lại gần..." : "Đã kết nối") : "Chưa kết nối"
+            
             HStack(spacing: 6) {
                 Circle()
-                    .fill(isConnected ? Color.green : Color.red)
+                    .fill(badgeColor)
                     .frame(width: 6, height: 6)
                     .overlay(
                         Circle()
-                            .fill(isConnected ? Color.green : Color.red)
+                            .fill(badgeColor)
                             .frame(width: 6, height: 6)
                             .scaleEffect(isConnected ? 2 : 1)
                             .opacity(isConnected ? 0 : 1)
                             .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false), value: isConnected)
                     )
                 
-                Text(isConnected ? "Đã kết nối" : "Chưa kết nối")
+                Text(badgeText)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.gray)
             }

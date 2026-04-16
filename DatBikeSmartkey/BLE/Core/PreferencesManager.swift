@@ -22,6 +22,10 @@ class PreferencesManager {
         didSet { UserDefaults.standard.set(connectOnlyWhenNear, forKey: "connectOnlyWhenNear") }
     }
     
+    @Published var notificationsEnabled: Bool {
+        didSet { UserDefaults.standard.set(notificationsEnabled, forKey: "notificationsEnabled") }
+    }
+    
     @Published var savedPin: String? {
         didSet { UserDefaults.standard.set(savedPin, forKey: "savedPin") }
     }
@@ -53,6 +57,13 @@ class PreferencesManager {
         }
         
         self.autoUnlockEnabled = UserDefaults.standard.bool(forKey: "autoUnlockEnabled")
+        if UserDefaults.standard.object(forKey: "notificationsEnabled") == nil {
+            self.notificationsEnabled = true
+            UserDefaults.standard.set(true, forKey: "notificationsEnabled")
+        } else {
+            self.notificationsEnabled = UserDefaults.standard.bool(forKey: "notificationsEnabled")
+        }
+        
         self.connectOnlyWhenNear = UserDefaults.standard.bool(forKey: "connectOnlyWhenNear")
         self.isDebugModeEnabled = UserDefaults.standard.object(forKey: "isDebugModeEnabled") as? Bool ?? true
         self.savedPin = UserDefaults.standard.string(forKey: "savedPin")

@@ -38,6 +38,9 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     /// Khi cờ này bật, PHẢI scan mới thay vì dùng cache (tránh MIC failure).
     private var btWasPoweredOff: Bool = false
     
+    // Proximity Standby Timer
+    private var standbyTimer: Timer?
+    
     // Scan timeout & retry
     private var scanTimer: DispatchWorkItem?
     private var scanRetryCount = 0
@@ -296,8 +299,21 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         commandDispatcher = nil
         pollingEngine = nil
         isAuthenticating = false
+        standbyTimer?.invalidate()
+        standbyTimer = nil
         DispatchQueue.main.async {
             self.discoveredBikes = []
+        }
+    }
+    
+    func forceAuthenticate() {
+        if stateMachine.state == .standby {
+            standbyTimer?.invalidate()
+            standbyTimer = nil
+            isAuthenticating = true
+            if let ctx = self.activeContext, let pin = self.preferences.savedPin {
+                self.executeAuthProtocol(ctx: ctx, pin: pin)
+            }
         }
     }
     
@@ -441,6 +457,38 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 }
             }
             .store(in: &cancellables)
+            
+        // Logic downgrading từ Active về Standby khi rời khỏi xe
+        engine.$currentRSSI
+            .combineLatest($currentLockState, preferences.$rssiThreshold)
+            .debounce(for: .seconds(5), scheduler: DispatchQueue.main)
+            .sink { [weak self] (rssi, lockState, threshold) in
+                guard let self = self else { return }
+                if lockState == .locked || lockState == .armed {
+                    let farThreshold = threshold - 10.0 // Xa hơn điểm unlock 10dBm
+                    if rssi < farThreshold && self.stateMachine.state == .active {
+                        self.downgradeToStandby()
+                    }
+                }
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func downgradeToStandby() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                                                   message: "Xe đã tắt và đi xa -> Hạ kết nối về Standby"))
+        pollingEngine?.stopPolling()
+        stateMachine.transition(to: .standby)
+        isAuthenticating = false
+        
+        if let ctx = activeContext {
+            DispatchQueue.main.async {
+                self.standbyTimer?.invalidate()
+                self.standbyTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak ctx] _ in
+                    ctx?.peripheral.readRSSI()
+                }
+            }
+        }
     }
 }
 
@@ -603,6 +651,8 @@ extension DatBikeCore: CBCentralManagerDelegate {
         commandDispatcher = nil
         pollingEngine = nil
         isAuthenticating = false
+        standbyTimer?.invalidate()
+        standbyTimer = nil
         
         // MIC failure hoặc "Failed to encrypt" = encryption cache lệch
         let isMICFailure = errorMsg.contains("MIC failure")
@@ -654,6 +704,8 @@ extension DatBikeCore: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         pollingEngine?.stopPolling()
         isAuthenticating = false
+        standbyTimer?.invalidate()
+        standbyTimer = nil
         
         guard let error = error else {
             // User-initiated disconnect → dọn dẹp hoàn toàn
@@ -742,12 +794,29 @@ extension DatBikeCore: CBPeripheralDelegate {
            (try? ctx.requireCharacteristic(BLECharacteristic.authChallenge)) != nil,
            (try? ctx.requireCharacteristic(BLECharacteristic.timeSync)) != nil,
            (try? ctx.requireCharacteristic(BLECharacteristic.autoUnlock)) != nil {
-            isAuthenticating = true
             
             if let savedPin = PreferencesManager.shared.savedPin, !savedPin.isEmpty {
-                executeAuthProtocol(ctx: ctx, pin: savedPin)
+                startStandbyProximityChecks(ctx: ctx, pin: savedPin)
             } else {
+                isAuthenticating = true
                 stateMachine.transition(to: .pairingRequired)
+            }
+        }
+    }
+    
+    private func startStandbyProximityChecks(ctx: BLEConnectionContext, pin: String) {
+        stateMachine.transition(to: .standby)
+        isAuthenticating = false
+        
+        // Vẫn đọc dữ liệu qua BLE (không cần chờ Authentication Protocol)
+        self.readLockStatus()
+        self.readDeviceInfo()
+        self.queryTelemetry()
+        
+        DispatchQueue.main.async {
+            self.standbyTimer?.invalidate()
+            self.standbyTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak ctx] _ in
+                ctx?.peripheral.readRSSI()
             }
         }
     }
@@ -909,6 +978,25 @@ extension DatBikeCore: CBPeripheralDelegate {
     }
     
     func peripheral(_ peripheral: CBPeripheral, didReadRSSI RSSI: NSNumber, error: Error?) {
-        pollingEngine?.didReadRSSI(value: RSSI.doubleValue)
+        guard error == nil else { return }
+        let rssiValue = RSSI.intValue
+        
+        DispatchQueue.main.async {
+            self.currentRSSI = rssiValue
+            
+            if self.stateMachine.state == .standby {
+                let threshold = self.preferences.connectOnlyWhenNear ? self.preferences.rssiThreshold : -70.0
+                if Double(rssiValue) >= threshold {
+                    self.standbyTimer?.invalidate()
+                    self.standbyTimer = nil
+                    self.isAuthenticating = true
+                    if let ctx = self.activeContext, let pin = self.preferences.savedPin {
+                        self.executeAuthProtocol(ctx: ctx, pin: pin)
+                    }
+                }
+            } else {
+                self.pollingEngine?.didReadRSSI(value: RSSI.doubleValue)
+            }
+        }
     }
 }

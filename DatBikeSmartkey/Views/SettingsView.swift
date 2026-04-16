@@ -62,20 +62,76 @@ struct SettingsView: View {
                     
                     // Security section
                     settingsSection(title: "BẢO MẬT") {
+                            VStack(spacing: 0) {
+                                Toggle(isOn: $viewModel.connectOnlyWhenNear) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "sensor.tag.radiowaves.forward")
+                                            .font(.system(size: 16))
+                                            .foregroundColor(.green)
+                                            .frame(width: 28, height: 28)
+                                            .background(Color.green.opacity(0.15))
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Ngưỡng đánh thức xe")
+                                                .font(.subheadline)
+                                                .foregroundColor(.white)
+                                            Text("Tự động xác thực mở khoá khi lại gần")
+                                                .font(.caption2)
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.top, 10)
+                                .padding(.bottom, viewModel.connectOnlyWhenNear ? 4 : 10)
+                                
+                                if viewModel.connectOnlyWhenNear {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text("Độ nhạy: ")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                            + Text("\(Int(viewModel.rssiThreshold)) dBm")
+                                                .font(.caption)
+                                                .fontDesign(.monospaced)
+                                                .foregroundColor(.white)
+                                            Spacer()
+                                            Text(viewModel.rssiThreshold >= -65 ? "Gần" : (viewModel.rssiThreshold >= -75 ? "Vừa" : "Xa"))
+                                                .font(.caption2)
+                                                .foregroundColor(viewModel.rssiThreshold >= -65 ? .green : (viewModel.rssiThreshold >= -75 ? .orange : .red))
+                                        }
+                                        Slider(value: $viewModel.rssiThreshold, in: -95...(-50), step: 1.0)
+                                            .tint(.green)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.bottom, 14)
+                                }
+                            }
+                            
+                            Divider().background(Color.white.opacity(0.06))
+                            
+                            settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
+                                showForgetConfirm = true
+                            }
+                        }
+                    }
+
+                    // App preferences section
+                    settingsSection(title: "ỨNG DỤNG") {
                         VStack(spacing: 0) {
-                            Toggle(isOn: $viewModel.connectOnlyWhenNear) {
+                            Toggle(isOn: $viewModel.notificationsEnabled) {
                                 HStack(spacing: 12) {
-                                    Image(systemName: "antenna.radiowaves.left.and.right")
+                                    Image(systemName: "bell.badge.fill")
                                         .font(.system(size: 16))
-                                        .foregroundColor(.green)
+                                        .foregroundColor(.orange)
                                         .frame(width: 28, height: 28)
-                                        .background(Color.green.opacity(0.15))
+                                        .background(Color.orange.opacity(0.15))
                                         .clipShape(RoundedRectangle(cornerRadius: 6))
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text("Chỉ kết nối khi ở gần")
+                                        Text("Thông báo hệ thống")
                                             .font(.subheadline)
                                             .foregroundColor(.white)
-                                        Text("Tự động từ chối nếu sóng quá yếu")
+                                        Text("Hiển thị thông báo khi mở/khoá, mất kết nối")
                                             .font(.caption2)
                                             .foregroundColor(.gray)
                                     }
@@ -83,12 +139,6 @@ struct SettingsView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
-                                showForgetConfirm = true
-                            }
                         }
                     }
 

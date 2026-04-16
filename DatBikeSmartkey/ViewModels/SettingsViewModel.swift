@@ -12,6 +12,7 @@ class SettingsViewModel: ObservableObject {
     @Published var autoUnlockEnabled: Bool
     @Published var connectOnlyWhenNear: Bool
     @Published var isDebugModeEnabled: Bool
+    @Published var notificationsEnabled: Bool
     
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
@@ -29,6 +30,7 @@ class SettingsViewModel: ObservableObject {
         self.autoUnlockEnabled = preferences.autoUnlockEnabled
         self.connectOnlyWhenNear = preferences.connectOnlyWhenNear
         self.isDebugModeEnabled = preferences.isDebugModeEnabled
+        self.notificationsEnabled = preferences.notificationsEnabled
         
         setupBindings()
     }
@@ -53,6 +55,11 @@ class SettingsViewModel: ObservableObject {
         $isDebugModeEnabled
             .dropFirst()
             .sink { [weak self] val in self?.preferences.isDebugModeEnabled = val }
+            .store(in: &cancellables)
+            
+        $notificationsEnabled
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notificationsEnabled = val }
             .store(in: &cancellables)
         
         core.$currentVehicleInfo

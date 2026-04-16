@@ -29,6 +29,10 @@ class NotificationManager: NSObject, @unchecked Sendable {
     }
     
     func sendConnectNotification(bikeName: String = "Xe máy điện DATBIKE") {
+        if !PreferencesManager.shared.notificationsEnabled {
+            return
+        }
+        
         // Kiểm tra cơ chế chống Spam
         let now = Date()
         if let lastTime = lastNotificationTime {

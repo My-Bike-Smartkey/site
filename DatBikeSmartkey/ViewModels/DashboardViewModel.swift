@@ -168,6 +168,11 @@ class DashboardViewModel: ObservableObject {
         // isProcessing sẽ tự tắt khi lockState cập nhật (trong setupBindings)
     }
     
+    func forceAuthenticate() {
+        isProcessing = true
+        core.forceAuthenticate()
+    }
+    
     func submitPairingPin(_ pin: String) {
         core.submitPairingPin(pin)
     }
