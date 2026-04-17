@@ -3,6 +3,9 @@ import CoreBluetooth
 import Combine
 import UIKit
 import WidgetKit
+import os.log
+
+private let widgetLogger = Logger(subsystem: "app.mybike.smartkey", category: "WidgetSync")
 
 /// LỚP BỌC TỐI THƯỢNG (FACADE) - MANAGER MỚI (V2)
 class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
@@ -176,6 +179,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 self.preferences.sharedDefaults.synchronize()
                 
                 // Báo Widget reload NGAY SAU KHI data đã được ghi (cùng 1 pipeline → không còn race condition)
+                widgetLogger.info("[App→Widget] Ghi xong. state='\(stateString)' lock='\(shared.lockStatusRaw)' battery=\(battery) → gọi reloadAllTimelines()")
                 WidgetCenter.shared.reloadAllTimelines()
                 
                 if #available(iOS 16.1, *) {

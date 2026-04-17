@@ -1,6 +1,9 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import os.log
+
+private let widgetExtLogger = Logger(subsystem: "app.mybike.smartkey", category: "WidgetExtension")
 
 // MARK: - Timeline Provider
 struct BikeWidgetProvider: TimelineProvider {
@@ -50,6 +53,7 @@ struct BikeWidgetProvider: TimelineProvider {
         let entry = BikeWidgetEntry(date: Date(), bikeName: name, connectionState: state, battery: realBattery, lockStatusRaw: lockState, odometer: odo, motorTemp: motorTemp, lastUpdated: lastUpdated)
 
         let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
+        widgetExtLogger.info("[Widget] getTimeline() called. state='\(state)' lock='\(lockState)' battery=\(realBattery) nextRefresh=\(nextUpdate.formatted())")
         let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
         completion(timeline)
     }
