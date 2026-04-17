@@ -280,12 +280,6 @@ struct DatBikeWidgetEntryView: View {
                 }
             }
             .padding()
-            
-        @unknown default:
-            // Fallback cho các WidgetFamily iOS tương lai — tránh crash extension
-            Text(entry.connectionState)
-                .font(.caption)
-                .foregroundColor(.white)
         }
     }
     
