@@ -177,6 +177,10 @@ class DashboardViewModel: ObservableObject {
         core.submitPairingPin(pin)
     }
     
+    func forceStandby() {
+        core.forceStandbyOverride()
+    }
+    
     func lock() {
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
@@ -189,6 +193,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func turnOnBike() {
+        core.suspendAutoFeatures()
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {
@@ -200,6 +205,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func turnOffBike() {
+        core.suspendAutoFeatures()
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {
@@ -211,6 +217,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func toggleLock() {
+        core.suspendAutoFeatures()
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {

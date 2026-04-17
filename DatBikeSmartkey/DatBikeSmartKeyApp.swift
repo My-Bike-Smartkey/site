@@ -46,14 +46,17 @@ struct DatBikeSmartKeyApp: App {
         guard url.scheme == "mybikesmartkey" else { return }
         switch url.host {
         case "lock":      
+            container.bleCore.suspendAutoFeatures()
             if let dispatcher = try? container.bleCore.getDispatcher() {
                 Task { try? await dispatcher.toggleLock(currentState: self.container.dashboardViewModel.lockState) }
             }
         case "unlock":    
+            container.bleCore.suspendAutoFeatures()
             if let dispatcher = try? container.bleCore.getDispatcher() {
                 Task { try? await dispatcher.turnOnBike() }
             }
-        case "connect":   container.bleCore.connect()
+        case "connect":   container.bleCore.wakeUpFromStandby()
+        case "disconnect": container.dashboardViewModel.forceStandby()
         case "dashboard": break  // app mở bình thường
         default:          break
         }

@@ -52,15 +52,43 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     
     // Background execution state
     private var isAppInBackground = false
-    
+    // Auto turn-on arming state
     // Tính năng auto-turn on sẽ chỉ chạy 1 lần duy nhất trong mỗi chu kỳ kết nối (sau khi từ standby)
     private var hasTriggeredAutoUnlockThisSession = false
+    
+    // Quản lý CPU nền
+    private var bgTask: UIBackgroundTaskIdentifier = .invalid
+    
+    // Cờ kết thúc "Phiên Auto": Bất cứ tương tác thủ công nào (Force Connect, Bật/Tắt xe) sẽ đình chỉ tính năng Auto (bật, tắt, kết nối) cho đến khi Bluetooth mất kết nối vật lý (reset phiên).
+    private(set) var isSessionAutoSuspended = false
+    private var shouldTurnOnBikeAfterAuth = false
+    
+    func suspendAutoFeatures() {
+        self.isSessionAutoSuspended = true
+    }
     
     init(preferences: PreferencesManager = .shared) {
         self.preferences = preferences
         super.init()
         PersistentLogger.shared.markSessionStart()
         setupLogging()
+    }
+    
+    private func extendBackgroundExecutionTime() {
+        if bgTask != .invalid { return }
+        bgTask = UIApplication.shared.beginBackgroundTask(withName: "DatBikeBLE") { [weak self] in
+            guard let self = self else { return }
+            UIApplication.shared.endBackgroundTask(self.bgTask)
+            self.bgTask = .invalid
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning, message: "Hết thời gian CPU nền (Background Task Expired)"))
+        }
+    }
+    
+    private func stopBackgroundExecutionTime() {
+        if bgTask != .invalid {
+            UIApplication.shared.endBackgroundTask(bgTask)
+            bgTask = .invalid
+        }
     }
     
     /// Được gọi bởi UI sau khi user đã đọc và đồng ý Disclaimer
@@ -108,7 +136,10 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             .sink { [weak self] (connState, lock, telemetry, vehicleInfo) in
                 guard let self = self else { return }
                 
-                let stateString = connState.displayText
+                var stateString = connState.displayText
+                if self.isSessionAutoSuspended && (connState == .connecting || connState == .scanning) {
+                    stateString = IoTConnectionState.standby.displayText
+                }
                 let battery = Int(telemetry.soc)
                 let realBikeName = vehicleInfo.name.isEmpty || vehicleInfo.name == "Dat Bike" ? nil : vehicleInfo.name
                 
@@ -116,6 +147,30 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 self.preferences.widgetBatteryLevel = battery
                 if let name = realBikeName {
                     self.preferences.sharedDefaults.set(name, forKey: "widgetBikeName")
+                }
+                
+                var shared = SharedBikeState()
+                shared.isConnected = (connState == .active || connState == .standby)
+                shared.connectionPhase = connState == .active ? "ready" : (connState == .standby ? "standby" : "disconnected")
+                shared.lockStatusRaw = lock == .unlocked ? "unlocked" : "locked"
+                shared.bikeName = realBikeName ?? "Dat Bike"
+                shared.batteryPercent = battery
+                shared.odometerKm = telemetry.odometerKm
+                shared.motorTemp = telemetry.motorTemp
+                shared.lastUpdated = Date()
+                shared.save()
+                
+                if #available(iOS 16.1, *) {
+                    if connState == .active || connState == .authenticating || connState == .connecting {
+                        LiveActivityManager.shared.startActivity(
+                            bikeName: realBikeName ?? "Dat Bike",
+                            lockState: lock.description,
+                            connectionState: stateString,
+                            batteryLevel: battery
+                        )
+                    } else {
+                        LiveActivityManager.shared.endActivity()
+                    }
                 }
             }
             .store(in: &cancellables)
@@ -356,9 +411,10 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         }
     }
     
-    func forceAuthenticate() {
-        if stateMachine.state == .standby || stateMachine.state == .active {
-            lastManualWakeup = Date() // Ghi nhận thời gian force
+    func forceAuthenticate(turnOn: Bool = false) {
+        self.isSessionAutoSuspended = true // Đình chỉ auto theo yêu cầu thủ công
+        if turnOn {
+            self.shouldTurnOnBikeAfterAuth = true
         }
         
         if stateMachine.state == .standby {
@@ -368,6 +424,16 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             if let ctx = self.activeContext, let pin = self.preferences.savedPin {
                 self.executeAuthProtocol(ctx: ctx, pin: pin)
             }
+        }
+    }
+    
+    func wakeUpFromStandby() {
+        self.isSessionAutoSuspended = true
+        if stateMachine.state == .standby {
+            forceAuthenticate(turnOn: true)
+        } else {
+            shouldTurnOnBikeAfterAuth = true
+            connect()
         }
     }
     
@@ -431,10 +497,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 try await ctx.io.readValue(from: batChar)
             }
             if let json = String(bytes: data, encoding: .utf8) {
-                // Log RAW toàn bộ JSON (không truncate) để debug
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                    message: "BMS RAW JSON (\(data.count) bytes): \(json)"))
-                
+                // Parse JSON
                 if let jsonData = json.data(using: .utf8),
                    let decoded = try? JSONDecoder().decode(BatteryTelemetry.self, from: jsonData) {
                     if let socValue = decoded.soc?.soc {
@@ -446,29 +509,6 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                         }
                     }
                     
-                    // Log cell voltages nếu có
-                    if let cells = decoded.cells {
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                            message: "BMS Cells: \(cells.count) cells — \(cells.map { String(format: "%.3f", $0) }.joined(separator: ", "))"))
-                    }
-                    
-                    // Log BMS Diagnostics & Core Metrics
-                    var diagInfo: [String] = []
-                    if let v = decoded.voltage { diagInfo.append("Voltage: \(String(format: "%.1f", v))V") }
-                    if let c = decoded.current { diagInfo.append("Current: \(String(format: "%.2f", c))A") }
-                    if let fet = decoded.fet { diagInfo.append("FET: \(fet)") }
-                    if let err = decoded.error { diagInfo.append("Error: \(err)") }
-                    if let bal = decoded.balancing { diagInfo.append("Balancing: \(bal)") }
-                    if let prot = decoded.protection { diagInfo.append("Protection: \(prot)") }
-                    if let prots = decoded.protections { diagInfo.append("Protections: \(prots)") }
-                    if let res = decoded.resistor { diagInfo.append("Resistor: \(res)") }
-                    if let dis = decoded.discharge { diagInfo.append("Discharge: \(dis)") }
-                    if let chg = decoded.charge { diagInfo.append("Charge: \(chg)") }
-                    
-                    if !diagInfo.isEmpty {
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                            message: "BMS Diagnostics: \(diagInfo.joined(separator: " | "))"))
-                    }
                     
                     // Log extra keys chưa decode được (giúp discover thêm data)
                     if let extra = decoded.rawExtraKeys, !extra.isEmpty {
@@ -504,11 +544,11 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             .sink { [weak self] (rssi, lockState, isAutoUnlockOn, threshold) in
                 // Yêu cầu: Tính năng này chỉ cho phép dùng khi sử dụng ngưỡng kết nối (connectOnlyWhenNear = true)
                 guard let self = self, isAutoUnlockOn, self.preferences.connectOnlyWhenNear else { return }
+                guard !self.isSessionAutoSuspended else { return } // Nếu user đã can thiệp thủ công (nhấn nút), đình chỉ auto-turn on
                 
-                // Yêu cầu: Tính năng này chỉ hoạt động đúng 1 lần khi có bước chuyển trạng thái (đã xác thực)
-                // Nó sẽ KHÔNG lặp lại nếu user tự tắt xe, trừ khi rớt kết nối về standby rồi gặp lại.
-                if rssi >= threshold, lockState == .locked, !self.hasTriggeredAutoUnlockThisSession {
-                    self.hasTriggeredAutoUnlockThisSession = true
+                // Yêu cầu: Tính năng này chỉ hoạt động khi thoả ngưỡng
+                if rssi >= threshold, lockState == .locked {
+                    self.isSessionAutoSuspended = true // Khi đã auto-turn on rồi, xem như khoá auto các tác vụ tiếp theo (vào trạng thái manual riding)
                     Task {
                         try? await self.commandDispatcher?.turnOnBike()
                         NotificationManager.shared.sendNotification(
@@ -526,11 +566,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             .combineLatest($currentLockState, preferences.$rssiThreshold, preferences.$connectOnlyWhenNear)
             .sink { [weak self] (rssi, lockState, threshold, connectOnlyWhenNear) in
                 guard let self = self, connectOnlyWhenNear else { return }
-                
-                // Tránh việc mới bấm Force Authenticate lại bị đá văng ra ngay
-                if Date().timeIntervalSince(self.lastManualWakeup) < 60.0 {
-                    return // Đang ưu tiên manual wake up trong 60 giây
-                }
+                guard !self.isSessionAutoSuspended else { return } // Đình chỉ auto-downgrade nếu user đã can thiệp
                 
                 if lockState == .locked || lockState == .armed {
                     let farThreshold = threshold - 3.0 // Vừa bước ra khỏi vùng kết nối 3dBm sẽ ngắt
@@ -540,6 +576,12 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 }
             }
             .store(in: &cancellables)
+    }
+    
+    func forceStandbyOverride() {
+        guard stateMachine.state == .active else { return }
+        isSessionAutoSuspended = true
+        downgradeToStandby()
     }
     
     private func downgradeToStandby() {
@@ -736,6 +778,9 @@ extension DatBikeCore: CBCentralManagerDelegate {
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        // Xin iOS cấp cho 30s CPU để xử lý Auto-turn-on và các tác vụ khác khi app lỡ bị rơi vào trạng thái ngủ đông
+        extendBackgroundExecutionTime()
+        
         peripheral.discoverServices(BLEService.allServices)
     }
     
@@ -801,8 +846,12 @@ extension DatBikeCore: CBCentralManagerDelegate {
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        // Clear old CPU task since we are thoroughly disconnected
+        stopBackgroundExecutionTime()
+        
         pollingEngine?.stopPolling()
         isAuthenticating = false
+        isSessionAutoSuspended = false // RESET PHIÊN LÀM VIỆC KHI MẤT KẾT NỐI VẬT LÝ
         standbyTimer?.invalidate()
         standbyTimer = nil
         
@@ -917,6 +966,12 @@ extension DatBikeCore: CBPeripheralDelegate {
         stateMachine.transition(to: .standby)
         isAuthenticating = false
         
+        // Bỏ qua chờ khoảng cách nếu user chủ động bấm Đánh Thức trên Widget
+        if self.shouldTurnOnBikeAfterAuth {
+            self.forceAuthenticate(turnOn: true)
+            return
+        }
+        
         NotificationManager.shared.sendNotification(
             title: "Trạng thái kết nối",
             body: "Phát hiện di chuyển gần xe, kết nối ở trạng thái chờ",
@@ -975,6 +1030,13 @@ extension DatBikeCore: CBPeripheralDelegate {
                 self.readLockStatus()
                 self.readDeviceInfo()
                 self.queryTelemetry()
+                
+                if self.shouldTurnOnBikeAfterAuth {
+                    self.shouldTurnOnBikeAfterAuth = false
+                    if let dispatcher = self.commandDispatcher {
+                        Task { try? await dispatcher.turnOnBike() }
+                    }
+                }
                 
                 // Auto sync time 1 lần/ngày
                 if self.preferences.needsTimeSyncToday, let dispatcher = self.commandDispatcher {
@@ -1092,14 +1154,12 @@ extension DatBikeCore: CBPeripheralDelegate {
         
         if characteristic.uuid == BLECharacteristic.smartkeyEcho {
             if let data = characteristic.value {
-                DispatchQueue.main.async {
-                    if data.count >= 2 {
-                        let lockByte = data[1]
-                        if lockByte == 0x01 {
-                            self.currentLockState = .unlocked
-                        } else if lockByte == 0x00 {
-                            self.currentLockState = .locked
-                        }
+                let status = IoTLockState.parse(from: data)
+                if case .unknown = status {
+                    // Ignore unknown transitions to avoid overriding state with noise
+                } else {
+                    DispatchQueue.main.async {
+                        self.currentLockState = status
                     }
                 }
             }
@@ -1119,7 +1179,18 @@ extension DatBikeCore: CBPeripheralDelegate {
             
             if self.stateMachine.state == .standby {
                 let threshold = self.preferences.connectOnlyWhenNear ? self.preferences.rssiThreshold : -70.0
+                
+                // Nếu người dùng đã đi khỏi vùng phủ sóng (thấp hơn ngưỡng - 3dBm), hãy reset cờ Manual Standby
+                if Double(rssiValue) < threshold - 3.0 {
+                    // Do nothing for isSessionAutoSuspended. The drop is physical or session-based.
+                }
+                
+                // Chỉ auto-authenticate khi vào vùng VÀ không bị đình chỉ trong phiên
                 if Double(rssiValue) >= threshold {
+                    if self.isSessionAutoSuspended {
+                        return
+                    }
+                    
                     self.standbyTimer?.invalidate()
                     self.standbyTimer = nil
                     self.isAuthenticating = true
@@ -1137,11 +1208,13 @@ extension DatBikeCore: CBPeripheralDelegate {
         isAppInBackground = true
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
             message: "App chạy ngầm. Giữ nguyên kết nối BLE hiện tại (iOS xử lý background mode)."))
-        // Bỏ logic cancelPeripheralConnection() để kết nối không bị ngắt ngang.
+        // Kích hoạt CPU nền khoảng ~30s để đảm bảo các timer/poll tiếp tục chạy phục vụ Auto-Unlock/RSSI drop
+        extendBackgroundExecutionTime()
     }
     
     @objc private func appWillEnterForeground() {
         isAppInBackground = false
+        stopBackgroundExecutionTime()
         if stateMachine.state == .scanning {
             // Khi mở app lên, nếu đang quét tìm, gọi kết nối lại để lập tức hiển thị Kết nối chờ
             connect()
@@ -1152,91 +1225,4 @@ extension DatBikeCore: CBPeripheralDelegate {
 // MARK: - LIVE ACTIVITY SUPPORT
 
 import ActivityKit
-
-// Dùng đúng tên Attributes giống Widget Extension để tham chiếu đồng nhất
-public struct DatBikeWidgetExtensionAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        public var lockState: String
-        public var connectionState: String
-        public var batteryLevel: Int
-        
-        public init(lockState: String, connectionState: String, batteryLevel: Int) {
-            self.lockState = lockState
-            self.connectionState = connectionState
-            self.batteryLevel = batteryLevel
-        }
-    }
-    
-    public var bikeName: String
-    
-    public init(bikeName: String) {
-        self.bikeName = bikeName
-    }
-}
-
-@available(iOS 16.1, *)
-class LiveActivityManager {
-    static let shared = LiveActivityManager()
-    
-    private var currentActivity: Activity<DatBikeWidgetExtensionAttributes>?
-    
-    var hasActiveActivity: Bool {
-        return currentActivity != nil
-    }
-    
-    func startActivity(bikeName: String, lockState: String, connectionState: String, batteryLevel: Int) {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-        
-        let attributes = DatBikeWidgetExtensionAttributes(bikeName: bikeName)
-        let initialContentState = DatBikeWidgetExtensionAttributes.ContentState(
-            lockState: lockState,
-            connectionState: connectionState,
-            batteryLevel: batteryLevel
-        )
-        
-        do {
-            if #available(iOS 16.2, *) {
-                let activityContent = ActivityContent(state: initialContentState, staleDate: nil)
-                currentActivity = try Activity.request(attributes: attributes, content: activityContent)
-            } else {
-                currentActivity = try Activity.request(attributes: attributes, contentState: initialContentState, pushType: nil)
-            }
-        } catch {
-            print("Failed to start Live Activity: \(error)")
-        }
-    }
-    
-    func updateActivity(lockState: String, connectionState: String, batteryLevel: Int) {
-        guard let activity = currentActivity else { return }
-        
-        let updatedContentState = DatBikeWidgetExtensionAttributes.ContentState(
-            lockState: lockState,
-            connectionState: connectionState,
-            batteryLevel: batteryLevel
-        )
-        
-        Task {
-            if #available(iOS 16.2, *) {
-                let activityContent = ActivityContent(state: updatedContentState, staleDate: nil)
-                await activity.update(activityContent)
-            } else {
-                await activity.update(using: updatedContentState)
-            }
-        }
-    }
-    
-    func endActivity() {
-        guard let activity = currentActivity else { return }
-        
-        Task {
-            if #available(iOS 16.2, *) {
-                let finalContent = ActivityContent(state: activity.content.state, staleDate: nil)
-                await activity.end(finalContent, dismissalPolicy: .default)
-            } else {
-                await activity.end(using: activity.contentState, dismissalPolicy: .default)
-            }
-        }
-        currentActivity = nil
-    }
-}
 
