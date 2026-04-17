@@ -39,7 +39,6 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     /// Cờ phát hiện Bluetooth đã trải qua poweredOff → poweredOn.
     /// Khi cờ này bật, PHẢI scan mới thay vì dùng cache (tránh MIC failure).
     private var btWasPoweredOff: Bool = false
-    private var lastManualWakeup: Date = .distantPast
     
     // Proximity Standby Timer
     private var standbyTimer: Timer?
@@ -52,9 +51,6 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     
     // Background execution state
     private var isAppInBackground = false
-    // Auto turn-on arming state
-    // Tính năng auto-turn on sẽ chỉ chạy 1 lần duy nhất trong mỗi chu kỳ kết nối (sau khi từ standby)
-    private var hasTriggeredAutoUnlockThisSession = false
     
     // Quản lý CPU nền
     private var bgTask: UIBackgroundTaskIdentifier = .invalid
@@ -136,10 +132,22 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             .sink { [weak self] (connState, lock, telemetry, vehicleInfo) in
                 guard let self = self else { return }
                 
-                var stateString = connState.displayText
-                if self.isSessionAutoSuspended && (connState == .connecting || connState == .scanning) {
-                    stateString = IoTConnectionState.standby.displayText
-                }
+                // Suy ra chuỗi trạng thái cho Widget ĐỒNG BỘ với logic của DashboardView.statusText
+                let stateString: String = {
+                    if self.isSessionAutoSuspended && (connState == .connecting || connState == .scanning) {
+                        return IoTConnectionState.standby.displayText
+                    }
+                    // Ưu tiên lockState khi đã kết nối (giống Dashboard)
+                    if connState == .active || connState == .standby {
+                        switch lock {
+                        case .unlocked: return "Xe đang bật"
+                        case .armed:    return "Xe đã bật chống trộm"
+                        case .locked:   return connState == .standby ? "Kết nối chờ (Chờ gần)" : "Xe đang tắt"
+                        default:        return connState.displayText
+                        }
+                    }
+                    return connState.displayText
+                }()
                 let battery = Int(telemetry.soc)
                 let realBikeName = vehicleInfo.name.isEmpty || vehicleInfo.name == "Dat Bike" ? nil : vehicleInfo.name
                 
@@ -159,6 +167,9 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 shared.motorTemp = telemetry.motorTemp
                 shared.lastUpdated = Date()
                 shared.save()
+                
+                // Force flush để Widget Extension (process riêng) đọc được ngay
+                self.preferences.sharedDefaults.synchronize()
                 
                 if #available(iOS 16.1, *) {
                     if connState == .active || connState == .authenticating || connState == .connecting {
@@ -1010,9 +1021,7 @@ extension DatBikeCore: CBPeripheralDelegate {
                     self.setupAutoUnlock(engine: engine)
                 }
                 
-                DispatchQueue.main.async {
-                    self.hasTriggeredAutoUnlockThisSession = false
-                }
+                // Session auto state đã được quản lý bởi isSessionAutoSuspended
                 
                 stateMachine.transition(to: .active)
                 NotificationManager.shared.sendNotification(

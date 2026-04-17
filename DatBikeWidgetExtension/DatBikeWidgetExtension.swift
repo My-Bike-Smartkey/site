@@ -146,7 +146,7 @@ struct DatBikeWidgetEntryView: View {
                         Circle()
                             .fill(Date().timeIntervalSince(entry.lastUpdated) > 300 ? Color.red : Color.green)
                             .frame(width: 6, height: 6)
-                        Text(entry.lockStatusRaw == "unlocked" ? "Xe đã bật" : entry.connectionState)
+                        Text(entry.connectionState)
                             .font(.caption)
                             .foregroundColor(.gray)
                             .lineLimit(1)
@@ -167,7 +167,9 @@ struct DatBikeWidgetEntryView: View {
                 
                 // Right side: Action Buttons
                 VStack(spacing: 8) {
-                    let isConnected = (entry.connectionState.contains("kết nối") && !entry.connectionState.contains("Chưa") && !entry.connectionState.contains("Đang")) || entry.lockStatusRaw == "unlocked"
+                    // Trạng thái kết nối đã được DatBikeCore suy ra chính xác giống Dashboard
+                    let isBikeOn = entry.connectionState.contains("bật") || entry.lockStatusRaw == "unlocked"
+                    let isConnected = isBikeOn || (entry.connectionState.contains("kết nối") && !entry.connectionState.contains("Chưa") && !entry.connectionState.contains("Đang"))
                     
                     // Lock Toggle Button
                     Link(destination: URL(string: "mybikesmartkey://lock")!) {
@@ -184,7 +186,7 @@ struct DatBikeWidgetEntryView: View {
                     }
                     .disabled(!isConnected)
                     
-                    let isStandby = entry.connectionState.lowercased().contains("chờ") && entry.lockStatusRaw != "unlocked"
+                    let isStandby = entry.connectionState.contains("Chờ") && !isBikeOn
                     let isReady = isConnected && !isStandby
                     
                     if isReady {
