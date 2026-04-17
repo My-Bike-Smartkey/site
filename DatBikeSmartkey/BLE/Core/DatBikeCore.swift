@@ -125,10 +125,12 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     }
     
     private func setupWidgetSync() {
-        // 1. Luôn cập nhật UserDefaults nhưng không ép reload widget liên tục (tránh cạn kiệt budget của Apple)
+        // Pipeline duy nhất: Ghi data VÀ báo reload Widget ngay trong cùng 1 sink.
+        // Tránh race condition khi dùng 2 pipeline riêng (ghi và reload có thể lệch nhịp).
         Publishers.CombineLatest4(stateMachine.statePublisher, $currentLockState, $currentTelemetry, $currentVehicleInfo)
-            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.global(qos: .utility))
-            .receive(on: DispatchQueue.main)
+            // Bỏ qua những thay đổi quá nhanh liên tiếp (VD: nhiều transition BLE)
+            .debounce(for: .milliseconds(400), scheduler: DispatchQueue.main)
+            // So sánh toàn bộ tuple để tránh reload thừa khi không có gì thay đổi thực chất
             .sink { [weak self] (connState, lock, telemetry, vehicleInfo) in
                 guard let self = self else { return }
                 
@@ -148,9 +150,11 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                     }
                     return connState.displayText
                 }()
+                
                 let battery = Int(telemetry.soc)
                 let realBikeName = vehicleInfo.name.isEmpty || vehicleInfo.name == "Dat Bike" ? nil : vehicleInfo.name
                 
+                // Ghi vào shared UserDefaults
                 self.preferences.widgetCurrentState = stateString
                 self.preferences.widgetBatteryLevel = battery
                 if let name = realBikeName {
@@ -160,7 +164,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 var shared = SharedBikeState()
                 shared.isConnected = (connState == .active || connState == .standby)
                 shared.connectionPhase = connState == .active ? "ready" : (connState == .standby ? "standby" : "disconnected")
-                shared.lockStatusRaw = lock == .unlocked ? "unlocked" : "locked"
+                shared.lockStatusRaw = lock == .unlocked ? "unlocked" : (lock == .armed ? "armed" : "locked")
                 shared.bikeName = realBikeName ?? "Dat Bike"
                 shared.batteryPercent = battery
                 shared.odometerKm = telemetry.odometerKm
@@ -170,6 +174,9 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 
                 // Force flush để Widget Extension (process riêng) đọc được ngay
                 self.preferences.sharedDefaults.synchronize()
+                
+                // Báo Widget reload NGAY SAU KHI data đã được ghi (cùng 1 pipeline → không còn race condition)
+                WidgetCenter.shared.reloadAllTimelines()
                 
                 if #available(iOS 16.1, *) {
                     if connState == .active || connState == .authenticating || connState == .connecting {
@@ -183,16 +190,6 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                         LiveActivityManager.shared.endActivity()
                     }
                 }
-            }
-            .store(in: &cancellables)
-            
-        // 2. Chỉ BÁO Widget reload khi Trạng thái kết nối hoặc Trạng thái khóa thay đổi mạnh
-        Publishers.CombineLatest(stateMachine.statePublisher, $currentLockState)
-            .dropFirst() // Bỏ qua lần khởi tạo ban đầu
-            .removeDuplicates { $0.0 == $1.0 && $0.1 == $1.1 }
-            .debounce(for: .seconds(1), scheduler: DispatchQueue.main)
-            .sink { _ in
-                WidgetCenter.shared.reloadAllTimelines()
             }
             .store(in: &cancellables)
     }
