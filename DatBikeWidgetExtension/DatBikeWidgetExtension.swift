@@ -30,7 +30,15 @@ struct BikeWidgetProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> ()) {
-        let defaults = UserDefaults(suiteName: "group.app.mybike.smartkey") ?? UserDefaults.standard
+        let appGroupSuite = UserDefaults(suiteName: "group.app.mybike.smartkey")
+        let defaults = appGroupSuite ?? UserDefaults.standard
+
+        if appGroupSuite == nil {
+            widgetExtLogger.error("[Widget] CRITICAL: App Group UserDefaults is NIL — entitlement missing!")
+        } else {
+            widgetExtLogger.info("[Widget] App Group OK. Reading timeline data...")
+        }
+
         let state = defaults.string(forKey: "widgetCurrentState") ?? "Chưa kết nối"
         let battery = defaults.integer(forKey: "widgetBatteryLevel")
         let name = defaults.string(forKey: "widgetBikeName") ?? "Dat Bike"
@@ -48,6 +56,9 @@ struct BikeWidgetProvider: TimelineProvider {
             motorTemp = decoded.motorTemp
             lastUpdated = decoded.lastUpdated
             realBattery = decoded.batteryPercent > 0 ? decoded.batteryPercent : realBattery
+            widgetExtLogger.info("[Widget] SharedBikeState OK — state='\(state)' lock='\(lockState)' battery=\(realBattery) age=\(Int(Date().timeIntervalSince(lastUpdated)))s")
+        } else {
+            widgetExtLogger.warning("[Widget] SharedBikeState NOT found in UserDefaults — widget has no shared data")
         }
 
         let entry = BikeWidgetEntry(date: Date(), bikeName: name, connectionState: state, battery: realBattery, lockStatusRaw: lockState, odometer: odo, motorTemp: motorTemp, lastUpdated: lastUpdated)
