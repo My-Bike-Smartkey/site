@@ -174,11 +174,11 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 shared.motorTemp = telemetry.motorTemp
                 shared.lastUpdated = Date()
                 shared.save()
-                
-                // Force flush để Widget Extension (process riêng) đọc được ngay
-                self.preferences.sharedDefaults.synchronize()
-                
-                // Báo Widget reload NGAY SAU KHI data đã được ghi (cùng 1 pipeline → không còn race condition)
+
+                // KHÔNG gọi synchronize() — trên iOS 12+ App Group UserDefaults tự đồng bộ.
+                // Gọi synchronize() sẽ gây "detaching from cfprefsd" làm Widget Extension không đọc được data.
+
+                // Báo Widget reload NGAY SAU KHI data đã được ghi
                 widgetLogger.info("[App→Widget] Ghi xong. state='\(stateString)' lock='\(shared.lockStatusRaw)' battery=\(battery) → gọi reloadAllTimelines()")
                 WidgetCenter.shared.reloadAllTimelines()
                 
