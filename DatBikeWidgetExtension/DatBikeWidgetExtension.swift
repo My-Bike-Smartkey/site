@@ -126,6 +126,12 @@ struct DatBikeWidgetEntryView: View {
         case .accessoryInline:
             Label("\(entry.battery)% - \(entry.connectionState)", image: "VHexaLogoWhite")
             
+        @unknown default:
+            // Fallback cho các family iOS tương lai không rõ — tránh crash extension
+            Text(entry.connectionState)
+                .font(.caption)
+                .foregroundColor(.white)
+            
         case .systemMedium:
             HStack(spacing: 0) {
                 // Left side: Info
