@@ -8,9 +8,12 @@ struct BikeLiveActivityView: View {
     
     var body: some View {
         HStack {
-            Image(systemName: "bicycle")
-                .font(.title2)
-                .foregroundColor(Color(red: 0, green: 0.96, blue: 1.0))
+            Image("VHexaLogoWhite")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 24, height: 24)
+                .foregroundColor(context.state.lockState.contains("Mở") ? .green : .orange)
                 .padding(.leading, 16)
             
             VStack(alignment: .leading) {
@@ -54,8 +57,12 @@ struct DatBikeLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "bicycle")
-                        .foregroundColor(Color(red: 0, green: 0.96, blue: 1.0))
+                    Image("VHexaLogoWhite")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 20, height: 20)
+                        .foregroundColor(context.state.lockState.contains("Mở") ? .green : .orange)
                         .padding(.leading, 8)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -73,13 +80,21 @@ struct DatBikeLiveActivity: Widget {
                         .foregroundColor(context.state.lockState.contains("Mở") ? .green : .red)
                 }
             } compactLeading: {
-                Image(systemName: "bicycle")
-                    .foregroundColor(Color(red: 0, green: 0.96, blue: 1.0))
+                Image("VHexaLogoWhite")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .foregroundColor(context.state.lockState.contains("Mở") ? .green : .orange)
             } compactTrailing: {
-                Text(context.state.lockState.contains("Mở") ? "🔓" : "🔒")
+                Image(systemName: context.state.lockState.contains("Mở") ? "lock.open.fill" : "lock.fill")
+                    .foregroundColor(context.state.lockState.contains("Mở") ? .green : .orange)
             } minimal: {
-                Image(systemName: "bolt.car.fill")
-                    .foregroundColor(Color(red: 0, green: 0.96, blue: 1.0))
+                Image("VHexaLogoWhite")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(context.state.lockState.contains("Mở") ? .green : .orange)
             }
         }
     }

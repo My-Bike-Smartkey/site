@@ -169,7 +169,28 @@ struct DashboardView: View {
             Spacer()
             
             HStack(spacing: 12) {
-                // Removed Kill app button per user request
+                // Disconnect/Standby Button
+                if viewModel.connectionState == .active {
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        viewModel.forceStandby()
+                    }) {
+                        Image(systemName: "wifi.slash")
+                            .font(.system(size: 18))
+                            .foregroundColor(.gray)
+                            .frame(width: 44, height: 44)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.05))
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                                    )
+                            )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
                 
                 // Settings button
                 Button(action: { showingSettings = true }) {

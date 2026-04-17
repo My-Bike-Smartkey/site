@@ -65,14 +65,13 @@ enum IoTLockState: Equatable, CustomStringConvertible {
     /// 02 00 = UNLOCKED (xe đang bật)
     /// 07 00 = ARMED (chống trộm)
     static func parse(from data: Data) -> IoTLockState {
-        switch data {
-        case Data(), Data([0x00]), Data([0x00, 0x00]), Data([0x30]), Data([0x30, 0x00]):
+        if BLELockStatePayload.locked.contains(data) {
             return .locked
-        case Data([0x02]), Data([0x02, 0x00]), Data([0x31]), Data([0x31, 0x00]):
+        } else if BLELockStatePayload.unlocked.contains(data) {
             return .unlocked
-        case Data([0x07]), Data([0x07, 0x00]):
+        } else if BLELockStatePayload.armed.contains(data) {
             return .armed
-        default:
+        } else {
             return .unknown(data)
         }
     }

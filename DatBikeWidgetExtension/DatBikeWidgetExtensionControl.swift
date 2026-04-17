@@ -10,12 +10,8 @@ struct DatBikeWidgetExtensionControl: ControlWidget {
             kind: Self.kind,
             provider: Provider()
         ) { value in
-            ControlWidgetToggle(
-                "Bật/Tắt Xe",
-                isOn: value.isOn,
-                action: ToggleBikeControlIntent()
-            ) { isOn in
-                Label(isOn ? "Đang Mở" : "Đã Khoá", systemImage: isOn ? "lock.open.fill" : "lock.fill")
+            ControlWidgetButton(action: OpenURLIntent(URL(string: "mybikesmartkey://lock")!)) {
+                Label(value.isOn ? "Tắt Xe (Đang Mở)" : "Bật Xe (Đã Khoá)", systemImage: value.isOn ? "lock.open.fill" : "lock.fill")
             }
         }
         .displayName("Dat Bike SmartKey")
@@ -46,17 +42,4 @@ struct BikeControlConfiguration: ControlConfigurationIntent {
     static let title: LocalizedStringResource = "Cấu hình SmartKey"
 }
 
-struct ToggleBikeControlIntent: SetValueIntent {
-    static let title: LocalizedStringResource = "Bật/Tắt Xe"
-
-    @Parameter(title: "Trạng thái")
-    var value: Bool
-
-    init() {}
-
-    func perform() async throws -> some IntentResult {
-        let defaults = UserDefaults(suiteName: "group.app.mybike.smartkey") ?? UserDefaults.standard
-        defaults.set(value ? "Đang Mở" : "Đã Khoá", forKey: "widgetCurrentState")
-        return .result()
-    }
-}
+// Cleaned unused Intent

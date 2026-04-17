@@ -104,6 +104,20 @@ struct ConnectingSplashView: View {
             VStack {
                 HStack {
                     Spacer()
+                    
+                    if dashboardVM.connectionState == .active {
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            dashboardVM.forceStandby()
+                        }) {
+                            Image(systemName: "wifi.slash")
+                                .font(.system(size: 20))
+                                .foregroundColor(.white.opacity(0.5))
+                                .padding(.vertical)
+                        }
+                    }
+                    
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 20))
@@ -120,25 +134,17 @@ struct ConnectingSplashView: View {
                 
                 // ── RADAR PULSE ──
                 ZStack {
-                    // Vòng tròn đồng tâm tỏa ra — 5 lớp
-                    ForEach(0..<5, id: \.self) { i in
-                        Circle()
-                            .stroke(
-                                stateColor.opacity(pulseOpacity(index: i)),
-                                lineWidth: 1.5
-                            )
-                            .frame(
-                                width: pulseSize(index: i),
-                                height: pulseSize(index: i)
-                            )
-                            .scaleEffect(pulseScale(index: i))
-                            .animation(
-                                .easeOut(duration: 2.5)
-                                    .repeatForever(autoreverses: false)
-                                    .delay(Double(i) * 0.5),
-                                value: pulsePhase
-                            )
-                    }
+                    // Vòng tròn tỏa ra (1 ring duy nhất)
+                    Circle()
+                        .stroke(stateColor, lineWidth: 2)
+                        .frame(width: 180, height: 180)
+                        .scaleEffect(pulsePhase == 0 ? 1.0 : 2.5)
+                        .opacity(pulsePhase == 0 ? 0.6 : 0.0)
+                        .animation(
+                            .easeOut(duration: 2.0)
+                                .repeatForever(autoreverses: false),
+                            value: pulsePhase
+                        )
                     
                     // Vòng tròn nền trung tâm
                     Circle()
@@ -165,6 +171,7 @@ struct ConnectingSplashView: View {
                         .frame(width: 90, height: 90)
                         .foregroundColor(stateColor)
                 }
+                .animation(.easeInOut(duration: 0.5), value: dashboardVM.connectionState)
                 
                 Spacer().frame(height: 28)
                 
@@ -379,19 +386,7 @@ struct ConnectingSplashView: View {
         }
     }
     
-    private func pulseSize(index: Int) -> CGFloat {
-        return 180 + CGFloat(index) * 50
-    }
-    
-    private func pulseScale(index: Int) -> CGFloat {
-        return pulsePhase == 0 ? 1.0 : 1.0 + CGFloat(index) * 0.15
-    }
-    
-    private func pulseOpacity(index: Int) -> Double {
-        let base = 0.4 - Double(index) * 0.08
-        return max(base, 0.05)
-    }
-    
+
     private func bikeSignalIcon(rssi: Int) -> some View {
         let (bars, color): (Int, Color) = {
             if rssi >= -60 { return (4, .green) }

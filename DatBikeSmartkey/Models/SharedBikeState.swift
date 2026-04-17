@@ -18,6 +18,7 @@ struct SharedBikeState: Codable {
     var bikeName: String = ""
     var batteryPercent: Int = 0
     var odometerKm: Float = 0
+    var motorTemp: Float = 0
     var lastUpdated: Date = .distantPast
 
     // MARK: Persistence

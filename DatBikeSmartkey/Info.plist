@@ -26,6 +26,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>dsmartkey</string>
+				<string>mybikesmartkey</string>
 			</array>
 		</dict>
 	</array>

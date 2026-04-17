@@ -125,6 +125,19 @@ enum BLECommand {
     static let findStop: Data  = Data([0x30])
 }
 
+// MARK: - Payloads
+
+enum BLELockStatePayload {
+    /// Payloads representing LOCKED state (0x00, 0x0000, 0x30, etc.)
+    static let locked: [Data]   = [Data(), Data([0x00]), Data([0x00, 0x00]), Data([0x30]), Data([0x30, 0x00])]
+    
+    /// Payloads representing UNLOCKED state (0x02, 0x0200, 0x31, etc.)
+    static let unlocked: [Data] = [Data([0x02]), Data([0x02, 0x00]), Data([0x31]), Data([0x31, 0x00])]
+    
+    /// Payloads representing ARMED state (0x07, 0x0700)
+    static let armed: [Data]    = [Data([0x07]), Data([0x07, 0x00])]
+}
+
 // MARK: - Protocol Constants
 
 enum BLEProtocol {

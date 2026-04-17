@@ -6,5 +6,6 @@ struct DatBikeWidgetExtensionBundle: WidgetBundle {
     var body: some Widget {
         DatBikeWidgetExtension()
         DatBikeWidgetExtensionControl()
+        DatBikeLiveActivity()
     }
 }

@@ -4,18 +4,7 @@ import Foundation
 struct BLETelemetryParser {
     
     static func parseLockState(from data: Data) -> IoTLockState {
-        guard data.count >= 2 else { return .unknown(data) }
-        
-        switch data {
-        case Data([0x00, 0x00]), Data([0x30]), Data([0x30, 0x00]), Data([0x00]):
-            return .locked
-        case Data([0x02, 0x00]), Data([0x31]), Data([0x31, 0x00]), Data([0x02]):
-            return .unlocked
-        case Data([0x07, 0x00]):
-            return .armed
-        default:
-            return .unknown(data)
-        }
+        return IoTLockState.parse(from: data)
     }
     
     static func parseTelemetry(from data: Data) -> IoTTelemetryData {
