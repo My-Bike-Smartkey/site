@@ -44,6 +44,12 @@
 		F0229FA32F90A33900B30FE6 /* DatBikeWidgetExtensionExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F0229F8D2F90A33700B30FE6 /* DatBikeWidgetExtensionExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F5B95415843E0B581F6CA028ABD868E1 /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8A4DD9F679F79F85EBCC1EEBC0E8AE /* MainView.swift */; };
 		FF199C4CEC167B4F490FC6F48993A4FB /* PreferencesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71F03AD5480391835B46E7593B112134 /* PreferencesManager.swift */; };
+		ABCDEF000000000000000002 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000001 /* LiveActivityManager.swift */; };
+		ABCDEF000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */; };
+
+		ABCDEF000000000000000012 /* DatBikeLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000010 /* DatBikeLiveActivityAttributes.swift */; };
+		ABCDEF000000000000000013 /* DatBikeLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000010 /* DatBikeLiveActivityAttributes.swift */; };
+		ABCDEF000000000000000014 /* DatBikeLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000011 /* DatBikeLiveActivity.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -111,6 +117,10 @@
 		F0229F8D2F90A33700B30FE6 /* DatBikeWidgetExtensionExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = DatBikeWidgetExtensionExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0229F8F2F90A33700B30FE6 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		F0229F912F90A33700B30FE6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		ABCDEF000000000000000001 /* LiveActivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
+
+		ABCDEF000000000000000010 /* DatBikeLiveActivityAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WidgetShared/DatBikeLiveActivityAttributes.swift; sourceTree = "<group>"; };
+		ABCDEF000000000000000011 /* DatBikeLiveActivity.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WidgetShared/DatBikeLiveActivity.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -219,6 +229,7 @@
 		95210A7872648BF4FFD37A64FC475C36 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				ABCDEF000000000000000001 /* LiveActivityManager.swift */,
 				D8653E8961F943307958265B058C12AD /* BLEStateMachine.swift */,
 				E2CABFAD4D80894A59FE01B37DBD967C /* DatBikeCore.swift */,
 				71F03AD5480391835B46E7593B112134 /* PreferencesManager.swift */,
@@ -250,6 +261,8 @@
 		B7BB8718BCB325CEDE408A852CC5E2A3 /* DatBikeSmartkey */ = {
 			isa = PBXGroup;
 			children = (
+				ABCDEF000000000000000010 /* DatBikeLiveActivityAttributes.swift */,
+				ABCDEF000000000000000011 /* DatBikeLiveActivity.swift */,
 				C9199096C02324C14D9AFEA1B8548F24 /* AppDIContainer.swift */,
 				21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */,
 				34EE5343AA337AB6E362F3CB91632A40 /* DatBikeSmartkey.entitlements */,
@@ -375,6 +388,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABCDEF000000000000000003 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -385,6 +399,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABCDEF000000000000000012 /* DatBikeLiveActivityAttributes.swift in Sources */,
+				ABCDEF000000000000000002 /* LiveActivityManager.swift in Sources */,
 				1317C389CF45A175FE36A45ABDEEB886 /* AppDIContainer.swift in Sources */,
 				0A1BMS01AA000003A0000001BMS00003 /* BatteryAnalyticsView.swift in Sources */,
 				0A1BMS01AA000005A0000001BMS00005 /* BatteryGaugeView.swift in Sources */,
@@ -425,6 +441,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ABCDEF000000000000000013 /* DatBikeLiveActivityAttributes.swift in Sources */,
+				ABCDEF000000000000000014 /* DatBikeLiveActivity.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -500,7 +518,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 5;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 4.0.1;
+				MARKETING_VERSION = 4.1.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};
@@ -511,7 +529,7 @@
 			buildSettings = {
 				CURRENT_PROJECT_VERSION = 4;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 4.0.1;
+				MARKETING_VERSION = 4.1.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};
@@ -523,6 +541,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DatBikeWidgetExtension/DatBikeWidgetExtension.entitlements;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -585,7 +604,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 4.0.1;
+				MARKETING_VERSION = 4.1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -609,6 +628,7 @@
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = DatBikeWidgetExtension/DatBikeWidgetExtension.entitlements;
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
@@ -665,7 +685,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 4.0.1;
+				MARKETING_VERSION = 4.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey.widget;
