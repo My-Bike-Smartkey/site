@@ -16,6 +16,12 @@ class SettingsViewModel: ObservableObject {
     @Published var notificationsEnabled: Bool
     @Published var widgetAndLiveActivityEnabled: Bool
     
+    // Granular notification toggles
+    @Published var notifyOnConnected: Bool
+    @Published var notifyOnDisconnected: Bool
+    @Published var notifyOnStandby: Bool
+    @Published var notifyOnAutoTurnOn: Bool
+    
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
     
@@ -35,6 +41,10 @@ class SettingsViewModel: ObservableObject {
         self.isDebugModeEnabled = preferences.isDebugModeEnabled
         self.notificationsEnabled = preferences.notificationsEnabled
         self.widgetAndLiveActivityEnabled = preferences.widgetAndLiveActivityEnabled
+        self.notifyOnConnected    = preferences.notifyOnConnected
+        self.notifyOnDisconnected = preferences.notifyOnDisconnected
+        self.notifyOnStandby      = preferences.notifyOnStandby
+        self.notifyOnAutoTurnOn   = preferences.notifyOnAutoTurnOn
         
         setupBindings()
     }
@@ -90,6 +100,26 @@ class SettingsViewModel: ObservableObject {
             .sink { [weak self] val in self?.preferences.widgetAndLiveActivityEnabled = val }
             .store(in: &cancellables)
         
+        $notifyOnConnected
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notifyOnConnected = val }
+            .store(in: &cancellables)
+        
+        $notifyOnDisconnected
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notifyOnDisconnected = val }
+            .store(in: &cancellables)
+        
+        $notifyOnStandby
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notifyOnStandby = val }
+            .store(in: &cancellables)
+        
+        $notifyOnAutoTurnOn
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notifyOnAutoTurnOn = val }
+            .store(in: &cancellables)
+        
         core.$currentVehicleInfo
             .receive(on: DispatchQueue.main)
             .assign(to: \.bikeInfo, on: self)
@@ -98,7 +128,7 @@ class SettingsViewModel: ObservableObject {
         core.connectionState
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
-                self?.isConnected = (state == .active)
+                self?.isConnected = state.isConnected // true cho cả .active và .standby
             }
             .store(in: &cancellables)
     }

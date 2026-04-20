@@ -6,6 +6,25 @@
 import Foundation
 import UserNotifications
 
+/// Các nhóm thông báo, map 1-1 với identifier và preference keys
+enum NotificationCategory: String {
+    case connected        = "Connected"
+    case disconnected     = "DowngradeToStandby"
+    case standby          = "StandbyProximity"
+    case autoTurnOn       = "AutoTurnOn"
+    
+    /// Kiểm tra preference của từng loại
+    var isEnabled: Bool {
+        let prefs = PreferencesManager.shared
+        switch self {
+        case .connected:    return prefs.notifyOnConnected
+        case .disconnected: return prefs.notifyOnDisconnected
+        case .standby:      return prefs.notifyOnStandby
+        case .autoTurnOn:   return prefs.notifyOnAutoTurnOn
+        }
+    }
+}
+
 class NotificationManager: NSObject, @unchecked Sendable, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
     
@@ -39,10 +58,17 @@ class NotificationManager: NSObject, @unchecked Sendable, UNUserNotificationCent
     }
     
     func sendNotification(title: String, body: String, identifier: String) {
+        // Gate 1: Master toggle tắt → block hết
         if !PreferencesManager.shared.notificationsEnabled {
             return
         }
         
+        // Gate 2: Check per-type preference (nếu identifier map được sang category)
+        if let category = NotificationCategory(rawValue: identifier), !category.isEnabled {
+            return
+        }
+        
+        // Gate 3: Debounce — tránh spam cùng 1 loại thông báo
         let now = Date()
         if let lastTime = lastNotificationTimes[identifier] {
             if now.timeIntervalSince(lastTime) < debounceInterval {

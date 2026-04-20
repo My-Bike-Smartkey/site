@@ -608,10 +608,25 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         
         if isAppInBackground {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
-                message: "App đang chạy ngầm → Ngắt vật lý bắt buộc để nhường quyền cho Background Scanner (Tránh đóng băng RSSI timer)"))
-            if let ctx = activeContext {
-                centralManager?.cancelPeripheralConnection(ctx.peripheral)
+                message: "App đang chạy ngầm → Ngắt vật lý bắt buộc + dùng Pending Connect iOS (tránh scan timer bị đóng băng)"))
+            if let ctx = activeContext, let central = centralManager {
+                // ═══ DÙNG PENDING CONNECT thay vì connect() ═══
+                // connect() sẽ gọi startScanWithTimeout() → timer bị iOS đóng băng trong background
+                // → scan không bao giờ hoàn thành → không reconnect được.
+                // Pending connect của iOS không dùng timer → hoạt động bình thường trong background.
+                let peripheral = ctx.peripheral
+                central.cancelPeripheralConnection(peripheral)
+                activeContext = nil
+                commandDispatcher = nil
+                pollingEngine = nil
+                stateMachine.transition(to: .scanning)
+                // iOS sẽ kết nối lại khi xe vào vùng phủ sóng
+                central.connect(peripheral, options: [
+                    CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+                    CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
+                ])
             } else {
+                // Không có activeContext → scan bình thường
                 connect()
             }
             return
@@ -757,6 +772,13 @@ extension DatBikeCore: CBCentralManagerDelegate {
         let advName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
         let deviceName = peripheral.name ?? advName ?? "Dat Bike"
         
+        // ═══ GUARD: Đã đang trong quá trình kết nối → bỏ qua callback trùng ═══
+        // Phòng trường hợp 2 xe DatBike gần nhau gửi 2 callback liên tiếp vào queue CoreBluetooth
+        // → connectPeripheral() bị gọi 2 lần → activeContext bị ghi đè → cả 2 kết nối fail
+        if activeContext != nil, case .connecting = stateMachine.state {
+            return
+        }
+        
         // Đã pair trước đó (có savedPin) → auto-connect luôn, không cần chọn
         if preferences.savedPin != nil {
             if isAppInBackground {
@@ -767,9 +789,28 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 }
             }
             
-            cancelScanTimer()
-            central.stopScan()
-            connectPeripheral(peripheral, central: central)
+            // ═══ UUID FILTER: Khi có 2 xe DatBike gần nhau, chỉ kết nối xe đã ghép đôi ═══
+            // Nếu UUID khớp → connect ngay
+            if let savedUUIDStr = preferences.savedPeripheralUUID,
+               peripheral.identifier.uuidString == savedUUIDStr {
+                cancelScanTimer()
+                central.stopScan()
+                connectPeripheral(peripheral, central: central)
+                return
+            }
+            
+            // UUID không khớp → tiếp tục scan (chờ đúng xe)
+            // Nếu không có savedPeripheralUUID (user cũ chưa có), dùng xe đầu tiên tìm thấy
+            if preferences.savedPeripheralUUID == nil {
+                cancelScanTimer()
+                central.stopScan()
+                connectPeripheral(peripheral, central: central)
+                return
+            }
+            
+            // Có savedUUID nhưng xe này không phải → bỏ qua
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "Tìm thấy xe DatBike khác (\(peripheral.identifier.uuidString.prefix(8))) — bỏ qua, đang chờ đúng xe"))
             return
         }
         
@@ -922,10 +963,16 @@ extension DatBikeCore: CBCentralManagerDelegate {
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
         ])
         
-        // Fallback: connect() sau 3s
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+        // Fallback: connect() sau 5s nếu pending connect của iOS không phản hồi
+        // ═══ QUAN TRỌNG: Phải hủy pending connect TRƯỚC khi gọi connect() (scan mới) ═══
+        // Lý do: gọi connect() trong khi central.connect() đang pending → iOS có cả
+        // scan VÀ pending connect active → xung đột → connection không bao giờ hoàn thành.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self else { return }
             if case .scanning = self.stateMachine.state {
+                // Hủy pending connect trước
+                self.centralManager?.cancelPeripheralConnection(peripheral)
+                // Sau đó mới bắt đầu scan/retrieve mới
                 self.connect()
             }
         }
@@ -977,6 +1024,12 @@ extension DatBikeCore: CBPeripheralDelegate {
     private func startStandbyProximityChecks(ctx: BLEConnectionContext, pin: String) {
         stateMachine.transition(to: .standby)
         isAuthenticating = false
+        
+        // ═══ RESET PHIÊN AUTO KHI KẾT NỐI VẬT LÝ MỚI ═══
+        // isSessionAutoSuspended được set khi user can thiệp thủ công (bấm nút) TRONG phiên cũ.
+        // Khi mất kết nối vật lý và iOS đã reconnect thành công (chúng ta đang ở đây),
+        // phiên cũ đã kết thúc → phải reset để auto-auth hoạt động lại trên phiên mới.
+        isSessionAutoSuspended = false
         
         // Bỏ qua chờ khoảng cách nếu user chủ động bấm Đánh Thức trên Widget
         if self.shouldTurnOnBikeAfterAuth {

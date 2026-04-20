@@ -174,16 +174,75 @@ struct SettingsView: View {
                                         Text("Thông báo hệ thống")
                                             .font(.subheadline)
                                             .foregroundColor(.white)
-                                        Text("Hiển thị thông báo khi mở/khoá, mất kết nối")
+                                        Text("Bật/tắt toàn bộ thông báo của app")
                                             .font(.caption2)
                                             .foregroundColor(.gray)
                                     }
                                 }
                             }
+                            .tint(.orange)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
+                            
+                            // Granular toggles — chỉ hiển thị khi master bật
+                            if viewModel.notificationsEnabled {
+                                Divider().background(Color.white.opacity(0.06))
+                                
+                                // Sub-header
+                                HStack {
+                                    Text("LOẠI THÔNG BÁO")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.gray.opacity(0.6))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.top, 8)
+                                .padding(.bottom, 4)
+                                
+                                notificationSubToggle(
+                                    icon: "checkmark.circle.fill",
+                                    iconColor: .green,
+                                    title: "Kết nối thành công",
+                                    subtitle: "Khi xác thực BLE hoàn tất",
+                                    binding: $viewModel.notifyOnConnected
+                                )
+                                
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                
+                                notificationSubToggle(
+                                    icon: "figure.walk",
+                                    iconColor: .cyan,
+                                    title: "Gần xe — Kết nối chờ",
+                                    subtitle: "Khi phát hiện di chuyển gần xe",
+                                    binding: $viewModel.notifyOnStandby
+                                )
+                                
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                
+                                notificationSubToggle(
+                                    icon: "arrow.uturn.backward.circle.fill",
+                                    iconColor: .yellow,
+                                    title: "Ra xa xe — Chuyển chờ",
+                                    subtitle: "Khi phát hiện di chuyển ra xa",
+                                    binding: $viewModel.notifyOnDisconnected
+                                )
+                                
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                
+                                notificationSubToggle(
+                                    icon: "bolt.fill",
+                                    iconColor: .orange,
+                                    title: "Tự động bật xe",
+                                    subtitle: "Khi Auto Turn-On được kích hoạt",
+                                    binding: $viewModel.notifyOnAutoTurnOn
+                                )
+                                
+                                Spacer().frame(height: 6)
+                            }
                         }
+                        .animation(.easeInOut(duration: 0.2), value: viewModel.notificationsEnabled)
                     }
+
                     
                     // Documentation section
                     settingsSection(title: "TRỢ GIÚP") {
@@ -466,6 +525,38 @@ struct SettingsView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
+    }
+    
+    private func notificationSubToggle(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String,
+        binding: Binding<Bool>
+    ) -> some View {
+        Toggle(isOn: binding) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 12))
+                    .foregroundColor(iconColor)
+                    .frame(width: 24, height: 24)
+                    .background(iconColor.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .tint(iconColor)
+        .padding(.leading, 24)  // indent so sánh với master toggle
+        .padding(.trailing, 14)
+        .padding(.vertical, 8)
     }
     
     @ViewBuilder

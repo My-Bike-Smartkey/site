@@ -38,6 +38,25 @@ class PreferencesManager {
         didSet { sharedDefaults.set(widgetAndLiveActivityEnabled, forKey: "widgetAndLiveActivityEnabled") }
     }
     
+    // MARK: - Granular Notification Preferences
+    // Mỗi loại thông báo có thể tắt riêng biệt (mặc định: bật hết)
+    
+    @Published var notifyOnConnected: Bool {
+        didSet { sharedDefaults.set(notifyOnConnected, forKey: "notifyOnConnected") }
+    }
+    
+    @Published var notifyOnDisconnected: Bool {
+        didSet { sharedDefaults.set(notifyOnDisconnected, forKey: "notifyOnDisconnected") }
+    }
+    
+    @Published var notifyOnStandby: Bool {
+        didSet { sharedDefaults.set(notifyOnStandby, forKey: "notifyOnStandby") }
+    }
+    
+    @Published var notifyOnAutoTurnOn: Bool {
+        didSet { sharedDefaults.set(notifyOnAutoTurnOn, forKey: "notifyOnAutoTurnOn") }
+    }
+    
     @Published var savedPin: String? {
         didSet { sharedDefaults.set(savedPin, forKey: "savedPin") }
     }
@@ -120,5 +139,11 @@ class PreferencesManager {
         self.isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
         self.savedPin = defaults.string(forKey: "savedPin")
         self.savedPeripheralUUID = defaults.string(forKey: "lastPeripheralUUID")
+        
+        // Granular notification preferences — default true
+        self.notifyOnConnected    = defaults.object(forKey: "notifyOnConnected")    as? Bool ?? true
+        self.notifyOnDisconnected = defaults.object(forKey: "notifyOnDisconnected") as? Bool ?? true
+        self.notifyOnStandby      = defaults.object(forKey: "notifyOnStandby")      as? Bool ?? true
+        self.notifyOnAutoTurnOn   = defaults.object(forKey: "notifyOnAutoTurnOn")   as? Bool ?? true
     }
 }
