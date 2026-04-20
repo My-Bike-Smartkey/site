@@ -22,6 +22,12 @@ class SettingsViewModel: ObservableObject {
     @Published var notifyOnStandby: Bool
     @Published var notifyOnAutoTurnOn: Bool
     
+    // Battery Notification toggles
+    @Published var notifyOnBatteryFull: Bool
+    @Published var notifyOnChargeDisconnect: Bool
+    @Published var notifyOnBatteryThreshold: Bool
+    @Published var batteryLowThreshold: Double
+    
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
     
@@ -45,6 +51,11 @@ class SettingsViewModel: ObservableObject {
         self.notifyOnDisconnected = preferences.notifyOnDisconnected
         self.notifyOnStandby      = preferences.notifyOnStandby
         self.notifyOnAutoTurnOn   = preferences.notifyOnAutoTurnOn
+        
+        self.notifyOnBatteryFull      = preferences.notifyOnBatteryFull
+        self.notifyOnChargeDisconnect = preferences.notifyOnChargeDisconnect
+        self.notifyOnBatteryThreshold = preferences.notifyOnBatteryThreshold
+        self.batteryLowThreshold      = Double(preferences.batteryLowThreshold)
         
         setupBindings()
     }
@@ -118,6 +129,26 @@ class SettingsViewModel: ObservableObject {
         $notifyOnAutoTurnOn
             .dropFirst()
             .sink { [weak self] val in self?.preferences.notifyOnAutoTurnOn = val }
+            .store(in: &cancellables)
+            
+        $notifyOnBatteryFull
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notifyOnBatteryFull = val }
+            .store(in: &cancellables)
+            
+        $notifyOnChargeDisconnect
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notifyOnChargeDisconnect = val }
+            .store(in: &cancellables)
+            
+        $notifyOnBatteryThreshold
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.notifyOnBatteryThreshold = val }
+            .store(in: &cancellables)
+            
+        $batteryLowThreshold
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.batteryLowThreshold = Int(val) }
             .store(in: &cancellables)
         
         core.$currentVehicleInfo

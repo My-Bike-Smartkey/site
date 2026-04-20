@@ -12,6 +12,9 @@ enum NotificationCategory: String {
     case disconnected     = "DowngradeToStandby"
     case standby          = "StandbyProximity"
     case autoTurnOn       = "AutoTurnOn"
+    case batteryFull      = "BatteryFull"
+    case batteryLow       = "BatteryLow"
+    case chargeDisconnect = "ChargeDisconnect"
     
     /// Kiểm tra preference của từng loại
     var isEnabled: Bool {
@@ -21,6 +24,9 @@ enum NotificationCategory: String {
         case .disconnected: return prefs.notifyOnDisconnected
         case .standby:      return prefs.notifyOnStandby
         case .autoTurnOn:   return prefs.notifyOnAutoTurnOn
+        case .batteryFull:  return prefs.notifyOnBatteryFull
+        case .batteryLow:   return prefs.notifyOnBatteryThreshold
+        case .chargeDisconnect: return prefs.notifyOnChargeDisconnect
         }
     }
 }
@@ -57,7 +63,7 @@ class NotificationManager: NSObject, @unchecked Sendable, UNUserNotificationCent
         }
     }
     
-    func sendNotification(title: String, body: String, identifier: String) {
+    func sendNotification(title: String, body: String, identifier: String, sound: UNNotificationSound? = UNNotificationSound.default) {
         // Gate 1: Master toggle tắt → block hết
         if !PreferencesManager.shared.notificationsEnabled {
             return
@@ -81,7 +87,7 @@ class NotificationManager: NSObject, @unchecked Sendable, UNUserNotificationCent
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        content.sound = UNNotificationSound.default
+        content.sound = sound
         
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1.0, repeats: false)
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)

@@ -57,6 +57,24 @@ class PreferencesManager {
         didSet { sharedDefaults.set(notifyOnAutoTurnOn, forKey: "notifyOnAutoTurnOn") }
     }
     
+    // MARK: - Battery/BMS Notification Preferences
+    
+    @Published var notifyOnBatteryFull: Bool {
+        didSet { sharedDefaults.set(notifyOnBatteryFull, forKey: "notifyOnBatteryFull") }
+    }
+    
+    @Published var notifyOnBatteryThreshold: Bool {
+        didSet { sharedDefaults.set(notifyOnBatteryThreshold, forKey: "notifyOnBatteryThreshold") }
+    }
+    
+    @Published var notifyOnChargeDisconnect: Bool {
+        didSet { sharedDefaults.set(notifyOnChargeDisconnect, forKey: "notifyOnChargeDisconnect") }
+    }
+    
+    @Published var batteryLowThreshold: Int {
+        didSet { sharedDefaults.set(batteryLowThreshold, forKey: "batteryLowThreshold") }
+    }
+    
     @Published var savedPin: String? {
         didSet { sharedDefaults.set(savedPin, forKey: "savedPin") }
     }
@@ -145,5 +163,11 @@ class PreferencesManager {
         self.notifyOnDisconnected = defaults.object(forKey: "notifyOnDisconnected") as? Bool ?? true
         self.notifyOnStandby      = defaults.object(forKey: "notifyOnStandby")      as? Bool ?? true
         self.notifyOnAutoTurnOn   = defaults.object(forKey: "notifyOnAutoTurnOn")   as? Bool ?? true
+        
+        // BMS notification preferences — default true (except threshold which defaults to 20%)
+        self.notifyOnBatteryFull      = defaults.object(forKey: "notifyOnBatteryFull")      as? Bool ?? true
+        self.notifyOnBatteryThreshold = defaults.object(forKey: "notifyOnBatteryThreshold") as? Bool ?? true
+        self.notifyOnChargeDisconnect = defaults.object(forKey: "notifyOnChargeDisconnect") as? Bool ?? true
+        self.batteryLowThreshold      = defaults.integer(forKey: "batteryLowThreshold") > 0 ? defaults.integer(forKey: "batteryLowThreshold") : 20
     }
 }

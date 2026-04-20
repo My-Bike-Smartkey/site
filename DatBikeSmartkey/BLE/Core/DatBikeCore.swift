@@ -22,6 +22,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     @Published private(set) var currentVehicleInfo = IoTVehicleInfo()
     
     @Published private(set) var currentBatteryTelemetry: BatteryTelemetry?
+    private var previousBatteryTelemetry: BatteryTelemetry?
     
     @Published private(set) var currentRSSI: Int = 0
     
@@ -71,6 +72,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         super.init()
         PersistentLogger.shared.markSessionStart()
         setupLogging()
+        setupBatteryMonitoring()
     }
     
     private func extendBackgroundExecutionTime() {
@@ -586,6 +588,58 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                         self.downgradeToStandby()
                     }
                 }
+            }
+            .store(in: &cancellables)
+    }
+    
+    // MARK: - Battery Monitoring Wiring
+    private func setupBatteryMonitoring() {
+        $currentBatteryTelemetry
+            .dropFirst() // Bỏ qua giá trị nil khởi tạo
+            .sink { [weak self] current in
+                guard let self = self, let current = current else { return }
+                guard let previous = self.previousBatteryTelemetry else {
+                    self.previousBatteryTelemetry = current
+                    return
+                }
+                
+                // 1. Cảnh báo sạc đầy
+                if self.preferences.notifyOnBatteryFull {
+                    if previous.socPercent < 100 && current.socPercent == 100 {
+                        NotificationManager.shared.sendNotification(
+                            title: "Pin đã đầy",
+                            body: "Xe Datbike của bạn đã sạc đầy 100%.",
+                            identifier: NotificationCategory.batteryFull.rawValue
+                        )
+                    }
+                }
+                
+                // 2. Cảnh báo pin chạm ngưỡng
+                if self.preferences.notifyOnBatteryThreshold {
+                    let threshold = self.preferences.batteryLowThreshold
+                    if previous.socPercent > threshold && current.socPercent <= threshold {
+                        NotificationManager.shared.sendNotification(
+                            title: "Pin yếu",
+                            body: "Dung lượng pin xe đã giảm xuống \(current.socPercent)%. Vui lòng sạc xe sớm.",
+                            identifier: NotificationCategory.batteryLow.rawValue
+                        )
+                    }
+                }
+                
+                // 3. Báo động mất sạc (Chuyển trạng thái từ Đang sạc sang trạng thái khác khi xe đang tắt)
+                if self.preferences.notifyOnChargeDisconnect {
+                    if previous.chargingState == .charging && current.chargingState != .charging {
+                        if self.currentLockState == .locked || self.currentLockState == .armed {
+                            NotificationManager.shared.sendNotification(
+                                title: "Cảnh báo ngắt sạc!",
+                                body: "Nguồn sạc của xe đã bị ngắt bất ngờ trong khi xe đang tắt.",
+                                identifier: NotificationCategory.chargeDisconnect.rawValue
+                            )
+                        }
+                    }
+                }
+                
+                self.previousBatteryTelemetry = current
             }
             .store(in: &cancellables)
     }

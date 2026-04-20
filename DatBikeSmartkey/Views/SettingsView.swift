@@ -237,6 +237,56 @@ struct SettingsView: View {
                                     binding: $viewModel.notifyOnAutoTurnOn
                                 )
                                 
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                
+                                notificationSubToggle(
+                                    icon: "battery.100.bolt",
+                                    iconColor: .green,
+                                    title: "Sạc đầy pin",
+                                    subtitle: "Khi pin đạt 100%",
+                                    binding: $viewModel.notifyOnBatteryFull
+                                )
+                                
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                
+                                notificationSubToggle(
+                                    icon: "bolt.slash.fill",
+                                    iconColor: .red,
+                                    title: "Ngắt sạc bất ngờ",
+                                    subtitle: "Báo động khi mất sạc lúc xe tắt",
+                                    binding: $viewModel.notifyOnChargeDisconnect
+                                )
+                                
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                
+                                notificationSubToggle(
+                                    icon: "battery.25",
+                                    iconColor: .orange,
+                                    title: "Cảnh báo pin yếu",
+                                    subtitle: "Khi pin giảm xuống dưới ngưỡng",
+                                    binding: $viewModel.notifyOnBatteryThreshold
+                                )
+                                
+                                if viewModel.notifyOnBatteryThreshold {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text("Ngưỡng cảnh báo: ")
+                                                .font(.caption2)
+                                                .foregroundColor(.gray)
+                                            + Text("\(Int(viewModel.batteryLowThreshold))%")
+                                                .font(.system(.caption, design: .monospaced))
+                                                .foregroundColor(.white)
+                                            Spacer()
+                                        }
+                                        Slider(value: $viewModel.batteryLowThreshold, in: 5...50, step: 1.0)
+                                            .tint(.orange)
+                                    }
+                                    .padding(.leading, 52)
+                                    .padding(.trailing, 14)
+                                    .padding(.bottom, 8)
+                                    .animation(.easeInOut, value: viewModel.notifyOnBatteryThreshold)
+                                }
+                                
                                 Spacer().frame(height: 6)
                             }
                         }
