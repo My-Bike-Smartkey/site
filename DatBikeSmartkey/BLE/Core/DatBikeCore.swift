@@ -1142,7 +1142,8 @@ extension DatBikeCore: CBPeripheralDelegate {
         }
         
         // Kích hoạt auth CHỈ KHI ĐỦ cả 3 characteristic cần thiết (có thể nằm ở nhiều service khác nhau)
-        if !isAuthenticating,
+        // Lưu ý: stateMachine.state == .connecting đảm bảo chỉ kích hoạt 1 lần duy nhất (vì sau đó sẽ chuyển sang .standby hoặc .pairingRequired)
+        if !isAuthenticating, stateMachine.state == .connecting,
            (try? ctx.requireCharacteristic(BLECharacteristic.authChallenge)) != nil,
            (try? ctx.requireCharacteristic(BLECharacteristic.timeSync)) != nil,
            (try? ctx.requireCharacteristic(BLECharacteristic.autoUnlock)) != nil {
