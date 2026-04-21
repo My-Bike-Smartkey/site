@@ -511,12 +511,30 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                     let data = try await ctx.queue.enqueue {
                         try await ctx.io.readValue(from: dashChar)
                     }
-                    let tele = DashboardTelemetry(from: data)
-                    DispatchQueue.main.async {
-                        self.currentTelemetry.motorTemp = tele.motorTemp
-                        self.currentTelemetry.controllerTemp = tele.controllerTemp
-                        self.currentTelemetry.odometerKm = tele.odometerKm
-                        self.currentTelemetry.speedKmh = tele.speedKmh
+                    
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                        message: "Dashboard raw (\(data.count) bytes): \(data.hexString)"))
+                        
+                    if data.count >= 40 {
+                        let tele = DashboardTelemetry(from: data)
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                            message: "Dashboard parsed (40b): Motor=\(tele.motorTemp)°C Odo=\(tele.odometerKm)km"))
+                        DispatchQueue.main.async {
+                            self.currentTelemetry.motorTemp = tele.motorTemp
+                            self.currentTelemetry.controllerTemp = tele.controllerTemp
+                            self.currentTelemetry.odometerKm = tele.odometerKm
+                            self.currentTelemetry.speedKmh = tele.speedKmh
+                        }
+                    } else if data.count >= 13 {
+                        let tele = BLETelemetryParser.parseTelemetry(from: data)
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                            message: "Dashboard parsed (13b): Motor=\(tele.motorTemp)°C Odo=\(tele.odometerKm)km"))
+                        DispatchQueue.main.async {
+                            self.currentTelemetry.motorTemp = tele.motorTemp
+                            self.currentTelemetry.controllerTemp = tele.controllerTemp
+                            self.currentTelemetry.odometerKm = tele.odometerKm
+                            self.currentTelemetry.speedKmh = tele.speedKmh
+                        }
                     }
                 }
                 
