@@ -36,6 +36,8 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private var pollingEngine: BLEPollingEngine?
     private let preferences: PreferencesManager
     private var cancellables = Set<AnyCancellable>()
+    private var engineCancellables = Set<AnyCancellable>()
+    private var lastLoggedVehicleString: String = ""
     
     var isAuthenticating = false
     private var pendingASKUUID: UUID?
@@ -613,13 +615,15 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     
     // MARK: - Auto Unlock Wiring
     private func setupAutoUnlock(engine: BLEPollingEngine) {
+        engineCancellables.removeAll()
+        
         // Forward RSSI to published property for UI
         engine.$currentRSSI
             .receive(on: DispatchQueue.main)
             .sink { [weak self] rssi in
                 self?.currentRSSI = Int(rssi)
             }
-            .store(in: &cancellables)
+            .store(in: &engineCancellables)
         
         engine.$currentRSSI
             .combineLatest($currentLockState, preferences.$autoUnlockEnabled, preferences.$autoTurnOnThreshold)
@@ -641,7 +645,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                     }
                 }
             }
-            .store(in: &cancellables)
+            .store(in: &engineCancellables)
             
         // Logic downgrading từ Active về Standby khi rời khỏi xe
         engine.$currentRSSI
@@ -657,7 +661,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                     }
                 }
             }
-            .store(in: &cancellables)
+            .store(in: &engineCancellables)
     }
     
     // MARK: - Battery Monitoring Wiring
@@ -991,7 +995,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
             let failureType = isMICFailure ? "MIC failure" : isEncryptionFailure ? "Encryption failure" : "Connection timeout"
             PersistentLogger.shared.append(BLELogEntry(
                 timestamp: Date(), level: .warning,
-                message: "\(failureType) → delay 0.2s rồi scan mới (không retry cache)"
+                message: "\(failureType) → delay 1.5s rồi scan mới (không retry cache)"
             ))
             btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
             forceFullScan = true   // Đánh dấu fallback sau scan timeout cũng không dùng cache
@@ -999,7 +1003,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
             scanRetryCount = 0 // Reset retry count để scan có đủ quota
             stateMachine.transition(to: .scanning)
             if let central = self.centralManager, central.state == .poweredOn {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
                     guard let self = self else { return }
                     if self.centralManager?.state == .poweredOn {
                         self.startScanWithTimeout(central: central)
@@ -1341,8 +1345,12 @@ extension DatBikeCore: CBPeripheralDelegate {
                 fw = str.trimmingCharacters(in: .controlCharacters)
             }
             
-            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
-                message: "Xe: \(name) / \(model) / \(serial) / FW: \(fw)"))
+            let vehicleString = "Xe: \(name) / \(model) / \(serial) / FW: \(fw)"
+            if vehicleString != self.lastLoggedVehicleString {
+                self.lastLoggedVehicleString = vehicleString
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
+                    message: vehicleString))
+            }
             
             // Ưu tiên: name > model > peripheral.name (để ưu tiên tên riêng người dùng đặt như 'Ngựa sắt')
             let displayName: String = {
