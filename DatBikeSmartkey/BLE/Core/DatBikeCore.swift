@@ -59,6 +59,13 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private let maxScanRetries = 2
     private let scanTimeoutSeconds: TimeInterval = 4
     
+    // MIC failure retry limit
+    private var micRetryCount = 0
+    private let maxMicRetries = 5
+    
+    // Guard chống downgradeToStandby chạy trùng lặp
+    private var isDowngrading = false
+    
     // Background execution state
     private var isAppInBackground = false
     
@@ -723,6 +730,11 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     }
     
     private func downgradeToStandby() {
+        // Guard: chặn gọi chồng chéo từ nhiều Combine subscriptions
+        guard !isDowngrading else { return }
+        isDowngrading = true
+        defer { isDowngrading = false }
+        
         pollingEngine?.stopPolling()
         isAuthenticating = false
         
@@ -992,18 +1004,41 @@ extension DatBikeCore: CBCentralManagerDelegate {
         }
         
         if isMICFailure || isEncryptionFailure || isConnectionTimeout {
+            micRetryCount += 1
             let failureType = isMICFailure ? "MIC failure" : isEncryptionFailure ? "Encryption failure" : "Connection timeout"
+            
+            // Giới hạn số lần retry MIC failure để tránh loop vô hạn
+            if micRetryCount > maxMicRetries {
+                PersistentLogger.shared.append(BLELogEntry(
+                    timestamp: Date(), level: .error,
+                    message: "\(failureType) đã thử \(micRetryCount - 1) lần — chuyển sang pending connect nền"
+                ))
+                micRetryCount = 0
+                btWasPoweredOff = true
+                forceFullScan = true
+                stateMachine.transition(to: .scanning)
+                if let central = self.centralManager {
+                    central.connect(peripheral, options: [
+                        CBConnectPeripheralOptionNotifyOnConnectionKey: true,
+                        CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
+                    ])
+                }
+                return
+            }
+            
+            // Progressive backoff: 1s → 2s → 3s → 4s → 5s
+            let delay = Double(micRetryCount) * 1.0
             PersistentLogger.shared.append(BLELogEntry(
                 timestamp: Date(), level: .warning,
-                message: "\(failureType) → delay 1.5s rồi scan mới (không retry cache)"
+                message: "\(failureType) (lần \(micRetryCount)/\(maxMicRetries)) → delay \(String(format: "%.0f", delay))s rồi scan mới"
             ))
-            btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
-            forceFullScan = true   // Đánh dấu fallback sau scan timeout cũng không dùng cache
-            pendingASKUUID = nil    // Clear pending UUID để tránh connect(to:) bypass scan mới
-            scanRetryCount = 0 // Reset retry count để scan có đủ quota
+            btWasPoweredOff = true
+            forceFullScan = true
+            pendingASKUUID = nil
+            scanRetryCount = 0
             stateMachine.transition(to: .scanning)
             if let central = self.centralManager, central.state == .poweredOn {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                     guard let self = self else { return }
                     if self.centralManager?.state == .poweredOn {
                         self.startScanWithTimeout(central: central)
@@ -1235,6 +1270,7 @@ extension DatBikeCore: CBPeripheralDelegate {
                 // Session auto state đã được quản lý bởi isSessionAutoSuspended
                 
                 stateMachine.transition(to: .active)
+                self.micRetryCount = 0 // Reset MIC retry counter khi kết nối thành công
                 NotificationManager.shared.sendNotification(
                     title: "Trạng thái kết nối",
                     body: "Đã kết nối thành công",
