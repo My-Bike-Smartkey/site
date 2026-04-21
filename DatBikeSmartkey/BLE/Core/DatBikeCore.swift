@@ -77,6 +77,20 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         PersistentLogger.shared.markSessionStart()
         setupLogging()
         setupBatteryMonitoring()
+        
+        let hasSavedBike = preferences.savedPin != nil || preferences.savedPeripheralUUID != nil
+        if UserDefaults.standard.bool(forKey: "disclaimerAccepted") && hasSavedBike {
+            initializeBluetoothHardware()
+        }
+        
+        if #available(iOS 18.0, *) {
+            ASKManager.shared.onAccessorySelected = { [weak self] uuid in
+                DispatchQueue.main.async {
+                    self?.initializeBluetoothHardware()
+                    self?.connect(to: uuid)
+                }
+            }
+        }
     }
     
     private func extendBackgroundExecutionTime() {
@@ -512,13 +526,8 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                         try await ctx.io.readValue(from: dashChar)
                     }
                     
-                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                        message: "Dashboard raw (\(data.count) bytes): \(data.hexString)"))
-                        
                     if data.count >= 40 {
                         let tele = DashboardTelemetry(from: data)
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                            message: "Dashboard parsed (40b): Motor=\(tele.motorTemp)°C Odo=\(tele.odometerKm)km"))
                         DispatchQueue.main.async {
                             self.currentTelemetry.motorTemp = tele.motorTemp
                             self.currentTelemetry.controllerTemp = tele.controllerTemp
@@ -527,8 +536,6 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                         }
                     } else if data.count >= 13 {
                         let tele = BLETelemetryParser.parseTelemetry(from: data)
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                            message: "Dashboard parsed (13b): Motor=\(tele.motorTemp)°C Odo=\(tele.odometerKm)km"))
                         DispatchQueue.main.async {
                             self.currentTelemetry.motorTemp = tele.motorTemp
                             self.currentTelemetry.controllerTemp = tele.controllerTemp
@@ -579,8 +586,6 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                    let decoded = try? JSONDecoder().decode(BatteryTelemetry.self, from: jsonData) {
                     if let socValue = decoded.soc?.soc {
                         let percent = Int(socValue * 100)
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                            message: "Battery SOC: \(socValue) → \(percent)%"))
                         DispatchQueue.main.async {
                             self.currentTelemetry.soc = Float(percent)
                         }
@@ -986,7 +991,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
             let failureType = isMICFailure ? "MIC failure" : isEncryptionFailure ? "Encryption failure" : "Connection timeout"
             PersistentLogger.shared.append(BLELogEntry(
                 timestamp: Date(), level: .warning,
-                message: "\(failureType) → scan mới ngay (không retry cache)"
+                message: "\(failureType) → delay 0.2s rồi scan mới (không retry cache)"
             ))
             btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
             forceFullScan = true   // Đánh dấu fallback sau scan timeout cũng không dùng cache
@@ -994,11 +999,21 @@ extension DatBikeCore: CBCentralManagerDelegate {
             scanRetryCount = 0 // Reset retry count để scan có đủ quota
             stateMachine.transition(to: .scanning)
             if let central = self.centralManager, central.state == .poweredOn {
-                self.startScanWithTimeout(central: central)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    guard let self = self else { return }
+                    if self.centralManager?.state == .poweredOn {
+                        self.startScanWithTimeout(central: central)
+                    }
+                }
             }
         } else if scanRetryCount < maxScanRetries {
             scanRetryCount += 1
-            startScanWithTimeout(central: central)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self = self else { return }
+                if let central = self.centralManager, central.state == .poweredOn {
+                    self.startScanWithTimeout(central: central)
+                }
+            }
         } else {
             // Hết quota retry scan → pending connect thay vì chết cứng
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
@@ -1022,8 +1037,15 @@ extension DatBikeCore: CBCentralManagerDelegate {
         standbyTimer = nil
         
         guard let error = error else {
-            // User-initiated disconnect → dọn dẹp hoàn toàn
-            disconnect()
+            // User-initiated disconnect (hoặc lệnh reset nội bộ)
+            // Lệnh cancelPeripheralConnection có thể trả về didDisconnect mất đến > 1s.
+            // Nếu state đang tiến hành scan/connect mới, sự kiện này là "dội lại" từ quá khứ → KHÔNG NGẮT KẾT NỐI MỚI.
+            if stateMachine.state == .idle {
+                disconnect()
+            } else {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "Bỏ qua sự kiện ngắt kết nối không lỗi vì đang trong luồng mới (\(stateMachine.state.displayText))"))
+            }
             return
         }
         

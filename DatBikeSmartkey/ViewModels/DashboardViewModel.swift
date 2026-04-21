@@ -128,12 +128,6 @@ class DashboardViewModel: ObservableObject {
         }
         
         if #available(iOS 18.0, *) {
-            ASKManager.shared.onAccessorySelected = { [weak self] uuid in
-                DispatchQueue.main.async {
-                    self?.core.initializeBluetoothHardware()
-                    self?.core.connect(to: uuid)
-                }
-            }
             ASKManager.shared.onPickerDismissed = { [weak self] error in
                 DispatchQueue.main.async {
                     self?.isProcessing = false
