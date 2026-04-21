@@ -21,17 +21,19 @@ actor BLECharacteristicIO {
     func readValue(from characteristic: CBCharacteristic) async throws -> Data {
         if peripheral.state != .connected { throw IoTError.notConnected }
         
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                if let old = readContinuations[characteristic.uuid] {
-                    print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Read cho \(characteristic.uuid) bị huỷ đè!")
-                    old.resume(throwing: CancellationError())
+        return try await withTimeout(seconds: 8) {
+            try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    if let old = self.readContinuations[characteristic.uuid] {
+                        print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Read cho \(characteristic.uuid) bị huỷ đè!")
+                        old.resume(throwing: CancellationError())
+                    }
+                    self.readContinuations[characteristic.uuid] = continuation
+                    self.peripheral.readValue(for: characteristic)
                 }
-                readContinuations[characteristic.uuid] = continuation
-                peripheral.readValue(for: characteristic)
+            } onCancel: {
+                Task { [weak self] in await self?.cancelRead(for: characteristic.uuid) }
             }
-        } onCancel: {
-            Task { [weak self] in await self?.cancelRead(for: characteristic.uuid) }
         }
     }
     
@@ -39,20 +41,39 @@ actor BLECharacteristicIO {
         if peripheral.state != .connected { throw IoTError.notConnected }
         
         if type == .withResponse {
-            try await withTaskCancellationHandler {
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    if let old = writeContinuations[characteristic.uuid] {
-                        print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Write cho \(characteristic.uuid) bị huỷ đè!")
-                        old.resume(throwing: CancellationError())
+            try await withTimeout(seconds: 8) {
+                try await withTaskCancellationHandler {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        if let old = self.writeContinuations[characteristic.uuid] {
+                            print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Write cho \(characteristic.uuid) bị huỷ đè!")
+                            old.resume(throwing: CancellationError())
+                        }
+                        self.writeContinuations[characteristic.uuid] = continuation
+                        self.peripheral.writeValue(data, for: characteristic, type: type)
                     }
-                    writeContinuations[characteristic.uuid] = continuation
-                    peripheral.writeValue(data, for: characteristic, type: type)
+                } onCancel: {
+                    Task { [weak self] in await self?.cancelWrite(for: characteristic.uuid) }
                 }
-            } onCancel: {
-                Task { [weak self] in await self?.cancelWrite(for: characteristic.uuid) }
             }
         } else {
             peripheral.writeValue(data, for: characteristic, type: type)
+        }
+    }
+    
+    // MARK: - Timeout Helper
+    
+    /// Timeout wrapper: throw IoTError.commandTimeout nếu operation không hoàn thành trong `seconds` giây.
+    private func withTimeout<T>(seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw IoTError.commandTimeout
+            }
+            // Lấy kết quả task nào xong trước, hủy task còn lại
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else { throw IoTError.commandTimeout }
+            return result
         }
     }
     

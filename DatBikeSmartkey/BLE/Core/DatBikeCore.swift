@@ -44,14 +44,18 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     /// Khi cờ này bật, PHẢI scan mới thay vì dùng cache (tránh MIC failure).
     private var btWasPoweredOff: Bool = false
     
+    /// Cờ riêng biệt: peripheral stale (disconnect sau State Restoration),
+    /// buộc scan mới dù BT không bị power-cycle.
+    private var forceFullScan: Bool = false
+    
     // Proximity Standby Timer
     private var standbyTimer: Timer?
     
     // Scan timeout & retry
     private var scanTimer: DispatchWorkItem?
     private var scanRetryCount = 0
-    private let maxScanRetries = 3
-    private let scanTimeoutSeconds: TimeInterval = 6
+    private let maxScanRetries = 2
+    private let scanTimeoutSeconds: TimeInterval = 4
     
     // Background execution state
     private var isAppInBackground = false
@@ -120,9 +124,10 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             
         $currentLockState
             .dropFirst()
-            .sink { lockState in
-                let entry = BLELogEntry(timestamp: Date(), level: .info, message: "Trang thái xe: \(lockState.description)")
-                PersistentLogger.shared.append(entry)
+            .removeDuplicates()
+            .sink { _ in
+                // Log trang thai xe CHINH THUC chi thuc hien trong readLockStatus() (co raw:)
+                // de tranh log trung lap khi set tu nhieu luong khac nhau.
             }
             .store(in: &cancellables)
             
@@ -203,7 +208,26 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     func connect() {
         guard let central = centralManager else {
             initializeBluetoothHardware()
-            stateMachine.transition(to: .scanning)
+            // ═══ CRITICAL: Kiểm tra activeContext SAU khi khởi tạo BT ═══
+            // willRestoreState có thể đã chạy SYNCHRONOUSLY bên trong CBCentralManager constructor
+            // (iOS gọi willRestoreState đồng bộ khi app được restore với RestoreIdentifierKey).
+            // Nếu vậy: activeContext đã được set và state đã → .connecting.
+            // Việc gọi stateMachine.transition(to: .scanning) sẽ OVERRIDE trạng thái đó
+            // → khiến tất cả guard sau dựa trên stateMachine.state đều fail → double-connect!
+            if activeContext == nil {
+                stateMachine.transition(to: .scanning)
+            }
+            return
+        }
+        
+        // ═══ GUARD: Kiểm tra peripheral.state (không dùng stateMachine.state) ═══
+        // Lý do: stateMachine.state có thể bị override về .scanning sau khi willRestoreState
+        // đã set chính xác .connecting (do thứ tự bất định của CBCentralManager init).
+        // peripheral.state là giá trị vật lý từ iOS — tin cậy hơn.
+        if let ctx = activeContext,
+           ctx.peripheral.state == .connected || ctx.peripheral.state == .connecting {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "connect() bỏ qua: peripheral đang kết nối (state=\(ctx.peripheral.state.rawValue))"))
             return
         }
         
@@ -247,14 +271,16 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
            let savedUUIDStr = preferences.savedPeripheralUUID,
            let savedUUID = UUID(uuidString: savedUUIDStr) {
             
-            // ═══ GUARD: Nếu BT vừa bị tắt/bật → BẮT BUỘC scan mới ═══
-            // Lý do: iOS cache encryption keys cũ (LTK) cho peripheral UUID.
-            // Sau khi BT reset, xe đã xóa keys nhưng iOS vẫn giữ → MIC failure.
-            // Scan mới buộc iOS negotiate fresh link-layer encryption.
-            if btWasPoweredOff {
+            // ═══ GUARD: Nếu BT vừa tắt/bật HOẶC peripheral stale → BẮT BUỘC scan mới ═══
+            // btWasPoweredOff: BT power-cycle → iOS cache encryption keys cũ → MIC failure
+            // forceFullScan:   Peripheral stale (State Restoration disconnect)
+            // Cả 2 đều yêu cầu scan mới để iOS negotiate fresh link-layer encryption.
+            if btWasPoweredOff || forceFullScan {
+                let reason = btWasPoweredOff ? "BT power-cycle" : "peripheral stale (State Restoration)"
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                    message: "BT vừa power-cycle → bỏ qua cache, scan mới để tránh MIC failure"))
+                    message: "\(reason) → bỏ qua cache, scan mới để tránh MIC failure"))
                 btWasPoweredOff = false
+                forceFullScan = false
                 startScanWithTimeout(central: central)
                 return
             }
@@ -289,10 +315,29 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         guard let central = centralManager else { return }
         preferences.savedPeripheralUUID = uuid.uuidString
         
+        // ═══ GUARD: Dùng peripheral.state thay vì stateMachine.state (cùng lý do với connect()) ═══
+        if let ctx = activeContext,
+           ctx.peripheral.state == .connected || ctx.peripheral.state == .connecting {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "connect(to:) bỏ qua: peripheral đang kết nối (state=\(ctx.peripheral.state.rawValue))"))
+            return
+        }
+        
         guard central.state == .poweredOn else {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
                 message: "ASK connect: Hoãn gọi API vì Bluetooth chưa poweredOn (\(central.state.rawValue))"))
             self.pendingASKUUID = uuid
+            return
+        }
+        
+        // ═══ GUARD: Nếu BT vừa power-cycle → PHẢI scan mới, không dùng retrieved cache ═══
+        // Lý do: iOS giữ encryption keys cũ trong retrieved peripheral nhưng xe đã xóa → MIC failure.
+        // (Giống guard tương tự trong connect() không tham số.)
+        if btWasPoweredOff {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "ASK connect: BT power-cycle → bỏ qua cache, scan mới để tránh encryption failure"))
+            btWasPoweredOff = false
+            startScanWithTimeout(central: central)
             return
         }
         
@@ -737,8 +782,9 @@ extension DatBikeCore: CBCentralManagerDelegate {
             } else {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                     message: "Peripheral restore nhưng đã disconnect (state: \(restored.state.rawValue)) → bỏ qua, sẽ scan mới"))
-                // Đánh dấu để connect() biết PHẢI scan mới, không dùng cache
-                btWasPoweredOff = true
+                // Dùng forceFullScan (không phải btWasPoweredOff) vì BT không bị tắt/bật —
+                // chỉ peripheral bị disconnect. btWasPoweredOff dành riêng cho BT power-cycle.
+                forceFullScan = true
             }
         }
     }
@@ -761,25 +807,18 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 // btWasPoweredOff vẫn giữ = true để connect() biết phải scan
             }
             
-            // Nếu đã có activeContext từ willRestoreState VÀ KHÔNG qua power-cycle → discover services
-            if let ctx = activeContext, case .connecting = stateMachine.state {
-                if ctx.peripheral.state == .connected {
-                    // Peripheral vẫn connected → discover ngay
-                    ctx.peripheral.discoverServices(BLEService.allServices)
-                    return
-                } else {
-                    // Peripheral đã disconnect → KHÔNG reconnect cached peripheral
-                    // (encryption keys có thể stale) → xóa context, để connect() scan mới
-                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
-                        message: "Restored peripheral đã disconnect → xóa context, scan mới"))
-                    central.cancelPeripheralConnection(ctx.peripheral)
-                    activeContext = nil
-                    commandDispatcher = nil
-                    pollingEngine = nil
-                    isAuthenticating = false
-                    // Fall through để connect() xử lý (sẽ scan mới vì btWasPoweredOff=true
-                    // hoặc vì không có activeContext)
+            // ═══ Kiểm tra activeContext từ willRestoreState (dùng peripheral.state, KHÔNG dùng stateMachine.state) ═══
+            // stateMachine.state có thể bị override về .scanning bởi connect() nếu willRestoreState chạy
+            // synchronously bên trong CBCentralManager constructor và connect() chưa biết.
+            // peripheral.state là sự thật vật lý từ iOS — đáng tin hơn stateMachine.
+            if let ctx = activeContext, ctx.peripheral.state == .connected {
+                // Peripheral vẫn connected từ State Restoration → discover ngay
+                if case .connecting = stateMachine.state {} else {
+                    // state bị override (ví dụ: .scanning) → sửa lại cho đúng
+                    stateMachine.transition(to: .connecting)
                 }
+                ctx.peripheral.discoverServices(BLEService.allServices)
+                return
             }
             
             if let uuid = pendingASKUUID {
@@ -932,6 +971,8 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 message: "\(failureType) → scan mới ngay (không retry cache)"
             ))
             btWasPoweredOff = true // Đánh dấu để connect() biết bỏ qua retrievePeripherals
+            forceFullScan = true   // Đánh dấu fallback sau scan timeout cũng không dùng cache
+            pendingASKUUID = nil    // Clear pending UUID để tránh connect(to:) bypass scan mới
             scanRetryCount = 0 // Reset retry count để scan có đủ quota
             stateMachine.transition(to: .scanning)
             if let central = self.centralManager, central.state == .poweredOn {
@@ -1091,6 +1132,16 @@ extension DatBikeCore: CBPeripheralDelegate {
             return
         }
         
+        // ═══ FAST PATH: Nếu không dùng chế độ "Chỉ kết nối khi gần" ═══
+        // Không cần poll RSSI → auth ngay, không qua standby waiting.
+        if !preferences.connectOnlyWhenNear {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "connectOnlyWhenNear=false → bỏ qua standby, auth ngay"))
+            isAuthenticating = true
+            executeAuthProtocol(ctx: ctx, pin: pin)
+            return
+        }
+        
         NotificationManager.shared.sendNotification(
             title: "Trạng thái kết nối",
             body: "Phát hiện di chuyển gần xe, kết nối ở trạng thái chờ",
@@ -1104,7 +1155,14 @@ extension DatBikeCore: CBPeripheralDelegate {
         
         DispatchQueue.main.async {
             self.standbyTimer?.invalidate()
-            self.standbyTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak ctx] _ in
+            
+            // ═══ INSTANT RSSI CHECK ═══
+            // Đọc RSSI ngay lập tức (không chờ tick đầu tiên của timer).
+            // Nếu người dùng đang đứng gần xe, auth sẽ trigger ngay thay vì sau 0.5s.
+            ctx.peripheral.readRSSI()
+            
+            // Poll RSSI mỗi 0.5s để phát hiện ngưỡng gần xe nhanh hơn ~50% so với 1s cũ
+            self.standbyTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak ctx] _ in
                 ctx?.peripheral.readRSSI()
             }
         }
@@ -1276,6 +1334,11 @@ extension DatBikeCore: CBPeripheralDelegate {
                     // Ignore unknown transitions to avoid overriding state with noise
                 } else {
                     DispatchQueue.main.async {
+                        // Notify BLE push: chi log khi status thuc su thay doi
+                        if self.currentLockState != status {
+                            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                                message: "[BLE Notify] Trang thai xe thay doi: \(status.description)"))
+                        }
                         self.currentLockState = status
                     }
                 }
