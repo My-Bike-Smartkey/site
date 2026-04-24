@@ -30,11 +30,9 @@ struct SettingsView: View {
                         Spacer()
                     }
                     .padding(.horizontal)
-                    
-                    
-                    // Device info section
+                                   // 1. XE CỦA TÔI
                     if viewModel.isConnected && !viewModel.bikeInfo.isEmpty {
-                        settingsSection(title: "THÔNG TIN XE") {
+                        settingsSection(title: "XE CỦA TÔI") {
                             VStack(spacing: 0) {
                                 settingsButton(icon: "battery.100.bolt", iconColor: .green, title: "Phân tích Pin (BMS)") {
                                     showBatteryAnalytics = true
@@ -58,12 +56,51 @@ struct SettingsView: View {
                                     settingsRow(icon: "key", iconColor: .cyan,
                                                 title: "Token", value: String(viewModel.bikeInfo.deviceToken.prefix(16)) + "…")
                                 }
+                                
+                                Divider().background(Color.white.opacity(0.06))
+                                
+                                // Đồng bộ giờ xe
+                                Button {
+                                    viewModel.syncTime()
+                                } label: {
+                                    HStack {
+                                        HStack(spacing: 10) {
+                                            Image(systemName: "clock.fill")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.blue)
+                                                .frame(width: 28, height: 28)
+                                                .background(Color.blue.opacity(0.15))
+                                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                            Text(viewModel.isSyncingTime ? "Đang đồng bộ giờ..." : "Đồng bộ giờ xe")
+                                                .font(.subheadline)
+                                                .foregroundColor(viewModel.isConnected ? .white : .gray)
+                                        }
+                                        Spacer()
+                                        if viewModel.isSyncingTime {
+                                            ProgressView()
+                                                .tint(.blue)
+                                        } else {
+                                            Image(systemName: "chevron.right")
+                                                .font(.caption2)
+                                                .foregroundColor(.gray)
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                }
+                                .disabled(!viewModel.isConnected || viewModel.isSyncingTime)
+                                
+                                Divider().background(Color.white.opacity(0.06))
+                                
+                                settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
+                                    showForgetConfirm = true
+                                }
                             }
                         }
                     }
                     
-                    // Security section
-                    settingsSection(title: "BẢO MẬT") {
+                    // 2. KẾT NỐI
+                    settingsSection(title: "KẾT NỐI") {
                         VStack(spacing: 0) {
                             Toggle(isOn: $viewModel.connectOnlyWhenNear) {
                                 HStack(spacing: 12) {
@@ -109,7 +146,6 @@ struct SettingsView: View {
                             }
                             Divider().background(Color.white.opacity(0.06))
                             
-                            // NEW: Tự động bật xe
                             Toggle(isOn: $viewModel.autoUnlockEnabled) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "bolt.fill")
@@ -152,252 +188,18 @@ struct SettingsView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, 14)
                             }
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            settingsButton(icon: "cpu.fill", iconColor: .cyan, title: "Ghép đôi khoá phụ (ESP32)") {
-                                showProvisioning = true
-                            }
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
-                                showForgetConfirm = true
-                            }
                         }
                     }
                     
-                    // App preferences section
-                    settingsSection(title: "ỨNG DỤNG") {
-                        VStack(spacing: 0) {
-                            Toggle(isOn: $viewModel.notificationsEnabled) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "bell.badge.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.orange)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.orange.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Thông báo hệ thống")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Text("Bật/tắt toàn bộ thông báo của app")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                            .tint(.orange)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            
-                            // Granular toggles — chỉ hiển thị khi master bật
-                            if viewModel.notificationsEnabled {
-                                Divider().background(Color.white.opacity(0.06))
-                                
-                                // Sub-header
-                                HStack {
-                                    Text("LOẠI THÔNG BÁO")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.gray.opacity(0.6))
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.top, 8)
-                                .padding(.bottom, 4)
-                                
-                                notificationSubToggle(
-                                    icon: "checkmark.circle.fill",
-                                    iconColor: .green,
-                                    title: "Kết nối thành công",
-                                    subtitle: "Khi xác thực BLE hoàn tất",
-                                    binding: $viewModel.notifyOnConnected
-                                )
-                                
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                
-                                notificationSubToggle(
-                                    icon: "figure.walk",
-                                    iconColor: .cyan,
-                                    title: "Gần xe — Kết nối chờ",
-                                    subtitle: "Khi phát hiện di chuyển gần xe",
-                                    binding: $viewModel.notifyOnStandby
-                                )
-                                
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                
-                                notificationSubToggle(
-                                    icon: "arrow.uturn.backward.circle.fill",
-                                    iconColor: .yellow,
-                                    title: "Ra xa xe — Chuyển chờ",
-                                    subtitle: "Khi phát hiện di chuyển ra xa",
-                                    binding: $viewModel.notifyOnDisconnected
-                                )
-                                
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                
-                                notificationSubToggle(
-                                    icon: "bolt.fill",
-                                    iconColor: .orange,
-                                    title: "Tự động bật xe",
-                                    subtitle: "Khi Auto Turn-On được kích hoạt",
-                                    binding: $viewModel.notifyOnAutoTurnOn
-                                )
-                                
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                
-                                notificationSubToggle(
-                                    icon: "battery.100.bolt",
-                                    iconColor: .green,
-                                    title: "Sạc đầy pin",
-                                    subtitle: "Khi pin đạt 100%",
-                                    binding: $viewModel.notifyOnBatteryFull
-                                )
-                                
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                
-                                notificationSubToggle(
-                                    icon: "bolt.slash.fill",
-                                    iconColor: .red,
-                                    title: "Ngắt sạc bất ngờ",
-                                    subtitle: "Báo động khi mất sạc lúc xe tắt",
-                                    binding: $viewModel.notifyOnChargeDisconnect
-                                )
-                                
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                
-                                notificationSubToggle(
-                                    icon: "battery.25",
-                                    iconColor: .orange,
-                                    title: "Cảnh báo pin yếu",
-                                    subtitle: "Khi pin giảm xuống dưới ngưỡng",
-                                    binding: $viewModel.notifyOnBatteryThreshold
-                                )
-                                
-                                if viewModel.notifyOnBatteryThreshold {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack {
-                                            Text("Ngưỡng cảnh báo: ")
-                                                .font(.caption2)
-                                                .foregroundColor(.gray)
-                                            + Text("\(Int(viewModel.batteryLowThreshold))%")
-                                                .font(.system(.caption, design: .monospaced))
-                                                .foregroundColor(.white)
-                                            Spacer()
-                                        }
-                                        Slider(value: $viewModel.batteryLowThreshold, in: 5...50, step: 1.0)
-                                            .tint(.orange)
-                                    }
-                                    .padding(.leading, 52)
-                                    .padding(.trailing, 14)
-                                    .padding(.bottom, 8)
-                                    .animation(.easeInOut, value: viewModel.notifyOnBatteryThreshold)
-                                }
-                                
-                                Spacer().frame(height: 6)
-                            }
-                        }
-                        .animation(.easeInOut(duration: 0.2), value: viewModel.notificationsEnabled)
-                    }
-
-                    
-                    // Documentation section
-                    settingsSection(title: "TRỢ GIÚP") {
-                        VStack(spacing: 0) {
-                            settingsButton(icon: "book.pages.fill", iconColor: .blue, title: "Nguyên lý kết nối & Trạng thái") {
-                                showConnectionGuide = true
-                            }
-                        }
-                    }
-                    
-                    // Logs section
-                    settingsSection(title: "NHẬT KÝ") {
+                    // 3. CHẾ ĐỘ NHÀ PHÁT TRIỂN
+                    settingsSection(title: "CHẾ ĐỘ NHÀ PHÁT TRIỂN") {
                         VStack(spacing: 0) {
                             settingsButton(icon: "list.bullet.rectangle.portrait", iconColor: .blue, title: "Xem nhật ký đầy đủ (Full Logs)") {
                                 showLogs = true
                             }
-                        }
-                    }
-                    
-                    // Time Sync section
-                    settingsSection(title: "ĐỒNG BỘ GIỜ XE") {
-                        VStack(spacing: 0) {
-                            // Current device time display
-                            HStack {
-                                HStack(spacing: 10) {
-                                    Image(systemName: "clock.fill")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.blue)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.blue.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Giờ điện thoại (UTC+7)")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        LiveTimeText()
-                                    }
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
                             
                             Divider().background(Color.white.opacity(0.06))
                             
-                            // Sync Now button
-                            Button {
-                                viewModel.syncTime()
-                            } label: {
-                                HStack {
-                                    HStack(spacing: 10) {
-                                        Image(systemName: "arrow.triangle.2.circlepath")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.blue)
-                                            .frame(width: 28, height: 28)
-                                            .background(Color.blue.opacity(0.15))
-                                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                                        Text(viewModel.isSyncingTime ? "Đang đồng bộ..." : "Đồng bộ ngay")
-                                            .font(.subheadline)
-                                            .foregroundColor(viewModel.isConnected ? .white : .gray)
-                                    }
-                                    Spacer()
-                                    if viewModel.isSyncingTime {
-                                        ProgressView()
-                                            .tint(.blue)
-                                    } else {
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                            }
-                            .disabled(!viewModel.isConnected || viewModel.isSyncingTime)
-                        }
-                    }
-                    
-                    settingsSection(title: "WIDGET & HOẠT ĐỘNG NGẦM") {
-                        Toggle(isOn: $viewModel.widgetAndLiveActivityEnabled) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "bolt.badge.clock.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.yellow)
-                                    .frame(width: 28, height: 28)
-                                    .background(Color.yellow.opacity(0.15))
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                Text("Bật Widget & Live Activity")
-                                    .font(.subheadline)
-                                    .foregroundColor(.white)
-                            }
-                        }
-                        .tint(Color(red: 0.0, green: 0.96, blue: 1.0))
-                    }
-                    
-                    settingsSection(title: "GỠ LỖI (NÂNG CAO)") {
-                        VStack(spacing: 0) {
-                            // Toggle 1: Bật/Tắt ghi log
                             Toggle(isOn: $viewModel.isLoggingEnabled) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "doc.text.fill")
@@ -410,7 +212,7 @@ struct SettingsView: View {
                                         Text("Ghi nhật ký BLE")
                                             .font(.subheadline)
                                             .foregroundColor(.white)
-                                        Text("Lưu log INFO/SUCCESS/WARNING/ERROR. TẮT để tiết kiệm pin và bộ nhớ.")
+                                        Text("Lưu log INFO/SUCCESS/WARNING/ERROR. TẮT để tiết kiệm pin.")
                                             .font(.caption2)
                                             .foregroundColor(.gray)
                                     }
@@ -422,7 +224,6 @@ struct SettingsView: View {
                             
                             Divider().background(Color.white.opacity(0.06))
                             
-                            // Toggle 2: Verbose — chỉ hiện khi logging bật
                             Toggle(isOn: $viewModel.verboseLoggingEnabled) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "waveform.path.ecg")
@@ -448,7 +249,6 @@ struct SettingsView: View {
                             
                             Divider().background(Color.white.opacity(0.06))
                             
-                            // Toggle 3: Skip Proximity Token (test ASK)
                             Toggle(isOn: $viewModel.skipProximityToken) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "antenna.radiowaves.left.and.right.slash")
@@ -473,55 +273,196 @@ struct SettingsView: View {
                         }
                     }
                     
-                    // Donate section
-                    settingsSection(title: "ỦNG HỘ DỰ ÁN") {
-                        VStack(spacing: 12) {
-                            Text("Nếu app hữu ích, bạn có thể ủng hộ tác giả 🙏")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 8)
-                                .padding(.top, 12)
-                            
-                            QRCodeView(content: "00020101021138630010A000000727013300069710250119PSP26089156000002310208QRIBFTTA53037045802VN62190515MOMOW2W3637058263049C27", size: 200)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                                )
-                            
-                            VStack(spacing: 2) {
-                                Text("NGUYỄN PHÚC TÚ")
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white)
-                                Text("*******135")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                HStack(spacing: 6) {
-                                    Text("MoMo")
-                                        .font(.caption2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Color(red: 0.87, green: 0.18, blue: 0.49))
-                                    Text("•")
-                                        .font(.caption2)
-                                        .foregroundColor(.gray)
-                                    Text("VietQR")
-                                        .font(.caption2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Color(red: 0.87, green: 0.10, blue: 0.14))
-                                    Text("•")
-                                        .font(.caption2)
-                                        .foregroundColor(.gray)
-                                    Text("Napas 247")
-                                        .font(.caption2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.25))
+                    // 4. THÔNG BÁO
+                    settingsSection(title: "THÔNG BÁO") {
+                        VStack(spacing: 0) {
+                            Toggle(isOn: $viewModel.notificationsEnabled) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "bell.badge.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.orange)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.orange.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Thông báo hệ thống")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                        Text("Bật/tắt toàn bộ thông báo của app")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
                                 }
                             }
-                            .padding(.bottom, 12)
+                            .tint(.orange)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            
+                            if viewModel.notificationsEnabled {
+                                Divider().background(Color.white.opacity(0.06))
+                                
+                                HStack {
+                                    Text("LOẠI THÔNG BÁO")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundColor(.gray.opacity(0.6))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.top, 8)
+                                .padding(.bottom, 4)
+                                
+                                notificationSubToggle(
+                                    icon: "checkmark.circle.fill", iconColor: .green,
+                                    title: "Kết nối thành công", subtitle: "Khi xác thực BLE hoàn tất",
+                                    binding: $viewModel.notifyOnConnected
+                                )
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                notificationSubToggle(
+                                    icon: "figure.walk", iconColor: .cyan,
+                                    title: "Gần xe — Kết nối chờ", subtitle: "Khi phát hiện di chuyển gần xe",
+                                    binding: $viewModel.notifyOnStandby
+                                )
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                notificationSubToggle(
+                                    icon: "arrow.uturn.backward.circle.fill", iconColor: .yellow,
+                                    title: "Ra xa xe — Chuyển chờ", subtitle: "Khi phát hiện di chuyển ra xa",
+                                    binding: $viewModel.notifyOnDisconnected
+                                )
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                notificationSubToggle(
+                                    icon: "bolt.fill", iconColor: .orange,
+                                    title: "Tự động bật xe", subtitle: "Khi Auto Turn-On được kích hoạt",
+                                    binding: $viewModel.notifyOnAutoTurnOn
+                                )
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                notificationSubToggle(
+                                    icon: "battery.100.bolt", iconColor: .green,
+                                    title: "Sạc đầy pin", subtitle: "Khi pin đạt 100%",
+                                    binding: $viewModel.notifyOnBatteryFull
+                                )
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                notificationSubToggle(
+                                    icon: "bolt.slash.fill", iconColor: .red,
+                                    title: "Ngắt sạc bất ngờ", subtitle: "Báo động khi mất sạc lúc xe tắt",
+                                    binding: $viewModel.notifyOnChargeDisconnect
+                                )
+                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
+                                notificationSubToggle(
+                                    icon: "battery.25", iconColor: .orange,
+                                    title: "Cảnh báo pin yếu", subtitle: "Khi pin giảm xuống dưới ngưỡng",
+                                    binding: $viewModel.notifyOnBatteryThreshold
+                                )
+                                
+                                if viewModel.notifyOnBatteryThreshold {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        HStack {
+                                            Text("Ngưỡng cảnh báo: ")
+                                                .font(.caption2)
+                                                .foregroundColor(.gray)
+                                            + Text("\(Int(viewModel.batteryLowThreshold))%")
+                                                .font(.system(.caption, design: .monospaced))
+                                                .foregroundColor(.white)
+                                            Spacer()
+                                        }
+                                        Slider(value: $viewModel.batteryLowThreshold, in: 5...50, step: 1.0)
+                                            .tint(.orange)
+                                    }
+                                    .padding(.leading, 52)
+                                    .padding(.trailing, 14)
+                                    .padding(.bottom, 8)
+                                    .animation(.easeInOut, value: viewModel.notifyOnBatteryThreshold)
+                                }
+                                Spacer().frame(height: 6)
+                            }
+                            
+                            Divider().background(Color.white.opacity(0.06))
+                            
+                            Toggle(isOn: $viewModel.widgetAndLiveActivityEnabled) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "bolt.badge.clock.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.yellow)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.yellow.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    Text("Bật Widget & Live Activity")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white)
+                                }
+                            }
+                            .tint(Color(red: 0.0, green: 0.96, blue: 1.0))
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
                         }
-                        .frame(maxWidth: .infinity)
+                        .animation(.easeInOut(duration: 0.2), value: viewModel.notificationsEnabled)
+                    }
+                    
+                    // 5. CHÌA KHÓA PHỤ
+                    settingsSection(title: "CHÌA KHÓA PHỤ") {
+                        VStack(spacing: 0) {
+                            settingsButton(icon: "cpu.fill", iconColor: .cyan, title: "Ghép đôi khoá phụ (ESP32)") {
+                                showProvisioning = true
+                            }
+                        }
+                    }
+                    
+                    // 6. HỖ TRỢ
+                    settingsSection(title: "HỖ TRỢ") {
+                        VStack(spacing: 0) {
+                            settingsButton(icon: "book.pages.fill", iconColor: .blue, title: "Nguyên lý kết nối & Trạng thái") {
+                                showConnectionGuide = true
+                            }
+                            
+                            Divider().background(Color.white.opacity(0.06))
+                            
+                            VStack(spacing: 12) {
+                                Text("Nếu app hữu ích, bạn có thể ủng hộ tác giả 🙏")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, 8)
+                                    .padding(.top, 12)
+                                
+                                QRCodeView(content: "00020101021138630010A000000727013300069710250119PSP26089156000002310208QRIBFTTA53037045802VN62190515MOMOW2W3637058263049C27", size: 200)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12)
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                                
+                                VStack(spacing: 2) {
+                                    Text("NGUYỄN PHÚC TÚ")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.white)
+                                    Text("*******135")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                    HStack(spacing: 6) {
+                                        Text("MoMo")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color(red: 0.87, green: 0.18, blue: 0.49))
+                                        Text("•")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                        Text("VietQR")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color(red: 0.87, green: 0.10, blue: 0.14))
+                                        Text("•")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                        Text("Napas 247")
+                                            .font(.caption2)
+                                            .fontWeight(.bold)
+                                            .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.25))
+                                    }
+                                }
+                                .padding(.bottom, 12)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
                     }
                     
                     // App info
