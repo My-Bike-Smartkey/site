@@ -155,10 +155,9 @@ struct SmartKeySetupView: View {
     }
     
     private func autofillData() {
-        print("[PROV] Đang tạm dừng DatBikeCore để nhường sóng BLE cho Provisioner...")
+        print("[PROV] SmartKeySetupView onAppear: Tạm dừng DatBikeCore...")
         let core = container.bleCore
         core.suspendAutoFeatures()
-        core.forceStopScan()
         
         // Auto-fill from app state to provide seamless UX
         if let savedPin = PreferencesManager.shared.savedPin {

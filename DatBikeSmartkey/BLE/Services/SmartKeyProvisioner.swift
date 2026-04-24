@@ -40,7 +40,7 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
     }
     
     func startProvisioning(pin: String, mac: String, frame: String) {
-        print("[PROV] Bắt đầu Provisioning. PIN: \(pin), MAC: \(mac), FRAME: \(frame)")
+        print("[PROV] Bắt đầu Provisioning via ASK. PIN: \(pin), MAC: \(mac), FRAME: \(frame)")
         self.targetPin = pin
         self.targetMac = mac
         self.targetFrame = frame
@@ -52,18 +52,38 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
         }
         
         state = .scanning
-        print("[PROV] Đang quét tìm thiết bị (nil filter, AllowDuplicates=true)...")
-        // Quét nil để bắt mọi sóng BLE xung quanh
-        centralManager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+        print("[PROV] Đang hiển thị System Picker qua ASKManager...")
         
-        // Timeout cho quá trình scan
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
-            guard let self = self else { return }
-            if self.state == .scanning {
-                print("[PROV] Timeout quét (10s)! Không tìm thấy ESP-Smartkey.")
-                self.centralManager.stopScan()
-                self.state = .error("Không tìm thấy mạch ESP-Smartkey.")
+        if #available(iOS 18.0, *) {
+            ASKManager.shared.onESP32Selected = { [weak self] uuid in
+                self?.handleASKSelection(uuid: uuid)
             }
+            ASKManager.shared.onPickerDismissed = { [weak self] error in
+                guard let self = self, self.state == .scanning else { return }
+                if let err = error {
+                    self.state = .error(err.localizedDescription)
+                } else {
+                    self.state = .error("Đã huỷ cấp quyền ASK.")
+                }
+            }
+            ASKManager.shared.showPickerForESP32()
+        } else {
+            self.state = .error("Tính năng này yêu cầu iOS 18 trở lên.")
+        }
+    }
+    
+    private func handleASKSelection(uuid: UUID) {
+        guard state == .scanning else { return }
+        print("[PROV] ASK đã cấp quyền. Đang kết nối ESP32 với UUID: \(uuid)")
+        
+        let peripherals = centralManager.retrievePeripherals(withIdentifiers: [uuid])
+        if let p = peripherals.first {
+            self.peripheral = p
+            self.peripheral?.delegate = self
+            state = .connecting
+            centralManager.connect(p, options: nil)
+        } else {
+            self.state = .error("Không thể retrieve peripheral từ iOS sau khi cấp quyền ASK")
         }
     }
     
