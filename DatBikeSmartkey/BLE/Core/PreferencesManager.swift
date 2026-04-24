@@ -91,7 +91,6 @@ class PreferencesManager {
         }
     }
     
-    /// Bỏ qua gửi Proximity Token khi auth (dùng cho test ASK)
     @Published var skipProximityToken: Bool {
         didSet { sharedDefaults.set(skipProximityToken, forKey: "skipProximityToken") }
     }
@@ -100,8 +99,24 @@ class PreferencesManager {
         didSet { sharedDefaults.set(savedPin, forKey: "savedPin") }
     }
     
+    @Published var savedESP32UUID: String? {
+        didSet { sharedDefaults.set(savedESP32UUID, forKey: "savedESP32UUID") }
+    }
+    
     @Published var savedPeripheralUUID: String? {
         didSet { sharedDefaults.set(savedPeripheralUUID, forKey: "lastPeripheralUUID") }
+    }
+    
+    @Published var savedBikeName: String? {
+        didSet { sharedDefaults.set(savedBikeName, forKey: "savedBikeName") }
+    }
+    
+    @Published var savedBikeSerial: String? {
+        didSet { sharedDefaults.set(savedBikeSerial, forKey: "savedBikeSerial") }
+    }
+    
+    @Published var savedBikeMac: String? {
+        didSet { sharedDefaults.set(savedBikeMac, forKey: "savedBikeMac") }
     }
     
     /// Ngày cuối cùng đã sync time với xe — dùng để auto sync 1 lần/ngày
@@ -177,7 +192,12 @@ class PreferencesManager {
         self.connectOnlyWhenNear = defaults.bool(forKey: "connectOnlyWhenNear")
         self.isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
         self.savedPin = defaults.string(forKey: "savedPin")
+        self.savedESP32UUID = defaults.string(forKey: "savedESP32UUID")
         self.savedPeripheralUUID = defaults.string(forKey: "lastPeripheralUUID")
+        
+        self.savedBikeName = defaults.string(forKey: "savedBikeName")
+        self.savedBikeSerial = defaults.string(forKey: "savedBikeSerial")
+        self.savedBikeMac = defaults.string(forKey: "savedBikeMac")
         
         // Granular notification preferences — default true
         self.notifyOnConnected    = defaults.object(forKey: "notifyOnConnected")    as? Bool ?? true

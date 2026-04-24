@@ -1720,6 +1720,11 @@ extension DatBikeCore: CBPeripheralDelegate {
             // Lưu tên xe thực ngay vào App Group cho Widget
             self.preferences.sharedDefaults.set(displayName, forKey: "widgetBikeName")
             
+            // Lưu thông tin cố định của xe để hiển thị offline trong Settings > Xe của tôi
+            self.preferences.savedBikeName = displayName
+            self.preferences.savedBikeSerial = serial
+            self.preferences.savedBikeMac = ctx.peripheral.identifier.uuidString
+            
             DispatchQueue.main.async {
                 self.currentVehicleInfo = IoTVehicleInfo(
                     name: displayName,

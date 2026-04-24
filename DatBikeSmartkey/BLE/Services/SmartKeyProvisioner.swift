@@ -41,7 +41,7 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
     }
     
     func findAndConnect() {
-        print("[PROV] Bắt đầu tìm và kết nối Khóa Phụ via ASK...")
+        print("[PROV] Bắt đầu tìm và kết nối Khóa Phụ...")
         
         guard centralManager.state == .poweredOn else {
             print("[PROV] Lỗi: Bluetooth chưa được bật. Trạng thái hiện tại: \(centralManager.state.rawValue)")
@@ -49,10 +49,40 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
             return
         }
         
+        // 1. Kiểm tra xem thiết bị đã kết nối sẵn trong Cài đặt Bluetooth chưa
+        // Nếu mạch ESP32 đã được Pair trong iOS Settings và đang kết nối, nó sẽ ngừng phát sóng (stop advertising).
+        // Khi đó, cả ASK Picker lẫn lệnh quét truyền thống đều không thể tìm thấy.
+        let connectedPeripherals = centralManager.retrieveConnectedPeripherals(withServices: [serviceUUID])
+        if let p = connectedPeripherals.first {
+            print("[PROV] Tìm thấy ESP32 đã kết nối sẵn từ Hệ thống iOS: \(p.name ?? "Unknown")")
+            self.peripheral = p
+            self.peripheral?.delegate = self
+            state = .connecting
+            centralManager.connect(p, options: nil)
+            return
+        }
+        
+        // 2. Kiểm tra thiết bị đã từng được lưu UUID (Đã cấp quyền ASK hoặc ghép đôi trước đó)
+        if let savedUUIDString = PreferencesManager.shared.savedESP32UUID,
+           let savedUUID = UUID(uuidString: savedUUIDString) {
+            let knownPeripherals = centralManager.retrievePeripherals(withIdentifiers: [savedUUID])
+            if let p = knownPeripherals.first {
+                print("[PROV] Tìm thấy ESP32 đã lưu (UUID: \(savedUUIDString)). Bắt đầu kết nối lại...")
+                self.peripheral = p
+                self.peripheral?.delegate = self
+                state = .connecting
+                centralManager.connect(p, options: nil)
+                return
+            }
+        }
+        
+        // 3. Nếu chưa kết nối sẵn, ta phải dùng ASK (System Picker) trên iOS 18
+        // LƯU Ý QUAN TRỌNG: Vì UUID 12340000... đã được khai báo trong Info.plist (NSAccessorySetupBluetoothServices)
+        // iOS 18 sẽ CHẶN lệnh scanForPeripherals truyền thống với UUID này! Do đó ta BẮT BUỘC phải dùng ASK.
         state = .scanning
-        print("[PROV] Đang hiển thị System Picker qua ASKManager...")
         
         if #available(iOS 18.0, *) {
+            print("[PROV] Đang hiển thị System Picker qua ASKManager...")
             ASKManager.shared.onESP32Selected = { [weak self] uuid in
                 self?.handleASKSelection(uuid: uuid)
             }
@@ -66,7 +96,8 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
             }
             ASKManager.shared.showPickerForESP32()
         } else {
-            self.state = .error("Tính năng này yêu cầu iOS 18 trở lên.")
+            print("[PROV] Đang quét BLE tìm ESP-Smartkey (iOS < 18)...")
+            centralManager.scanForPeripherals(withServices: [serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
         }
     }
     
@@ -170,6 +201,21 @@ extension SmartKeyProvisioner: CBCentralManagerDelegate {
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
         print("[PROV] Kết nối thất bại: \(error?.localizedDescription ?? "Unknown")")
+        
+        // Nếu kết nối lại bằng UUID đã lưu bị thất bại (VD: do người dùng xoá Bluetooth trong Cài đặt hệ thống)
+        if PreferencesManager.shared.savedESP32UUID == peripheral.identifier.uuidString {
+            print("[PROV] Xóa UUID đã lưu bị lỗi và thử tìm lại (kích hoạt lại ASK)...")
+            PreferencesManager.shared.savedESP32UUID = nil
+            
+            // Đặt lại state về scanning để có thể gọi lại tìm kiếm
+            self.state = .scanning
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.findAndConnect()
+            }
+            return
+        }
+        
         state = .error("Không thể kết nối đến ESP32: \(error?.localizedDescription ?? "Unknown error")")
     }
     
@@ -206,6 +252,9 @@ extension SmartKeyProvisioner: CBPeripheralDelegate {
         
         print("[PROV] Tìm thấy Characteristics. Đã sẵn sàng ghi dữ liệu.")
         state = .readyToWrite
+        
+        // Lưu lại UUID của thiết bị này để lần sau có thể kết nối thẳng không cần ASK Picker / Quét lại
+        PreferencesManager.shared.savedESP32UUID = peripheral.identifier.uuidString
     }
     
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {

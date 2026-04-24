@@ -205,9 +205,12 @@ struct SmartKeySetupView: View {
             pinInput = savedPin
         }
         
+        // Lấy số khung từ xe đang kết nối, hoặc xe đã lưu
         let dashboard = container.dashboardViewModel
-        if dashboard.isConnected {
+        if dashboard.isConnected && !dashboard.bikeInfo.serial.isEmpty {
             frameInput = dashboard.bikeInfo.serial
+        } else if let savedSerial = PreferencesManager.shared.savedBikeSerial {
+            frameInput = savedSerial
         }
     }
 }

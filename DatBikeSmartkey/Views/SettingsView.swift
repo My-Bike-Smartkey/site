@@ -30,31 +30,60 @@ struct SettingsView: View {
                         Spacer()
                     }
                     .padding(.horizontal)
-                                   // 1. XE CỦA TÔI
-                    if viewModel.isConnected && !viewModel.bikeInfo.isEmpty {
+                    // 1. XE CỦA TÔI
+                    let hasSavedBike = PreferencesManager.shared.savedBikeSerial != nil && PreferencesManager.shared.savedBikeSerial?.isEmpty == false
+                    let isConnectedWithInfo = viewModel.isConnected && !viewModel.bikeInfo.isEmpty
+                    
+                    if isConnectedWithInfo || hasSavedBike {
                         settingsSection(title: "XE CỦA TÔI") {
                             VStack(spacing: 0) {
-                                settingsButton(icon: "battery.100.bolt", iconColor: .green, title: "Phân tích Pin (BMS)") {
-                                    showBatteryAnalytics = true
+                                if viewModel.isConnected {
+                                    settingsButton(icon: "battery.100.bolt", iconColor: .green, title: "Phân tích Pin (BMS)") {
+                                        showBatteryAnalytics = true
+                                    }
+                                    Divider().background(Color.white.opacity(0.06))
                                 }
-                                Divider().background(Color.white.opacity(0.06))
+                                
                                 settingsRow(icon: "bicycle", iconColor: .cyan,
-                                            title: "Tên", value: viewModel.bikeInfo.name)
+                                            title: "Tên", value: isConnectedWithInfo ? viewModel.bikeInfo.name : (PreferencesManager.shared.savedBikeName ?? "Dat Bike"))
                                 Divider().background(Color.white.opacity(0.06))
-                                settingsRow(icon: "cpu", iconColor: .cyan,
-                                            title: "Model", value: viewModel.bikeInfo.model)
-                                Divider().background(Color.white.opacity(0.06))
+                                
+                                if isConnectedWithInfo {
+                                    settingsRow(icon: "cpu", iconColor: .cyan,
+                                                title: "Model", value: viewModel.bikeInfo.model)
+                                    Divider().background(Color.white.opacity(0.06))
+                                }
+                                
                                 settingsRow(icon: "number", iconColor: .cyan,
-                                            title: "Số khung", value: viewModel.bikeInfo.serial)
-                                if !viewModel.bikeInfo.firmware.isEmpty {
+                                            title: "Số khung", value: isConnectedWithInfo ? viewModel.bikeInfo.serial : (PreferencesManager.shared.savedBikeSerial ?? ""))
+                                
+                                if isConnectedWithInfo && !viewModel.bikeInfo.firmware.isEmpty {
                                     Divider().background(Color.white.opacity(0.06))
                                     settingsRow(icon: "gearshape.fill", iconColor: .cyan,
                                                 title: "Firmware", value: viewModel.bikeInfo.firmware)
                                 }
-                                if !viewModel.bikeInfo.deviceToken.isEmpty {
+                                
+                                if isConnectedWithInfo && !viewModel.bikeInfo.deviceToken.isEmpty {
                                     Divider().background(Color.white.opacity(0.06))
                                     settingsRow(icon: "key", iconColor: .cyan,
                                                 title: "Token", value: String(viewModel.bikeInfo.deviceToken.prefix(16)) + "…")
+                                }
+                                
+                                if !viewModel.isConnected {
+                                    Divider().background(Color.white.opacity(0.06))
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundColor(.orange)
+                                        Text("Trạng thái")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                        Spacer()
+                                        Text("Chưa kết nối")
+                                            .font(.caption)
+                                            .foregroundColor(.orange)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
                                 }
                                 
                                 Divider().background(Color.white.opacity(0.06))

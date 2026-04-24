@@ -190,6 +190,9 @@ class SettingsViewModel: ObservableObject {
         // Xoá PIN + UUID → lần ghép tiếp sẽ hiện bước NFC + scan mới
         PreferencesManager.shared.savedPin = nil
         PreferencesManager.shared.savedPeripheralUUID = nil
+        PreferencesManager.shared.savedBikeName = nil
+        PreferencesManager.shared.savedBikeSerial = nil
+        PreferencesManager.shared.savedBikeMac = nil
     }
     
     func syncTime() {
