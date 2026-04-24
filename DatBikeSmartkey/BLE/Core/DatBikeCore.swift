@@ -1086,6 +1086,11 @@ extension DatBikeCore: CBCentralManagerDelegate {
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         let advName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
         let deviceName = peripheral.name ?? advName ?? "Dat Bike"
+        
+        if deviceName.contains("ESP") {
+            print("[CORE-SCAN] Thấy mạch ESP32!!! Tên: \(deviceName), UUID: \(peripheral.identifier)")
+        }
+        
         let connectable = advertisementData[CBAdvertisementDataIsConnectable] as? Bool
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
             message: "[DISCOVER] name=\(deviceName) | uuid=\(peripheral.identifier.uuidString.prefix(8)) | RSSI=\(RSSI.intValue) | connectable=\(connectable ?? true) | smState=\(stateMachine.state.displayText) | savedUUID=\(preferences.savedPeripheralUUID?.prefix(8).description ?? "nil") | isBackground=\(isAppInBackground)"))
