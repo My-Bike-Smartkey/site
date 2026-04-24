@@ -309,3 +309,27 @@ struct SmartKeySetupView: View {
    ```
 8. App iOS báo **"Cấu hình thành công ✅"** và tự động đóng màn hình.
 9. Rút điện ESP32, cắm lại (reboot). Mạch sẽ bắt đầu kết nối xe Dat Bike bằng thông tin vừa được iOS cấu hình!
+
+---
+
+## 4. Các Vấn Đề Thường Gặp (Troubleshooting)
+
+### 4.1 Lỗi "Timeout quét (10s)! Không tìm thấy ESP-Smartkey" (Trường hợp Cổ Điển)
+
+Nếu bạn vừa chạy file `scan_ble.py` trên Mac để kiểm tra và thấy mạch ESP32, nhưng ngay sau đó mở App iOS lên thì App lại báo không tìm thấy, nguyên nhân 99% là do:
+**Mạch ESP32 đã bị kết nối (hoặc giữ kết nối) bởi tiến trình Python trên Mac!**
+
+Trong chuẩn BLE, một thiết bị ngoại vi (Peripheral) như ESP32 một khi đã có một thiết bị trung tâm (Central - như máy Mac) kết nối vào, nó sẽ **ngừng phát sóng quảng cáo (Stop Advertising)**. 
+- Vì nó đã ngừng phát sóng, iPhone dù có quét (bằng mọi filter, kể cả `nil`) cũng sẽ không bao giờ nhìn thấy ESP32 nữa.
+- **Cách xử lý:** 
+  1. Tắt hoàn toàn script `scan_ble.py` trên Mac.
+  2. Bấm nút Reset (EN) trên mạch ESP32 hoặc rút điện cắm lại.
+  3. Gõ lại lệnh `prov` trong terminal của ESP32.
+  4. Quét lại trên iPhone.
+
+### 4.2 Xung Đột Trình Quản Lý Quét (Multiple CBCentralManager Conflict)
+
+Nếu chắc chắn ESP32 đang phát sóng (chưa kết nối với thiết bị nào khác) nhưng App iOS vẫn lờ đi:
+- Ứng dụng iOS của Dat Bike có `DatBikeCore` luôn duy trì một phiên bản `CBCentralManager` ngầm để tự động tìm xe.
+- Nếu bạn tạo thêm một `CBCentralManager` thứ hai trong `SmartKeyProvisioner`, hệ điều hành iOS đôi khi sẽ ưu tiên tài nguyên sóng BLE cho tiến trình quét cũ và kìm hãm tiến trình mới.
+- **Giải pháp:** App hiện tại đã được cấu hình ép gọi `core.forceStopScan()` trước khi `SmartKeyProvisioner` bắt đầu quét, đồng thời sử dụng cờ `CBCentralManagerScanOptionAllowDuplicatesKey: true` để buộc iOS nhả dữ liệu.
