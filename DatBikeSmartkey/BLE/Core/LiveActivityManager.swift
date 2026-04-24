@@ -6,12 +6,21 @@ import UserNotifications
 class LiveActivityManager {
     static let shared = LiveActivityManager()
     
+    // B6 FIX: Cooldown guard để tránh spam log "Target is not foreground" mỗi 10s
+    private var lastLiveActivityAttempt: Date?
+    private let liveActivityCooldown: TimeInterval = 60.0
+    
     private init() {}
     
     // MARK: - Public API
     
     func startActivity(bikeName: String, lockState: String, connectionState: String, batteryLevel: Int) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        
+        // Cooldown guard: Không cố start lại quá nhanh nếu lần trước vừa failed
+        if let last = lastLiveActivityAttempt, Date().timeIntervalSince(last) < liveActivityCooldown {
+            return
+        }
         
         // Ưu tiên: tìm Live Activity đang chạy thực sự trên hệ thống (tránh dùng stale reference)
         let runningActivities = Activity<DatBikeLiveActivityAttributes>.activities
@@ -48,10 +57,13 @@ class LiveActivityManager {
                 )
             }
         } catch {
+            // Cập nhật timestamp để kích hoạt cooldown 60s
+            lastLiveActivityAttempt = Date()
+            
             // Không re-throw — Live Activity là non-critical feature
             PersistentLogger.shared.append(BLELogEntry(
                 timestamp: Date(), level: .info,
-                message: "Live Activity không khởi động được (thường do app chạy ngầm): \(error.localizedDescription)"
+                message: "Live Activity không khởi động được (thường do app chạy ngầm): \(error.localizedDescription) — Cooldown \(liveActivityCooldown)s"
             ))
         }
     }

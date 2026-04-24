@@ -79,6 +79,13 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     // Guard chống downgradeToStandby chạy trùng lặp
     private var isDowngrading = false
     
+    /// Guard chống SESSION_CHECK / tryRestoreActiveSession bị gọi 2 lần (race condition).
+    private var isRestoringSession = false
+    
+    /// Đếm số lần Phantom Guard timeout liên tiếp — dùng cho exponential backoff.
+    private var phantomGuardFailCount = 0
+    private let maxPhantomGuardBackoffSeconds: TimeInterval = 30.0
+    
     // Thời điểm lần cuối chuyển sang .active — chống auth-standby loop
     private var lastActiveTime: Date?
     
@@ -119,11 +126,12 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     
     private func extendBackgroundExecutionTime() {
         if bgTask != .invalid { return }
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .verbose, message: "[SYSTEM] Xin cấp thêm thời gian CPU chạy ngầm (Begin Background Task)"))
         bgTask = UIApplication.shared.beginBackgroundTask(withName: "DatBikeBLE") { [weak self] in
             guard let self = self else { return }
             UIApplication.shared.endBackgroundTask(self.bgTask)
             self.bgTask = .invalid
-            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning, message: "Hết thời gian CPU nền (Background Task Expired)"))
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning, message: "[SYSTEM] Bị hệ điều hành thu hồi CPU nền (Background Task Expired). App có thể bị suspend ngay lập tức."))
         }
     }
     
@@ -131,6 +139,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         if bgTask != .invalid {
             UIApplication.shared.endBackgroundTask(bgTask)
             bgTask = .invalid
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .verbose, message: "[SYSTEM] Trả lại CPU nền cho hệ thống (End Background Task)"))
         }
     }
     
@@ -368,8 +377,12 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         
         if let ctx = activeContext,
            ctx.peripheral.state == .connected || ctx.peripheral.state == .connecting {
+            // B7 FIX: Hủy Phantom Guard nếu đang chạy — ASK sẽ tự quản lý connection lifecycle
+            // App đã bắt đầu connect() nhưng ASK Session Activated mới fire — tin tưởng ASK hơn
+            let wasTimerActive = connectingTimer != nil
+            cancelConnectingTimeout()
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "[ASK_CONNECT] Bỏ qua: peripheral đang kết nối (state=\(ctx.peripheral.state.rawValue))"))
+                message: "[ASK_CONNECT] Bỏ qua: peripheral đang kết nối (state=\(ctx.peripheral.state.rawValue)) | phantomGuardCancelled=\(wasTimerActive) | smState=\(stateMachine.state.displayText)"))
             return
         }
         
@@ -444,9 +457,13 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private func startScanWithTimeout(central: CBCentralManager) {
         cancelScanTimer()
         
+        // B3 FIX: Reset btWasPoweredOff ngay khi bắt đầu scan để tránh stale flag
+        let wasPowerCycle = btWasPoweredOff
+        btWasPoweredOff = false
+        
         let allowDupes = scanRetryCount > 0
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "[SCAN] Bắt đầu quét | retry=\(scanRetryCount)/\(maxScanRetries) | allowDupes=\(allowDupes) | timeout=\(scanTimeoutSeconds)s | btPowerOff=\(btWasPoweredOff) | isBackground=\(isAppInBackground)"))
+            message: "[SCAN] Bắt đầu quét | retry=\(scanRetryCount)/\(maxScanRetries) | allowDupes=\(allowDupes) | timeout=\(scanTimeoutSeconds)s | wasPowerCycle=\(wasPowerCycle) | isBackground=\(isAppInBackground) | phantomFails=\(phantomGuardFailCount)"))
         stateMachine.transition(to: .scanning)
         
         central.scanForPeripherals(withServices: BLEService.scanUUIDs, options: [
@@ -507,16 +524,22 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private func startConnectingTimeout() {
         cancelConnectingTimeout()
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "[PHANTOM_GUARD] Bắt đầu connecting timeout 5.0s | peripheral=\(activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(activeContext?.peripheral.state.rawValue ?? -1)"))
+            message: "[PHANTOM_GUARD] Bắt đầu connecting timeout 5.0s | peripheral=\(activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(activeContext?.peripheral.state.rawValue ?? -1) | failCount=\(phantomGuardFailCount)"))
         let timer = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             guard case .connecting = self.stateMachine.state else {
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .verbose,
                     message: "[PHANTOM_GUARD] Timeout fire nhưng state=\(self.stateMachine.state.displayText) → bỏ qua"))
                 return
             }
+            
+            // B5 FIX: Exponential backoff — chờ lâu dần mỗi lần thất bại liên tiếp
+            self.phantomGuardFailCount += 1
+            let backoffDelay = min(Double(self.phantomGuardFailCount) * 2.0, self.maxPhantomGuardBackoffSeconds)
+            
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
-                message: "[PHANTOM_GUARD] Timeout 5.0s! Peripheral stale | uuid=\(self.activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(self.activeContext?.peripheral.state.rawValue ?? -1) → hủy + scan mới"))
+                message: "[PHANTOM_GUARD] Timeout 5.0s! | uuid=\(self.activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(self.activeContext?.peripheral.state.rawValue ?? -1) | failCount=\(self.phantomGuardFailCount) | backoffDelay=\(backoffDelay)s"))
+            
             if let ctx = self.activeContext, let central = self.centralManager {
                 central.cancelPeripheralConnection(ctx.peripheral)
             }
@@ -525,7 +548,16 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             self.pollingEngine = nil
             self.isAuthenticating = false
             self.forceFullScan = true
-            self.connect()
+            
+            if backoffDelay > 0 {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "[PHANTOM_GUARD] Backoff \(backoffDelay)s trước khi scan lại (lần thất bại thứ \(self.phantomGuardFailCount))"))
+                DispatchQueue.main.asyncAfter(deadline: .now() + backoffDelay) { [weak self] in
+                    self?.connect()
+                }
+            } else {
+                self.connect()
+            }
         }
         self.connectingTimer = timer
         DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timer)
@@ -1397,6 +1429,17 @@ extension DatBikeCore: CBPeripheralDelegate {
             return
         }
         
+        // B1 FIX: Guard chống SESSION_CHECK race condition
+        // didDiscoverCharacteristics có thể fire 2 lần khi iOS GATT stack retry
+        guard !isRestoringSession else {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "[SESSION_CHECK] Bỏ qua duplicate trigger (isRestoringSession=true) | uuid=\(ctx.peripheral.identifier.uuidString.prefix(8))"))
+            return
+        }
+        isRestoringSession = true
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "[SESSION_CHECK] Bắt đầu kiểm tra phiên | uuid=\(ctx.peripheral.identifier.uuidString.prefix(8)) | peripheralState=\(ctx.peripheral.state.rawValue)"))
+        
         Task {
             let isActive = await BLEAuthenticator.isSessionActive(context: ctx)
             
@@ -1406,6 +1449,7 @@ extension DatBikeCore: CBPeripheralDelegate {
                     message: "[RESTORE] Phiên auth vẫn active (counter lẻ) → skip auth, vào .active trực tiếp"))
                 
                 DispatchQueue.main.async {
+                    self.isRestoringSession = false
                     self.isAuthenticating = false
                     
                     // Lấy dữ liệu khởi tạo ngay lập tức vì ta đã bỏ qua standby phase
@@ -1446,6 +1490,7 @@ extension DatBikeCore: CBPeripheralDelegate {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                     message: "[RESTORE] Phiên auth đã hết (counter chẵn) → vào standby + auth lại"))
                 DispatchQueue.main.async {
+                    self.isRestoringSession = false
                     self.startStandbyProximityChecks(ctx: ctx, pin: pin)
                 }
             }

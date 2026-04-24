@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var showInfoAutoConnect = false
     @State private var showInfoBgReconnect = false
     @State private var showInfoAutoUnlock = false
+    @State private var showProvisioning = false
     
     var body: some View {
         ZStack {
@@ -151,6 +152,12 @@ struct SettingsView: View {
                                 .padding(.horizontal, 14)
                                 .padding(.bottom, 14)
                             }
+                            Divider().background(Color.white.opacity(0.06))
+                            
+                            settingsButton(icon: "cpu.fill", iconColor: .cyan, title: "Ghép đôi khoá phụ (ESP32)") {
+                                showProvisioning = true
+                            }
+                            
                             Divider().background(Color.white.opacity(0.06))
                             
                             settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
@@ -536,6 +543,10 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showLogs) {
             LogView(logs: PersistentLogger.shared.loadLogs(daysBack: 1))
+        }
+        .sheet(isPresented: $showProvisioning) {
+            SmartKeySetupView()
+                .environmentObject(container)
         }
         .sheet(isPresented: $showConnectionGuide) {
             ConnectionGuideView()

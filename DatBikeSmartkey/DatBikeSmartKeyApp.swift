@@ -24,8 +24,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
     
     func applicationWillTerminate(_ application: UIApplication) {
-        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "App bị vuốt tắt (Terminated)"))
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+            message: "[LIFECYCLE] App bị vuốt tắt (Terminated by User/OS). Các tính năng BLE nền có thể bị hạn chế cho đến khi mở lại."))
     }
 }
 
@@ -49,11 +49,11 @@ struct DatBikeSmartKeyApp: App {
                 .onChange(of: scenePhase) { newPhase in
                     switch newPhase {
                     case .active:
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "App được mở lên (Foreground Active)"))
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[LIFECYCLE] App chuyển sang Foreground Active (Đang mở trên màn hình)"))
                     case .background:
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "App ẩn xuống chạy ngầm (Background)"))
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[LIFECYCLE] App ẩn xuống chạy ngầm (Background) - Hệ điều hành có thể tạm dừng App"))
                     case .inactive:
-                        break
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .verbose, message: "[LIFECYCLE] App vào trạng thái Inactive (Đang chuyển đổi/Mở Control Center)"))
                     @unknown default:
                         break
                     }
@@ -62,7 +62,7 @@ struct DatBikeSmartKeyApp: App {
     }
 
     private func handleDeepLink(_ url: URL) {
-        guard url.scheme == "mybikesmartkey" else { return }
+        guard let scheme = url.scheme, ["mybikesmartkey", "dsmartkey"].contains(scheme) else { return }
         switch url.host {
         case "lock":      
             container.bleCore.suspendAutoFeatures()

@@ -119,11 +119,18 @@ class DashboardViewModel: ObservableObject {
         self.pairingError = nil
         self.showError = false
         
-        // Nếu xe đã được ghép đôi từ trước, kết nối thẳng không mở màn hình cấu hình
-        if preferences.savedPeripheralUUID != nil {
+        // Kiểm tra an toàn kép: Nếu app đã lưu UUID, HOẶC hệ thống ASK báo đã có xe
+        if self.hasAuthorizedAccessory {
             isProcessing = true
             core.initializeBluetoothHardware()
-            core.connect()
+            
+            if preferences.savedPeripheralUUID != nil {
+                core.connect()
+            } else {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "Hệ thống đã có xe (ASK) nhưng App chưa lưu UUID. Đợi ASK bắn sự kiện tự động..."))
+                // Cần thiết: Dù sao cũng thử connect để trigger vòng lặp quét / restore của CoreBluetooth nếu ASK mất nhiều thời gian
+                core.connect()
+            }
             return
         }
         
