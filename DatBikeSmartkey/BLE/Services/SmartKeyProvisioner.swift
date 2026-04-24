@@ -7,6 +7,7 @@ enum ProvisioningState: Equatable {
     case scanning
     case connecting
     case discovering
+    case readyToWrite
     case pairingAndWriting
     case success
     case error(String)
@@ -39,11 +40,8 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
         print("[PROV] SmartKeyProvisioner DEINIT")
     }
     
-    func startProvisioning(pin: String, mac: String, frame: String) {
-        print("[PROV] Bắt đầu Provisioning via ASK. PIN: \(pin), MAC: \(mac), FRAME: \(frame)")
-        self.targetPin = pin
-        self.targetMac = mac
-        self.targetFrame = frame
+    func findAndConnect() {
+        print("[PROV] Bắt đầu tìm và kết nối Khóa Phụ via ASK...")
         
         guard centralManager.state == .poweredOn else {
             print("[PROV] Lỗi: Bluetooth chưa được bật. Trạng thái hiện tại: \(centralManager.state.rawValue)")
@@ -69,6 +67,44 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
             ASKManager.shared.showPickerForESP32()
         } else {
             self.state = .error("Tính năng này yêu cầu iOS 18 trở lên.")
+        }
+    }
+    
+    func syncData(pin: String, mac: String, frame: String) {
+        guard state == .readyToWrite || state == .success else {
+            print("[PROV] Lỗi: Chưa kết nối hoặc chưa sẵn sàng ghi.")
+            return
+        }
+        
+        print("[PROV] Bắt đầu đồng bộ dữ liệu. PIN: \(pin), MAC: \(mac), FRAME: \(frame)")
+        self.targetPin = pin
+        self.targetMac = mac
+        self.targetFrame = frame
+        self.state = .pairingAndWriting
+        
+        guard let peripheral = self.peripheral,
+              let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) else {
+            self.state = .error("Mất kết nối với dịch vụ của ESP32.")
+            return
+        }
+        
+        // Bắt đầu ghi dữ liệu
+        if let pinChar = service.characteristics?.first(where: { $0.uuid == pinCharUUID }),
+           let pinData = targetPin.data(using: .utf8) {
+            print("[PROV] Ghi mã PIN...")
+            peripheral.writeValue(pinData, for: pinChar, type: .withResponse)
+        }
+        
+        if let macChar = service.characteristics?.first(where: { $0.uuid == macCharUUID }),
+           let macData = targetMac.data(using: .utf8) {
+            print("[PROV] Ghi địa chỉ MAC...")
+            peripheral.writeValue(macData, for: macChar, type: .withResponse)
+        }
+        
+        if let frameChar = service.characteristics?.first(where: { $0.uuid == frameCharUUID }),
+           let frameData = targetFrame.data(using: .utf8) {
+            print("[PROV] Ghi Số khung...")
+            peripheral.writeValue(frameData, for: frameChar, type: .withResponse)
         }
     }
     
@@ -168,27 +204,8 @@ extension SmartKeyProvisioner: CBPeripheralDelegate {
             return
         }
         
-        print("[PROV] Tìm thấy Characteristics. Bắt đầu ghi dữ liệu...")
-        state = .pairingAndWriting
-        
-        // Bắt đầu ghi dữ liệu
-        if let pinChar = service.characteristics?.first(where: { $0.uuid == pinCharUUID }),
-           let pinData = targetPin.data(using: .utf8) {
-            print("[PROV] Ghi mã PIN...")
-            peripheral.writeValue(pinData, for: pinChar, type: .withResponse)
-        }
-        
-        if let macChar = service.characteristics?.first(where: { $0.uuid == macCharUUID }),
-           let macData = targetMac.data(using: .utf8) {
-            print("[PROV] Ghi địa chỉ MAC...")
-            peripheral.writeValue(macData, for: macChar, type: .withResponse)
-        }
-        
-        if let frameChar = service.characteristics?.first(where: { $0.uuid == frameCharUUID }),
-           let frameData = targetFrame.data(using: .utf8) {
-            print("[PROV] Ghi Số khung...")
-            peripheral.writeValue(frameData, for: frameChar, type: .withResponse)
-        }
+        print("[PROV] Tìm thấy Characteristics. Đã sẵn sàng ghi dữ liệu.")
+        state = .readyToWrite
     }
     
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -202,15 +219,13 @@ extension SmartKeyProvisioner: CBPeripheralDelegate {
         
         // Nếu ghi PIN thành công
         if characteristic.uuid == pinCharUUID {
-            print("[PROV] Quá trình Provisioning thành công! Đang lưu PIN và ngắt kết nối...")
+            print("[PROV] Quá trình Provisioning thành công! Đang lưu PIN. Giữ kết nối để Sync lại nếu cần.")
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.state = .success
                 
                 // Cập nhật PIN vào PreferencesManager để dùng chung cho App
                 PreferencesManager.shared.savedPin = self.targetPin
-                
-                self.centralManager.cancelPeripheralConnection(peripheral)
             }
         }
     }
