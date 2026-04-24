@@ -489,11 +489,11 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     }
     
     /// Timeout guard cho trạng thái .connecting trong State Restoration
-    /// Nếu 3.5s mà không chuyển sang .standby/.active → là kết nối phantom, hủy và reconnect
+    /// Nếu 5.0s mà không chuyển sang .standby/.active → là kết nối phantom, hủy và reconnect
     private func startConnectingTimeout() {
         cancelConnectingTimeout()
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "[PHANTOM_GUARD] Bắt đầu connecting timeout 1.5s | peripheral=\(activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(activeContext?.peripheral.state.rawValue ?? -1)"))
+            message: "[PHANTOM_GUARD] Bắt đầu connecting timeout 5.0s | peripheral=\(activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(activeContext?.peripheral.state.rawValue ?? -1)"))
         let timer = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             guard case .connecting = self.stateMachine.state else {
@@ -502,7 +502,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 return
             }
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
-                message: "[PHANTOM_GUARD] Timeout 1.5s! Peripheral stale | uuid=\(self.activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(self.activeContext?.peripheral.state.rawValue ?? -1) → hủy + scan mới"))
+                message: "[PHANTOM_GUARD] Timeout 5.0s! Peripheral stale | uuid=\(self.activeContext?.peripheral.identifier.uuidString.prefix(8).description ?? "nil") | peripheralState=\(self.activeContext?.peripheral.state.rawValue ?? -1) → hủy + scan mới"))
             if let ctx = self.activeContext, let central = self.centralManager {
                 central.cancelPeripheralConnection(ctx.peripheral)
             }
@@ -514,7 +514,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             self.connect()
         }
         self.connectingTimer = timer
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: timer)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: timer)
     }
     
     private func cancelConnectingTimeout() {
@@ -1110,6 +1110,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
         micRetryCount = 0
         
         // ═══ CANCEL TIMERS: tránh double-scan từ fallback timer hoặc phantom timeout ═══
+        cancelConnectingTimeout()
         disconnectFallbackTimer?.cancel()
         disconnectFallbackTimer = nil
         
@@ -1438,7 +1439,7 @@ extension DatBikeCore: CBPeripheralDelegate {
     }
     
     private func startStandbyProximityChecks(ctx: BLEConnectionContext, pin: String) {
-        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .verbose,
             message: "[STANDBY_CHECK] Bắt đầu | peripheral=\(ctx.peripheral.identifier.uuidString.prefix(8)) | connectOnlyWhenNear=\(preferences.connectOnlyWhenNear) | rssiThreshold=\(preferences.rssiThreshold) | autoUnlock=\(preferences.autoUnlockEnabled) | shouldTurnOn=\(shouldTurnOnBikeAfterAuth) | autoSuspended=\(isSessionAutoSuspended)"))
         stateMachine.transition(to: .standby)
         isAuthenticating = false
@@ -1459,7 +1460,7 @@ extension DatBikeCore: CBPeripheralDelegate {
             executeAuthProtocol(ctx: ctx, pin: pin)
             return
         } else {
-            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .verbose,
                 message: "Chế độ 'Chỉ kết nối khi gần' ĐANG BẬT. RssiThreshold = \(preferences.rssiThreshold)"))
         }
         
@@ -1706,8 +1707,8 @@ extension DatBikeCore: CBPeripheralDelegate {
                 let now = Date()
                 if self.lastRssiLogTime == nil || now.timeIntervalSince(self.lastRssiLogTime!) >= 2.0 {
                     self.lastRssiLogTime = now
-                    PersistentLogger.shared.append(BLELogEntry(timestamp: now, level: .info,
-                        message: "Standby chờ gần: RSSI=\(rssiValue) / Ngưỡng=\(threshold)"))
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: now, level: .verbose,
+                        message: "[RSSI] Standby chờ gần: RSSI=\(rssiValue) / Ngưỡng=\(threshold)"))
                 }
                 
                 // Nếu người dùng đã đi khỏi vùng phủ sóng (thấp hơn ngưỡng - 3dBm), hãy reset cờ Manual Standby

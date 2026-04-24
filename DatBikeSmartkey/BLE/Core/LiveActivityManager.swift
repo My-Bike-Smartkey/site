@@ -50,8 +50,8 @@ class LiveActivityManager {
         } catch {
             // Không re-throw — Live Activity là non-critical feature
             PersistentLogger.shared.append(BLELogEntry(
-                timestamp: Date(), level: .warning,
-                message: "Live Activity không thể khởi động: \(error.localizedDescription)"
+                timestamp: Date(), level: .info,
+                message: "Live Activity không khởi động được (thường do app chạy ngầm): \(error.localizedDescription)"
             ))
         }
     }

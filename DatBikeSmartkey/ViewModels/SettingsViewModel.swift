@@ -31,6 +31,8 @@ class SettingsViewModel: ObservableObject {
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
     @Published var skipProximityToken: Bool
+    @Published var isLoggingEnabled: Bool
+    @Published var verboseLoggingEnabled: Bool
     
     @Published var bikeInfo = IoTVehicleInfo()
     @Published var logs: [BLELogEntry] = []
@@ -58,6 +60,8 @@ class SettingsViewModel: ObservableObject {
         self.notifyOnBatteryThreshold = preferences.notifyOnBatteryThreshold
         self.batteryLowThreshold      = Double(preferences.batteryLowThreshold)
         self.skipProximityToken        = preferences.skipProximityToken
+        self.isLoggingEnabled          = preferences.isLoggingEnabled
+        self.verboseLoggingEnabled     = preferences.verboseLoggingEnabled
         
         setupBindings()
     }
@@ -156,6 +160,16 @@ class SettingsViewModel: ObservableObject {
         $skipProximityToken
             .dropFirst()
             .sink { [weak self] val in self?.preferences.skipProximityToken = val }
+            .store(in: &cancellables)
+        
+        $isLoggingEnabled
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.isLoggingEnabled = val }
+            .store(in: &cancellables)
+        
+        $verboseLoggingEnabled
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.verboseLoggingEnabled = val }
             .store(in: &cancellables)
         
         core.$currentVehicleInfo

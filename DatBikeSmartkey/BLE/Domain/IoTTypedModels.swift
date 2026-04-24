@@ -28,14 +28,14 @@ enum IoTConnectionState: Equatable {
     
     var displayText: String {
         switch self {
-        case .idle: return "Chưa kết nối"
-        case .scanning: return "Đang tìm xe..."
-        case .connecting: return "Đang kết nối..."
-        case .standby: return "Đã kết nối (chờ gần)"
-        case .pairingRequired: return "Chờ xác thực thẻ NFC..."
-        case .authenticating: return "Đang xác thực bảo mật..."
-        case .active: return "Đã kết nối"
-        case .error(let msg): return "Lỗi: \(msg)"
+        case .idle: return "Chưa kết nối (Idle)"
+        case .scanning: return "Đang quét tìm xe..."
+        case .connecting: return "Hệ thống đang kết nối..."
+        case .standby: return "Kết nối ngầm (Chờ lại gần)"
+        case .pairingRequired: return "Chờ xác thực bảo mật..."
+        case .authenticating: return "App đang xác thực..."
+        case .active: return "Đã kết nối (Active Session)"
+        case .error(let msg): return "Lỗi kết nối: \(msg)"
         }
     }
 }

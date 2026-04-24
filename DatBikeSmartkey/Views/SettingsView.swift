@@ -390,24 +390,58 @@ struct SettingsView: View {
                     
                     settingsSection(title: "GỠ LỖI (NÂNG CAO)") {
                         VStack(spacing: 0) {
-                            Toggle(isOn: $viewModel.isDebugModeEnabled) {
+                            // Toggle 1: Bật/Tắt ghi log
+                            Toggle(isOn: $viewModel.isLoggingEnabled) {
                                 HStack(spacing: 12) {
-                                    Image(systemName: "terminal.fill")
+                                    Image(systemName: "doc.text.fill")
                                         .font(.system(size: 16))
                                         .foregroundColor(.purple)
                                         .frame(width: 28, height: 28)
                                         .background(Color.purple.opacity(0.15))
                                         .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    Text("Bật Nhật Ký BLE (Logs)")
-                                        .font(.subheadline)
-                                        .foregroundColor(.white)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Ghi nhật ký BLE")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                        Text("Lưu log INFO/SUCCESS/WARNING/ERROR. TẮT để tiết kiệm pin và bộ nhớ.")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
                                 }
                             }
+                            .tint(.purple)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 10)
                             
                             Divider().background(Color.white.opacity(0.06))
                             
+                            // Toggle 2: Verbose — chỉ hiện khi logging bật
+                            Toggle(isOn: $viewModel.verboseLoggingEnabled) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "waveform.path.ecg")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.indigo)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.indigo.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Log chi tiết (Verbose)")
+                                            .font(.subheadline)
+                                            .foregroundColor(viewModel.isLoggingEnabled ? .white : .gray)
+                                        Text("Ghi thêm RSSI mỗi 2s, STANDBY_CHECK... Chỉ bật khi cần debug sâu.")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            }
+                            .tint(.indigo)
+                            .disabled(!viewModel.isLoggingEnabled)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            
+                            Divider().background(Color.white.opacity(0.06))
+                            
+                            // Toggle 3: Skip Proximity Token (test ASK)
                             Toggle(isOn: $viewModel.skipProximityToken) {
                                 HStack(spacing: 12) {
                                     Image(systemName: "antenna.radiowaves.left.and.right.slash")

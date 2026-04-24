@@ -320,12 +320,31 @@ struct BLELogEntry: Identifiable, Codable {
     let level: LogLevel
     let message: String
     
-    enum LogLevel: String, Codable {
-        case info = "[INFO]"
+    /// Thứ tự ưu tiên: error > warning > success > info > verbose
+    /// - verbose: Chi tiết kỹ thuật (RSSI mỗi 2s, STANDBY_CHECK...) — chỉ ghi khi Verbose Logging BẬT
+    /// - info: Sự kiện quan trọng (state transition, connect, auth)
+    /// - success: Thành công rõ ràng (auth OK, connect OK)
+    /// - warning: Cảnh báo cần chú ý (timeout, retry, disconnect)
+    /// - error: Lỗi nghiêm trọng cần điều tra
+    enum LogLevel: String, Codable, Comparable {
+        case verbose = "[VERBOSE]"
+        case info    = "[INFO]"
         case success = "[SUCCESS]"
         case warning = "[WARNING]"
-        case error = "[ERROR]"
-        case ble = "[BLE]"
+        case error   = "[ERROR]"
+        case ble     = "[BLE]"
+        
+        private var order: Int {
+            switch self {
+            case .verbose: return 0
+            case .info:    return 1
+            case .ble:     return 1
+            case .success: return 2
+            case .warning: return 3
+            case .error:   return 4
+            }
+        }
+        static func < (lhs: LogLevel, rhs: LogLevel) -> Bool { lhs.order < rhs.order }
     }
     
     var formattedTime: String {
@@ -351,6 +370,18 @@ final class PersistentLogger {
     private var currentHandle: FileHandle?
     private var currentDate: String?
     
+    // MARK: - Logging Control
+    
+    /// Công tắc ghi log. Khi TẮT:
+    /// - Level .verbose bị bỏ qua hoàn toàn (không ghi file)
+    /// - Level info/success/warning/error vẫn ghi bình thường
+    /// Mặc định BẬT — có thể thay đổi qua PreferencesManager.isLoggingEnabled
+    var isLoggingEnabled: Bool = true
+    
+    /// Mức log tối thiểu được ghi. Mặc định .info (bỏ qua .verbose).
+    /// Khi isLoggingEnabled=false, mức tối thiểu tự động là .warning.
+    var minimumLevel: BLELogEntry.LogLevel = .info
+    
     private init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         logDir = docs.appendingPathComponent("ble_logs", isDirectory: true)
@@ -371,6 +402,12 @@ final class PersistentLogger {
     // MARK: - Write
     
     func append(_ entry: BLELogEntry) {
+        // ─── GUARD: Lọc log theo cấp độ ───
+        // Khi logging tắt: chỉ ghi WARNING+ (vẫn cần lỗi để debug)
+        // Khi logging bật: ghi từ minimumLevel trở lên
+        let threshold: BLELogEntry.LogLevel = isLoggingEnabled ? minimumLevel : .warning
+        guard entry.level >= threshold else { return }
+        
         queue.async { [weak self] in
             guard let self else { return }
             let ts = Int64(entry.timestamp.timeIntervalSince1970 * 1000)
@@ -518,6 +555,7 @@ final class PersistentLogger {
             let levelStr = parts[1]
             let level: BLELogEntry.LogLevel
             switch levelStr {
+            case "[VERBOSE]": level = .verbose
             case "[INFO]":    level = .info
             case "[SUCCESS]": level = .success
             case "[WARNING]": level = .warning

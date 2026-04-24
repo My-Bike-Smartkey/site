@@ -75,6 +75,22 @@ class PreferencesManager {
         didSet { sharedDefaults.set(batteryLowThreshold, forKey: "batteryLowThreshold") }
     }
     
+    /// Bật/tắt ghi log bỏợi PersistentLogger
+    @Published var isLoggingEnabled: Bool {
+        didSet {
+            sharedDefaults.set(isLoggingEnabled, forKey: "isLoggingEnabled")
+            PersistentLogger.shared.isLoggingEnabled = isLoggingEnabled
+        }
+    }
+    
+    /// Ghi cả log VERBOSE (RSSI, STANDBY_CHECK...) — chỉ bật khi debug sâu
+    @Published var verboseLoggingEnabled: Bool {
+        didSet {
+            sharedDefaults.set(verboseLoggingEnabled, forKey: "verboseLoggingEnabled")
+            PersistentLogger.shared.minimumLevel = verboseLoggingEnabled ? .verbose : .info
+        }
+    }
+    
     /// Bỏ qua gửi Proximity Token khi auth (dùng cho test ASK)
     @Published var skipProximityToken: Bool {
         didSet { sharedDefaults.set(skipProximityToken, forKey: "skipProximityToken") }
@@ -175,5 +191,14 @@ class PreferencesManager {
         self.notifyOnChargeDisconnect = defaults.object(forKey: "notifyOnChargeDisconnect") as? Bool ?? true
         self.batteryLowThreshold      = defaults.integer(forKey: "batteryLowThreshold") > 0 ? defaults.integer(forKey: "batteryLowThreshold") : 20
         self.skipProximityToken        = defaults.object(forKey: "skipProximityToken") as? Bool ?? false
+        
+        // Logging toggle — mặc định BẬT
+        let loggingEnabled = defaults.object(forKey: "isLoggingEnabled") as? Bool ?? true
+        self.isLoggingEnabled = loggingEnabled
+        PersistentLogger.shared.isLoggingEnabled = loggingEnabled
+        
+        let verboseEnabled = defaults.object(forKey: "verboseLoggingEnabled") as? Bool ?? false
+        self.verboseLoggingEnabled = verboseEnabled
+        PersistentLogger.shared.minimumLevel = verboseEnabled ? .verbose : .info
     }
 }
