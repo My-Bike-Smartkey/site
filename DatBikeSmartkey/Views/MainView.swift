@@ -369,6 +369,7 @@ struct ConnectingSplashView: View {
         switch dashboardVM.connectionState {
         case .scanning: baseText = "Đang tìm xe"
         case .connecting: baseText = "Đang kết nối"
+        case .authenticating: baseText = "Đang xác thực & Ghép đôi"
         case .standby: baseText = "Kết nối chờ"
         default: baseText = "Đang kết nối"
         }
@@ -381,6 +382,7 @@ struct ConnectingSplashView: View {
         switch dashboardVM.connectionState {
         case .scanning: return .cyan
         case .connecting: return .orange
+        case .authenticating: return .yellow
         case .standby: return Color(red: 0.2, green: 0.8, blue: 0.4)
         default: return .orange
         }

@@ -1582,6 +1582,16 @@ extension DatBikeCore: CBPeripheralDelegate {
                 // Session auto state đã được quản lý bởi isSessionAutoSuspended
                 
                 self.lastActiveTime = Date() // Ghi nhận thời điểm active để cooldown downgrade
+                
+                // Trì hoãn 2.5s đối với lần đầu ghép đôi (isKnownDevice = false)
+                // Đảm bảo người dùng không rút thẻ NFC ra quá sớm khi thấy màn hình chuyển sang Dashboard
+                // dẫn đến việc xác thực ở firmware xe bị ngắt ngang.
+                if !isKnownDevice {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                        message: "[AUTH] Lần đầu ghép đôi -> Delay 2.5s trước khi vào Dashboard để giữ thẻ NFC"))
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                }
+                
                 stateMachine.transition(to: .active)
                 self.micRetryCount = 0 // Reset MIC retry counter khi kết nối thành công
                 NotificationManager.shared.sendNotification(
