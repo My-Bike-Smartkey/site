@@ -1846,3 +1846,10 @@ extension DatBikeCore: CBPeripheralDelegate {
 
 import ActivityKit
 
+
+extension DatBikeCore {
+    public func forceStopScan() {
+        print("[BLE] Force stop scan on DatBikeCore")
+        self.centralManager.stopScan()
+    }
+}

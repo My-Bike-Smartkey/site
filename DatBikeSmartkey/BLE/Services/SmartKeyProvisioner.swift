@@ -52,9 +52,9 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
         }
         
         state = .scanning
-        print("[PROV] Đang quét tìm thiết bị (với Service UUID \(serviceUUID))...")
-        // Khôi phục bộ lọc serviceUUID vì iOS có thể chặn quét 'nil' nếu nhầm lẫn state background
-        centralManager.scanForPeripherals(withServices: [serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
+        print("[PROV] Đang quét tìm thiết bị (nil filter, AllowDuplicates=true)...")
+        // Quét nil để bắt mọi sóng BLE xung quanh
+        centralManager.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         
         // Timeout cho quá trình scan
         DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
