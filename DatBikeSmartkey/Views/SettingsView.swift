@@ -1,518 +1,132 @@
 // SettingsView.swift — Settings, device info, auto-unlock config, and debug log
 
 import SwiftUI
-import CoreImage.CIFilterBuiltins
 
 struct SettingsView: View {
     @EnvironmentObject var container: AppDIContainer
     @ObservedObject var viewModel: SettingsViewModel
-    @State private var showLogs = false
-    @State private var showBatteryAnalytics = false
-    @State private var showForgetConfirm = false
-    @State private var showConnectionGuide = false
-    @State private var showInfoAutoConnect = false
-    @State private var showInfoBgReconnect = false
-    @State private var showInfoAutoUnlock = false
     @State private var showProvisioning = false
+    @State private var showConnectionGuide = false
     
     var body: some View {
-        ZStack {
-            Color(red: 0.04, green: 0.04, blue: 0.08)
-                .ignoresSafeArea()
-            
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 20) {
-                    // Header
-                    HStack {
-                        Text("Cài đặt")
-                            .font(.system(size: 28, weight: .bold))
-                            .foregroundColor(.white)
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    // 1. XE CỦA TÔI
-                    let hasSavedBike = PreferencesManager.shared.savedBikeSerial != nil && PreferencesManager.shared.savedBikeSerial?.isEmpty == false
-                    let isConnectedWithInfo = viewModel.isConnected && !viewModel.bikeInfo.isEmpty
-                    
-                    if isConnectedWithInfo || hasSavedBike {
-                        settingsSection(title: "XE CỦA TÔI") {
-                            VStack(spacing: 0) {
-                                if viewModel.isConnected {
-                                    settingsButton(icon: "battery.100.bolt", iconColor: .green, title: "Phân tích Pin (BMS)") {
-                                        showBatteryAnalytics = true
-                                    }
-                                    Divider().background(Color.white.opacity(0.06))
-                                }
-                                
-                                settingsRow(icon: "bicycle", iconColor: .cyan,
-                                            title: "Tên", value: isConnectedWithInfo ? viewModel.bikeInfo.name : (PreferencesManager.shared.savedBikeName ?? "Dat Bike"))
-                                Divider().background(Color.white.opacity(0.06))
-                                
-                                if isConnectedWithInfo {
-                                    settingsRow(icon: "cpu", iconColor: .cyan,
-                                                title: "Model", value: viewModel.bikeInfo.model)
-                                    Divider().background(Color.white.opacity(0.06))
-                                }
-                                
-                                settingsRow(icon: "number", iconColor: .cyan,
-                                            title: "Số khung", value: isConnectedWithInfo ? viewModel.bikeInfo.serial : (PreferencesManager.shared.savedBikeSerial ?? ""))
-                                
-                                if isConnectedWithInfo && !viewModel.bikeInfo.firmware.isEmpty {
-                                    Divider().background(Color.white.opacity(0.06))
-                                    settingsRow(icon: "gearshape.fill", iconColor: .cyan,
-                                                title: "Firmware", value: viewModel.bikeInfo.firmware)
-                                }
-                                
-                                if isConnectedWithInfo && !viewModel.bikeInfo.deviceToken.isEmpty {
-                                    Divider().background(Color.white.opacity(0.06))
-                                    settingsRow(icon: "key", iconColor: .cyan,
-                                                title: "Token", value: String(viewModel.bikeInfo.deviceToken.prefix(16)) + "…")
-                                }
-                                
-                                if !viewModel.isConnected {
-                                    Divider().background(Color.white.opacity(0.06))
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "exclamationmark.triangle.fill")
-                                            .foregroundColor(.orange)
-                                        Text("Trạng thái")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Spacer()
-                                        Text("Chưa kết nối")
-                                            .font(.caption)
-                                            .foregroundColor(.orange)
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 12)
-                                }
-                                
-                                Divider().background(Color.white.opacity(0.06))
-                                
-                                // Đồng bộ giờ xe
-                                Button {
-                                    viewModel.syncTime()
-                                } label: {
-                                    HStack {
-                                        HStack(spacing: 10) {
-                                            Image(systemName: "clock.fill")
-                                                .font(.system(size: 12))
-                                                .foregroundColor(.blue)
-                                                .frame(width: 28, height: 28)
-                                                .background(Color.blue.opacity(0.15))
-                                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                                            Text(viewModel.isSyncingTime ? "Đang đồng bộ giờ..." : "Đồng bộ giờ xe")
-                                                .font(.subheadline)
-                                                .foregroundColor(viewModel.isConnected ? .white : .gray)
-                                        }
-                                        Spacer()
-                                        if viewModel.isSyncingTime {
-                                            ProgressView()
-                                                .tint(.blue)
-                                        } else {
-                                            Image(systemName: "chevron.right")
-                                                .font(.caption2)
-                                                .foregroundColor(.gray)
-                                        }
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 10)
-                                }
-                                .disabled(!viewModel.isConnected || viewModel.isSyncingTime)
-                                
-                                Divider().background(Color.white.opacity(0.06))
-                                
-                                settingsButton(icon: "trash.fill", iconColor: .red, title: "Bỏ liên kết xe") {
-                                    showForgetConfirm = true
-                                }
-                            }
+        NavigationView {
+            Form {
+                Section(header: Text("Cài đặt ứng dụng")) {
+                    NavigationLink(destination: MyBikeSettingsView(viewModel: viewModel).environmentObject(container)) {
+                        HStack {
+                            Image(systemName: "bicycle")
+                                .foregroundColor(.cyan)
+                                .frame(width: 24)
+                            Text("Xe của tôi")
                         }
                     }
                     
-                    // 2. KẾT NỐI
-                    settingsSection(title: "KẾT NỐI") {
-                        VStack(spacing: 0) {
-                            Toggle(isOn: $viewModel.connectOnlyWhenNear) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "sensor.tag.radiowaves.forward")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.green)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.green.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Ngưỡng tự động kết nối với xe")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Text("Khi đạt ngưỡng này điện thoại sẽ tự động kết nối, biểu tượng bluetooth trên đồng hồ xe sẽ sáng.")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.top, 10)
-                            .padding(.bottom, viewModel.connectOnlyWhenNear ? 4 : 10)
-                            
-                            if viewModel.connectOnlyWhenNear {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Text("Độ nhạy: ")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                        + Text("\(Int(viewModel.rssiThreshold)) dBm")
-                                            .font(.system(.caption, design: .monospaced))
-                                            .foregroundColor(.white)
-                                        Spacer()
-                                        Text(viewModel.rssiThreshold >= -65 ? "Gần" : (viewModel.rssiThreshold >= -75 ? "Vừa" : "Xa"))
-                                            .font(.caption2)
-                                            .foregroundColor(viewModel.rssiThreshold >= -65 ? .green : (viewModel.rssiThreshold >= -75 ? .orange : .red))
-                                    }
-                                    Slider(value: $viewModel.rssiThreshold, in: -95...(-50), step: 1.0)
-                                        .tint(.green)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.bottom, 14)
-                            }
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            Toggle(isOn: $viewModel.autoUnlockEnabled) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "bolt.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.orange)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.orange.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Ngưỡng tự động bật xe")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Text("Khi đã kết nối, nếu đạt ngưỡng này và xe đang tắt thì tự động bật lên.")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.top, 10)
-                            .padding(.bottom, viewModel.autoUnlockEnabled ? 4 : 10)
-                            
-                            if viewModel.autoUnlockEnabled {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Text("Độ nhạy: ")
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
-                                        + Text("\(Int(viewModel.autoTurnOnThreshold)) dBm")
-                                            .font(.system(.caption, design: .monospaced))
-                                            .foregroundColor(.white)
-                                        Spacer()
-                                        Text(viewModel.autoTurnOnThreshold >= -60 ? "Gần" : (viewModel.autoTurnOnThreshold >= -70 ? "Vừa" : "Xa"))
-                                            .font(.caption2)
-                                            .foregroundColor(viewModel.autoTurnOnThreshold >= -60 ? .green : (viewModel.autoTurnOnThreshold >= -70 ? .orange : .red))
-                                    }
-                                    Slider(value: $viewModel.autoTurnOnThreshold, in: -90...(-40), step: 1.0)
-                                        .tint(.orange)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.bottom, 14)
-                            }
+                    NavigationLink(destination: ConnectionSettingsView(viewModel: viewModel)) {
+                        HStack {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .foregroundColor(.green)
+                                .frame(width: 24)
+                            Text("Kết nối")
                         }
                     }
                     
-                    // 3. CHẾ ĐỘ NHÀ PHÁT TRIỂN
-                    settingsSection(title: "CHẾ ĐỘ NHÀ PHÁT TRIỂN") {
-                        VStack(spacing: 0) {
-                            settingsButton(icon: "list.bullet.rectangle.portrait", iconColor: .blue, title: "Xem nhật ký đầy đủ (Full Logs)") {
-                                showLogs = true
-                            }
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            Toggle(isOn: $viewModel.isLoggingEnabled) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "doc.text.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.purple)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.purple.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Ghi nhật ký BLE")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Text("Lưu log INFO/SUCCESS/WARNING/ERROR. TẮT để tiết kiệm pin.")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                            .tint(.purple)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            Toggle(isOn: $viewModel.verboseLoggingEnabled) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "waveform.path.ecg")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.indigo)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.indigo.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Log chi tiết (Verbose)")
-                                            .font(.subheadline)
-                                            .foregroundColor(viewModel.isLoggingEnabled ? .white : .gray)
-                                        Text("Ghi thêm RSSI mỗi 2s, STANDBY_CHECK... Chỉ bật khi cần debug sâu.")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                            .tint(.indigo)
-                            .disabled(!viewModel.isLoggingEnabled)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            Toggle(isOn: $viewModel.skipProximityToken) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.orange)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.orange.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Bỏ qua Proximity Token")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Text("Không gửi token lân cận khi xác thực (dùng khi test ASK)")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                            .tint(.orange)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
+                    NavigationLink(destination: NotificationSettingsView(viewModel: viewModel)) {
+                        HStack {
+                            Image(systemName: "bell.badge.fill")
+                                .foregroundColor(.orange)
+                                .frame(width: 24)
+                            Text("Thông báo")
                         }
                     }
                     
-                    // 4. THÔNG BÁO
-                    settingsSection(title: "THÔNG BÁO") {
-                        VStack(spacing: 0) {
-                            Toggle(isOn: $viewModel.notificationsEnabled) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "bell.badge.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.orange)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.orange.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Thông báo hệ thống")
-                                            .font(.subheadline)
-                                            .foregroundColor(.white)
-                                        Text("Bật/tắt toàn bộ thông báo của app")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                            .tint(.orange)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            
-                            if viewModel.notificationsEnabled {
-                                Divider().background(Color.white.opacity(0.06))
-                                
-                                HStack {
-                                    Text("LOẠI THÔNG BÁO")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.gray.opacity(0.6))
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.top, 8)
-                                .padding(.bottom, 4)
-                                
-                                notificationSubToggle(
-                                    icon: "checkmark.circle.fill", iconColor: .green,
-                                    title: "Kết nối thành công", subtitle: "Khi xác thực BLE hoàn tất",
-                                    binding: $viewModel.notifyOnConnected
-                                )
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                notificationSubToggle(
-                                    icon: "figure.walk", iconColor: .cyan,
-                                    title: "Gần xe — Kết nối chờ", subtitle: "Khi phát hiện di chuyển gần xe",
-                                    binding: $viewModel.notifyOnStandby
-                                )
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                notificationSubToggle(
-                                    icon: "arrow.uturn.backward.circle.fill", iconColor: .yellow,
-                                    title: "Ra xa xe — Chuyển chờ", subtitle: "Khi phát hiện di chuyển ra xa",
-                                    binding: $viewModel.notifyOnDisconnected
-                                )
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                notificationSubToggle(
-                                    icon: "bolt.fill", iconColor: .orange,
-                                    title: "Tự động bật xe", subtitle: "Khi Auto Turn-On được kích hoạt",
-                                    binding: $viewModel.notifyOnAutoTurnOn
-                                )
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                notificationSubToggle(
-                                    icon: "battery.100.bolt", iconColor: .green,
-                                    title: "Sạc đầy pin", subtitle: "Khi pin đạt 100%",
-                                    binding: $viewModel.notifyOnBatteryFull
-                                )
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                notificationSubToggle(
-                                    icon: "bolt.slash.fill", iconColor: .red,
-                                    title: "Ngắt sạc bất ngờ", subtitle: "Báo động khi mất sạc lúc xe tắt",
-                                    binding: $viewModel.notifyOnChargeDisconnect
-                                )
-                                Divider().background(Color.white.opacity(0.04)).padding(.leading, 52)
-                                notificationSubToggle(
-                                    icon: "battery.25", iconColor: .orange,
-                                    title: "Cảnh báo pin yếu", subtitle: "Khi pin giảm xuống dưới ngưỡng",
-                                    binding: $viewModel.notifyOnBatteryThreshold
-                                )
-                                
-                                if viewModel.notifyOnBatteryThreshold {
-                                    VStack(alignment: .leading, spacing: 6) {
-                                        HStack {
-                                            Text("Ngưỡng cảnh báo: ")
-                                                .font(.caption2)
-                                                .foregroundColor(.gray)
-                                            + Text("\(Int(viewModel.batteryLowThreshold))%")
-                                                .font(.system(.caption, design: .monospaced))
-                                                .foregroundColor(.white)
-                                            Spacer()
-                                        }
-                                        Slider(value: $viewModel.batteryLowThreshold, in: 5...50, step: 1.0)
-                                            .tint(.orange)
-                                    }
-                                    .padding(.leading, 52)
-                                    .padding(.trailing, 14)
-                                    .padding(.bottom, 8)
-                                    .animation(.easeInOut, value: viewModel.notifyOnBatteryThreshold)
-                                }
-                                Spacer().frame(height: 6)
-                            }
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            Toggle(isOn: $viewModel.widgetAndLiveActivityEnabled) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "bolt.badge.clock.fill")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(.yellow)
-                                        .frame(width: 28, height: 28)
-                                        .background(Color.yellow.opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                                    Text("Bật Widget & Live Activity")
-                                        .font(.subheadline)
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .tint(Color(red: 0.0, green: 0.96, blue: 1.0))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
+                    NavigationLink(destination: DeveloperSettingsView(viewModel: viewModel)) {
+                        HStack {
+                            Image(systemName: "hammer.fill")
+                                .foregroundColor(.purple)
+                                .frame(width: 24)
+                            Text("Chế độ nhà phát triển")
                         }
-                        .animation(.easeInOut(duration: 0.2), value: viewModel.notificationsEnabled)
                     }
-                    
-                    // 5. CHÌA KHÓA PHỤ
-                    settingsSection(title: "CHÌA KHÓA PHỤ") {
-                        VStack(spacing: 0) {
-                            settingsButton(icon: "cpu.fill", iconColor: .cyan, title: "Ghép đôi khoá phụ (ESP32)") {
-                                showProvisioning = true
-                            }
+                }
+                
+                Section(header: Text("Khóa phụ")) {
+                    Button(action: {
+                        showProvisioning = true
+                    }) {
+                        HStack {
+                            Image(systemName: "cpu.fill")
+                                .foregroundColor(.cyan)
+                                .frame(width: 24)
+                            Text("Cấu hình khóa phụ (ESP32)")
+                                .foregroundColor(.primary)
+                        }
+                    }
+                }
+                
+                Section(header: Text("Hỗ trợ"), footer: VStack(alignment: .leading, spacing: 4) {
+                    Text("D-SmartKey v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                    Text("Sản phẩm được tạo bởi tình yêu dành cho chiếc xe Datbike của tôi.")
+                }) {
+                    Button(action: {
+                        showConnectionGuide = true
+                    }) {
+                        HStack {
+                            Image(systemName: "book.pages.fill")
+                                .foregroundColor(.blue)
+                                .frame(width: 24)
+                            Text("Nguyên lý kết nối & Trạng thái")
+                                .foregroundColor(.primary)
                         }
                     }
                     
-                    // 6. HỖ TRỢ
-                    settingsSection(title: "HỖ TRỢ") {
-                        VStack(spacing: 0) {
-                            settingsButton(icon: "book.pages.fill", iconColor: .blue, title: "Nguyên lý kết nối & Trạng thái") {
-                                showConnectionGuide = true
-                            }
-                            
-                            Divider().background(Color.white.opacity(0.06))
-                            
-                            VStack(spacing: 12) {
-                                Text("Nếu app hữu ích, bạn có thể ủng hộ tác giả 🙏")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 8)
-                                    .padding(.top, 12)
-                                
-                                QRCodeView(content: "00020101021138630010A000000727013300069710250119PSP26089156000002310208QRIBFTTA53037045802VN62190515MOMOW2W3637058263049C27", size: 200)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12)
-                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                                    )
-                                
-                                VStack(spacing: 2) {
-                                    Text("NGUYỄN PHÚC TÚ")
-                                        .font(.subheadline)
-                                        .fontWeight(.semibold)
-                                        .foregroundColor(.white)
-                                    Text("*******135")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                    HStack(spacing: 6) {
-                                        Text("MoMo")
-                                            .font(.caption2)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(Color(red: 0.87, green: 0.18, blue: 0.49))
-                                        Text("•")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                        Text("VietQR")
-                                            .font(.caption2)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(Color(red: 0.87, green: 0.10, blue: 0.14))
-                                        Text("•")
-                                            .font(.caption2)
-                                            .foregroundColor(.gray)
-                                        Text("Napas 247")
-                                            .font(.caption2)
-                                            .fontWeight(.bold)
-                                            .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.25))
-                                    }
-                                }
-                                .padding(.bottom, 12)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                    }
-                    
-                    // App info
-                    VStack(spacing: 4) {
-                        Text("D-SmartKey v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                    VStack(alignment: .center, spacing: 12) {
+                        Text("Nếu app hữu ích, bạn có thể ủng hộ tác giả 🙏")
                             .font(.caption)
                             .foregroundColor(.gray)
-                        Text("Sản phẩm được tạo bởi tình yêu dành cho chiếc xe Datbike của tôi")
-                            .font(.caption2)
-                            .foregroundColor(.gray.opacity(0.6))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                            .padding(.top, 8)
+                        
+                        QRCodeView(content: "00020101021138630010A000000727013300069710250119PSP26089156000002310208QRIBFTTA53037045802VN62190515MOMOW2W3637058263049C27", size: 160)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                            )
+                        
+                        VStack(spacing: 2) {
+                            Text("NGUYỄN PHÚC TÚ")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                            Text("*******135")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            HStack(spacing: 6) {
+                                Text("MoMo")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Color(red: 0.87, green: 0.18, blue: 0.49))
+                                Text("•")
+                                    .font(.caption2)
+                                    .foregroundColor(.gray)
+                                Text("VietQR")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Color(red: 0.87, green: 0.10, blue: 0.14))
+                                Text("•")
+                                    .font(.caption2)
+                                    .foregroundColor(.gray)
+                                Text("Napas 247")
+                                    .font(.caption2)
+                                    .fontWeight(.bold)
+                                    .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.25))
+                            }
+                        }
+                        .padding(.bottom, 8)
                     }
-                    .padding(.top, 12)
-                    .padding(.bottom, 40)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.top, 8)
             }
-        }
-        .sheet(isPresented: $showLogs) {
-            LogView(logs: PersistentLogger.shared.loadLogs(daysBack: 1))
+            .navigationTitle("Cài đặt")
+            .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showProvisioning) {
             SmartKeySetupView()
@@ -521,215 +135,8 @@ struct SettingsView: View {
         .sheet(isPresented: $showConnectionGuide) {
             ConnectionGuideView()
         }
-        .sheet(isPresented: $showBatteryAnalytics) {
-            BatteryAnalyticsView(viewModel: container.batteryViewModel)
-        }
-        .alert("Bỏ liên kết xe", isPresented: $showForgetConfirm) {
-            Button("Quên", role: .destructive) {
-                viewModel.forgetBike()
-            }
-            Button("Hủy", role: .cancel) {}
-        } message: {
-            Text("Xóa kết nối App với xe. Bạn có muốn tiếp tục?")
-        }
     }
-    
-    // MARK: - Section Builder
-    
-    private func rssiColor(_ rssi: Int) -> Color {
-        switch rssi {
-        case ..<(-80): return .red
-        case -80 ..< -65: return .orange
-        default: return .green
-        }
-    }
-    
-    private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundColor(.gray)
-                .padding(.horizontal, 20)
-            
-            content()
-                .background(
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(Color.white.opacity(0.04))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .stroke(Color.white.opacity(0.06), lineWidth: 1)
-                        )
-                )
-                .padding(.horizontal)
-        }
-    }
-    
-    private func settingsRow(icon: String, iconColor: Color, title: String, value: String) -> some View {
-        HStack {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundColor(iconColor)
-                    .frame(width: 28, height: 28)
-                    .background(iconColor.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                
-                Text(title)
-                    .font(.subheadline)
-                    .foregroundColor(.white)
-            }
-            
-            Spacer()
-            
-            Text(value)
-                .font(.subheadline)
-                .foregroundColor(.gray)
-                .lineLimit(1)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-    }
-    
-    private func settingsButton(icon: String, iconColor: Color, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                HStack(spacing: 10) {
-                    Image(systemName: icon)
-                        .font(.system(size: 12))
-                        .foregroundColor(iconColor)
-                        .frame(width: 28, height: 28)
-                        .background(iconColor.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    
-                    Text(title)
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundColor(.gray)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-        }
-    }
-    
-    private func notificationSubToggle(
-        icon: String,
-        iconColor: Color,
-        title: String,
-        subtitle: String,
-        binding: Binding<Bool>
-    ) -> some View {
-        Toggle(isOn: binding) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundColor(iconColor)
-                    .frame(width: 24, height: 24)
-                    .background(iconColor.opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.subheadline)
-                        .foregroundColor(.white)
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundColor(.gray)
-                }
-            }
-        }
-        .tint(iconColor)
-        .padding(.leading, 24)  // indent so sánh với master toggle
-        .padding(.trailing, 14)
-        .padding(.vertical, 8)
-    }
-    
-    @ViewBuilder
-    private func infoPopover(title: String, icon: String, iconColor: Color, body: String) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 18))
-                    .foregroundColor(iconColor)
-                    .frame(width: 36, height: 36)
-                    .background(iconColor.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-            }
-            Text(body)
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(20)
-        .frame(minWidth: 280, maxWidth: 340)
-    }
-    
-    
-    // MARK: - QR Code Generator
-    
-    struct QRCodeView: View {
-        let content: String
-        let size: CGFloat
-        @State private var cachedImage: UIImage?
-        
-        var body: some View {
-            Group {
-                if let image = cachedImage {
-                    Image(uiImage: image)
-                        .interpolation(.none)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: size, height: size)
-                } else {
-                    Color.white.frame(width: size, height: size)
-                        .overlay(ProgressView())
-                }
-            }
-            .onAppear {
-                Task {
-                    if cachedImage == nil {
-                        cachedImage = generateQRCode(from: content)
-                    }
-                }
-            }
-        }
-        
-        private func generateQRCode(from string: String) -> UIImage? {
-            let filter = CIFilter.qrCodeGenerator()
-            filter.message = Data(string.utf8)
-            filter.correctionLevel = "M"
-            guard let ciImage = filter.outputImage else { return nil }
-            let scale = size / ciImage.extent.width
-            let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-            // White QR on white background — invert for dark mode friendliness
-            guard let inverted = CIFilter(name: "CIColorInvert", parameters: [kCIInputImageKey: scaled])?.outputImage,
-                  CIFilter(name: "CIMaskToAlpha", parameters: [kCIInputImageKey: inverted])?.outputImage != nil else {
-                let context = CIContext()
-                if let cgImage = context.createCGImage(scaled, from: scaled.extent) {
-                    return UIImage(cgImage: cgImage)
-                }
-                return nil
-            }
-            // Compose: black QR on white background
-            let bg = CIImage(color: CIColor.white).cropped(to: scaled.extent)
-            guard let composed = CIFilter(name: "CISourceOverCompositing",
-                                          parameters: [kCIInputImageKey: scaled,
-                                             kCIInputBackgroundImageKey: bg])?.outputImage else { return nil }
-            let context = CIContext()
-            guard let cgImage = context.createCGImage(composed, from: composed.extent) else { return nil }
-            return UIImage(cgImage: cgImage)
-        }
-    }
-    
+}
     // MARK: - Log View
     
     struct LogView: View {
@@ -904,7 +311,668 @@ struct SettingsView: View {
             return formatter.string(from: date)
         }
     }
+
+// MARK: - Connection Guide View
+struct ConnectionGuideView: View {
+    @Environment(\.presentationMode) var presentationMode
+    
+    var body: some View {
+        NavigationView {
+            ZStack {
+                Color(red: 0.1, green: 0.1, blue: 0.12).ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        Text("Hiểu về kết nối D-SmartKey")
+                            .font(.title2).bold()
+                            .foregroundColor(.white)
+                        
+                        guideSection(
+                            icon: "magnifyingglass", iconColor: .blue,
+                            title: "1. Đang tìm xe",
+                            content: "Điện thoại đang liên tục quét các sóng Bluetooth Low Energy (BLE) xung quanh để phát hiện xe Dat Bike của bạn. Trạng thái này thường mất từ 1-3 giây mỗi khi mở app."
+                        )
+                        
+                        guideSection(
+                            icon: "point.3.connected.trianglepath.dotted", iconColor: .orange,
+                            title: "2. Đang kết nối & Xác thực",
+                            content: "Ứng dụng đã tìm thấy sóng của xe và tiến hành thiết lập liên kết an toàn."
+                        )
+                        
+                        guideSection(
+                            icon: "sensor.tag.radiowaves.forward", iconColor: .green,
+                            title: "3. Ngưỡng tự động kết nối",
+                            content: "Mặc định, khi xe phát hiện bạn trong phạm vi phát sóng đủ lớn của 'Ngưỡng kết nối', biểu tượng Bluetooth trên mặt đồng hồ xe sẽ sáng nháp báo hiệu sự kết nối vật lý đã sẵn sàng. Bạn càng kéo thanh này về phía 'Xa' (như -80), xe sẽ bắt sóng bạn càng sớm."
+                        )
+                        
+                        guideSection(
+                            icon: "bolt.fill", iconColor: .yellow,
+                            title: "4. Ngưỡng tự động bật xe",
+                            content: "Nếu bạn đã bật tính năng này, sau khi kết nối, hệ thống sẽ tiếp tục đợi. Chỉ khi bạn tiến lại đủ gần chạm trúng vào 'Ngưỡng bật xe' (như -60), ứng dụng mới xuất lệnh đánh thức và BẬT HỆ THỐNG ĐIỆN của xe hoàn toàn."
+                        )
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Mẹo thiết lập")
+                                .font(.headline).foregroundColor(.white)
+                            Text("• Luôn giữ Ngưỡng bật xe ĐẬM (Gần) hơn Ngưỡng kết nối để tránh việc xe tự bật sáng khi bạn chỉ đang lướt ngang qua sân nhà.")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                        }
+                        .padding()
+                        .background(Color.orange.opacity(0.1))
+                        .cornerRadius(12)
+                    }
+                    .padding()
+                    .padding(.top, 10)
+                }
+            }
+            .navigationTitle("Trợ giúp")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { presentationMode.wrappedValue.dismiss() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+    
+    private func guideSection(icon: String, iconColor: Color, title: String, content: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(iconColor)
+                .frame(width: 32)
+            
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(.white)
+                Text(content)
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .lineSpacing(2)
+            }
+        }
+    }
 }
+
+struct MyBikeSettingsView: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    @State private var showBatteryAnalytics = false
+    @State private var showForgetConfirm = false
+    @EnvironmentObject var container: AppDIContainer
+    
+    var body: some View {
+        Form {
+            let hasSavedBike = PreferencesManager.shared.savedBikeSerial != nil && PreferencesManager.shared.savedBikeSerial?.isEmpty == false
+            let isConnectedWithInfo = viewModel.isConnected && !viewModel.bikeInfo.isEmpty
+            
+            if isConnectedWithInfo || hasSavedBike {
+                Section(header: Text("Thông tin cơ bản")) {
+                    HStack {
+                        Image(systemName: "bicycle")
+                            .foregroundColor(.cyan)
+                            .frame(width: 24)
+                        Text("Tên")
+                        Spacer()
+                        Text(isConnectedWithInfo ? viewModel.bikeInfo.name : (PreferencesManager.shared.savedBikeName ?? "Dat Bike"))
+                            .foregroundColor(.gray)
+                    }
+                    
+                    if isConnectedWithInfo {
+                        HStack {
+                            Image(systemName: "cpu")
+                                .foregroundColor(.cyan)
+                                .frame(width: 24)
+                            Text("Model")
+                            Spacer()
+                            Text(viewModel.bikeInfo.model)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    
+                    HStack {
+                        Image(systemName: "number")
+                            .foregroundColor(.cyan)
+                            .frame(width: 24)
+                        Text("Số khung")
+                        Spacer()
+                        Text(isConnectedWithInfo ? viewModel.bikeInfo.serial : (PreferencesManager.shared.savedBikeSerial ?? ""))
+                            .foregroundColor(.gray)
+                    }
+                    
+                    if isConnectedWithInfo && !viewModel.bikeInfo.firmware.isEmpty {
+                        HStack {
+                            Image(systemName: "gearshape.fill")
+                                .foregroundColor(.cyan)
+                                .frame(width: 24)
+                            Text("Firmware")
+                            Spacer()
+                            Text(viewModel.bikeInfo.firmware)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    
+                    if isConnectedWithInfo && !viewModel.bikeInfo.deviceToken.isEmpty {
+                        HStack {
+                            Image(systemName: "key")
+                                .foregroundColor(.cyan)
+                                .frame(width: 24)
+                            Text("Token")
+                            Spacer()
+                            Text(String(viewModel.bikeInfo.deviceToken.prefix(16)) + "…")
+                                .foregroundColor(.gray)
+                                .lineLimit(1)
+                        }
+                    }
+                    
+                    if !viewModel.isConnected {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundColor(.orange)
+                                .frame(width: 24)
+                            Text("Trạng thái")
+                            Spacer()
+                            Text("Chưa kết nối")
+                                .foregroundColor(.orange)
+                        }
+                    }
+                }
+                
+                Section(header: Text("Quản lý")) {
+                    if viewModel.isConnected {
+                        Button {
+                            showBatteryAnalytics = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "battery.100.bolt")
+                                    .foregroundColor(.green)
+                                    .frame(width: 24)
+                                Text("Phân tích Pin (BMS)")
+                                    .foregroundColor(.primary)
+                            }
+                        }
+                    }
+                    
+                    Button {
+                        viewModel.syncTime()
+                    } label: {
+                        HStack {
+                            Image(systemName: "clock.fill")
+                                .foregroundColor(.blue)
+                                .frame(width: 24)
+                            Text(viewModel.isSyncingTime ? "Đang đồng bộ..." : "Đồng bộ giờ xe")
+                                .foregroundColor(viewModel.isConnected ? .primary : .gray)
+                            Spacer()
+                            if viewModel.isSyncingTime {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(!viewModel.isConnected || viewModel.isSyncingTime)
+                }
+                
+                Section {
+                    Button(role: .destructive) {
+                        showForgetConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "trash.fill")
+                                .frame(width: 24)
+                            Text("Bỏ liên kết xe")
+                        }
+                    }
+                }
+            } else {
+                Text("Chưa có thông tin xe.")
+                    .foregroundColor(.gray)
+            }
+        }
+        .navigationTitle("Xe của tôi")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showBatteryAnalytics) {
+            BatteryAnalyticsView(viewModel: container.batteryViewModel)
+        }
+        .alert("Bỏ liên kết xe", isPresented: $showForgetConfirm) {
+            Button("Quên", role: .destructive) {
+                viewModel.forgetBike()
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            Text("Xóa kết nối App với xe. Bạn có muốn tiếp tục?")
+        }
+    }
+}
+
+struct ConnectionSettingsView: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Tự động kết nối"), footer: Text("Khi đạt ngưỡng này điện thoại sẽ tự động kết nối, biểu tượng bluetooth trên đồng hồ xe sẽ sáng.")) {
+                Toggle(isOn: $viewModel.connectOnlyWhenNear) {
+                    HStack {
+                        Image(systemName: "sensor.tag.radiowaves.forward")
+                            .foregroundColor(.green)
+                            .frame(width: 24)
+                        Text("Ngưỡng tự động kết nối với xe")
+                    }
+                }
+                .tint(.green)
+                
+                if viewModel.connectOnlyWhenNear {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Độ nhạy: ")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            Text("\(Int(viewModel.rssiThreshold)) dBm")
+                                .font(.system(.caption, design: .monospaced))
+                            Spacer()
+                            Text(viewModel.rssiThreshold >= -65 ? "Gần" : (viewModel.rssiThreshold >= -75 ? "Vừa" : "Xa"))
+                                .font(.caption2)
+                                .foregroundColor(viewModel.rssiThreshold >= -65 ? .green : (viewModel.rssiThreshold >= -75 ? .orange : .red))
+                        }
+                        Slider(value: $viewModel.rssiThreshold, in: -95...(-50), step: 1.0)
+                            .tint(.green)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            
+            Section(header: Text("Tự động bật xe"), footer: Text("Khi đã kết nối, nếu đạt ngưỡng này và xe đang tắt thì tự động bật lên.")) {
+                Toggle(isOn: $viewModel.autoUnlockEnabled) {
+                    HStack {
+                        Image(systemName: "bolt.fill")
+                            .foregroundColor(.orange)
+                            .frame(width: 24)
+                        Text("Ngưỡng tự động bật xe")
+                    }
+                }
+                .tint(.orange)
+                
+                if viewModel.autoUnlockEnabled {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Text("Độ nhạy: ")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            Text("\(Int(viewModel.autoTurnOnThreshold)) dBm")
+                                .font(.system(.caption, design: .monospaced))
+                            Spacer()
+                            Text(viewModel.autoTurnOnThreshold >= -60 ? "Gần" : (viewModel.autoTurnOnThreshold >= -70 ? "Vừa" : "Xa"))
+                                .font(.caption2)
+                                .foregroundColor(viewModel.autoTurnOnThreshold >= -60 ? .green : (viewModel.autoTurnOnThreshold >= -70 ? .orange : .red))
+                        }
+                        Slider(value: $viewModel.autoTurnOnThreshold, in: -90...(-40), step: 1.0)
+                            .tint(.orange)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+        .navigationTitle("Kết nối")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct DeveloperSettingsView: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    @State private var showLogs = false
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Nhật ký hệ thống")) {
+                Button {
+                    showLogs = true
+                } label: {
+                    HStack {
+                        Image(systemName: "list.bullet.rectangle.portrait")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        Text("Xem nhật ký đầy đủ (Full Logs)")
+                            .foregroundColor(.primary)
+                    }
+                }
+                
+                Toggle(isOn: $viewModel.isLoggingEnabled) {
+                    HStack {
+                        Image(systemName: "doc.text.fill")
+                            .foregroundColor(.purple)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Ghi nhật ký BLE")
+                            Text("Lưu log INFO/SUCCESS/WARNING/ERROR. TẮT để tiết kiệm pin.")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .tint(.purple)
+                
+                Toggle(isOn: $viewModel.verboseLoggingEnabled) {
+                    HStack {
+                        Image(systemName: "waveform.path.ecg")
+                            .foregroundColor(.indigo)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Log chi tiết (Verbose)")
+                            Text("Ghi thêm RSSI mỗi 2s, STANDBY_CHECK... Chỉ bật khi cần debug sâu.")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .tint(.indigo)
+                .disabled(!viewModel.isLoggingEnabled)
+            }
+            
+            Section(header: Text("Nâng cao"), footer: Text("Không gửi token lân cận khi xác thực (dùng khi test ASK)")) {
+                Toggle(isOn: $viewModel.skipProximityToken) {
+                    HStack {
+                        Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                            .foregroundColor(.orange)
+                            .frame(width: 24)
+                        Text("Bỏ qua Proximity Token")
+                    }
+                }
+                .tint(.orange)
+            }
+        }
+        .navigationTitle("Nhà phát triển")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showLogs) {
+            LogView(logs: PersistentLogger.shared.loadLogs(daysBack: 1))
+        }
+    }
+}
+
+struct NotificationSettingsView: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    
+    var body: some View {
+        Form {
+            Section(header: Text("Chung"), footer: Text("Bật/tắt toàn bộ thông báo của app")) {
+                Toggle(isOn: $viewModel.notificationsEnabled) {
+                    HStack {
+                        Image(systemName: "bell.badge.fill")
+                            .foregroundColor(.orange)
+                            .frame(width: 24)
+                        Text("Thông báo hệ thống")
+                    }
+                }
+                .tint(.orange)
+            }
+            
+            if viewModel.notificationsEnabled {
+                Section(header: Text("Loại thông báo")) {
+                    notificationSubToggle(
+                        icon: "checkmark.circle.fill", iconColor: .green,
+                        title: "Kết nối thành công", subtitle: "Khi xác thực BLE hoàn tất",
+                        binding: $viewModel.notifyOnConnected
+                    )
+                    notificationSubToggle(
+                        icon: "figure.walk", iconColor: .cyan,
+                        title: "Gần xe — Kết nối chờ", subtitle: "Khi phát hiện di chuyển gần xe",
+                        binding: $viewModel.notifyOnStandby
+                    )
+                    notificationSubToggle(
+                        icon: "arrow.uturn.backward.circle.fill", iconColor: .yellow,
+                        title: "Ra xa xe — Chuyển chờ", subtitle: "Khi phát hiện di chuyển ra xa",
+                        binding: $viewModel.notifyOnDisconnected
+                    )
+                    notificationSubToggle(
+                        icon: "bolt.fill", iconColor: .orange,
+                        title: "Tự động bật xe", subtitle: "Khi Auto Turn-On được kích hoạt",
+                        binding: $viewModel.notifyOnAutoTurnOn
+                    )
+                    notificationSubToggle(
+                        icon: "battery.100.bolt", iconColor: .green,
+                        title: "Sạc đầy pin", subtitle: "Khi pin đạt 100%",
+                        binding: $viewModel.notifyOnBatteryFull
+                    )
+                    notificationSubToggle(
+                        icon: "bolt.slash.fill", iconColor: .red,
+                        title: "Ngắt sạc bất ngờ", subtitle: "Báo động khi mất sạc lúc xe tắt",
+                        binding: $viewModel.notifyOnChargeDisconnect
+                    )
+                    notificationSubToggle(
+                        icon: "battery.25", iconColor: .orange,
+                        title: "Cảnh báo pin yếu", subtitle: "Khi pin giảm xuống dưới ngưỡng",
+                        binding: $viewModel.notifyOnBatteryThreshold
+                    )
+                    
+                    if viewModel.notifyOnBatteryThreshold {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text("Ngưỡng cảnh báo: ")
+                                    .font(.caption2)
+                                    .foregroundColor(.gray)
+                                Text("\(Int(viewModel.batteryLowThreshold))%")
+                                    .font(.system(.caption, design: .monospaced))
+                                Spacer()
+                            }
+                            Slider(value: $viewModel.batteryLowThreshold, in: 5...50, step: 1.0)
+                                .tint(.orange)
+                        }
+                        .padding(.vertical, 4)
+                        .animation(.easeInOut, value: viewModel.notifyOnBatteryThreshold)
+                    }
+                }
+            }
+            
+            Section(header: Text("Tiện ích")) {
+                Toggle(isOn: $viewModel.widgetAndLiveActivityEnabled) {
+                    HStack {
+                        Image(systemName: "bolt.badge.clock.fill")
+                            .foregroundColor(.yellow)
+                            .frame(width: 24)
+                        Text("Bật Widget & Live Activity")
+                    }
+                }
+                .tint(Color(red: 0.0, green: 0.96, blue: 1.0))
+            }
+        }
+        .navigationTitle("Thông báo")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    
+    private func notificationSubToggle(icon: String, iconColor: Color, title: String, subtitle: String, binding: Binding<Bool>) -> some View {
+        Toggle(isOn: binding) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .foregroundColor(iconColor)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundColor(.gray)
+                }
+            }
+        }
+        .tint(iconColor)
+    }
+}
+    // MARK: - Log View
+    
+    struct LogView: View {
+        @State var logs: [BLELogEntry]
+        @Environment(\.dismiss) private var dismiss
+        @State private var showClearConfirm = false
+        @State private var showShareSheet = false
+        @State private var shareURL: URL? = nil
+        
+        init(logs: [BLELogEntry]) {
+            self._logs = State(initialValue: logs)
+        }
+        
+        /// Danh sách keyword nhạy cảm — log chứa keyword này sẽ bị ẩn
+        private static let sensitiveKeywords = [
+            "SHA", "hash", "PIN", "pin", "auth", "Auth",
+            "challenge", "counter", "nonce", "token", "Token",
+            "session", "proximity", "Xác thực", "xác thực",
+            "NOTIFY", "serviceChanged"
+        ]
+        
+        /// Hiển thị toàn bộ nhật ký theo yêu cầu
+        private var filteredLogs: [BLELogEntry] {
+            return logs
+        }
+        
+        var body: some View {
+            NavigationView {
+                ZStack {
+                    Color(red: 0.04, green: 0.04, blue: 0.08)
+                        .ignoresSafeArea()
+                    
+                    if filteredLogs.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "doc.text.magnifyingglass")
+                                .font(.system(size: 40))
+                                .foregroundColor(.gray)
+                            Text("Chưa có log")
+                                .foregroundColor(.gray)
+                        }
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 2) {
+                                ForEach(filteredLogs.reversed()) { entry in
+                                    HStack(alignment: .top, spacing: 6) {
+                                        Text(entry.formattedTime)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .foregroundColor(.gray)
+                                        
+                                        Text(entry.level.rawValue)
+                                            .font(.system(size: 10))
+                                        
+                                        Text(entry.message)
+                                            .font(.system(size: 11))
+                                            .foregroundColor(.white.opacity(0.85))
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 3)
+                                    .contextMenu {
+                                        Button {
+                                            UIPasteboard.general.string = "[\(entry.formattedTime)] \(entry.level.rawValue) \(entry.message)"
+                                        } label: {
+                                            Label("Copy", systemImage: "doc.on.doc")
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+                .navigationTitle("BLE Log")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItemGroup(placement: .navigationBarLeading) {
+                        Button {
+                            let fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
+                            UIPasteboard.general.string = fullString
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        
+                        Button {
+                            let text = PersistentLogger.shared.exportAllAsText()
+                            let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("datbike_ble_logs.txt")
+                            try? text.write(to: tempFile, atomically: true, encoding: .utf8)
+                            shareURL = tempFile
+                            showShareSheet = true
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                    }
+                    ToolbarItemGroup(placement: .navigationBarTrailing) {
+                        Button {
+                            showClearConfirm = true
+                        } label: {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                        }
+                        
+                        Button("Đóng") { dismiss() }
+                            .foregroundColor(.blue)
+                    }
+                }
+                .alert("Xóa toàn bộ Log?", isPresented: $showClearConfirm) {
+                    Button("Xóa", role: .destructive) {
+                        PersistentLogger.shared.clearAll()
+                        logs.removeAll()
+                    }
+                    Button("Hủy", role: .cancel) {}
+                } message: {
+                    Text("Hành động này sẽ xóa vĩnh viễn toàn bộ lịch sử kết nối lưu trên máy.")
+                }
+                .background(
+                    ActivityViewPresenter(isPresented: $showShareSheet, activityItems: [shareURL].compactMap { $0 })
+                )
+            }
+            .navigationViewStyle(.stack)
+            .preferredColorScheme(.dark)
+        }
+    }
+    
+    struct ActivityViewPresenter: UIViewControllerRepresentable {
+        @Binding var isPresented: Bool
+        var activityItems: [Any]
+        
+        func makeUIViewController(context: Context) -> UIViewController {
+            let vc = UIViewController()
+            vc.view.backgroundColor = .clear
+            return vc
+        }
+        
+        func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+            let isActivityShown = uiViewController.presentedViewController is UIActivityViewController
+            
+            if isPresented && !isActivityShown {
+                let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+                controller.completionWithItemsHandler = { _, _, _, _ in
+                    self.isPresented = false
+                }
+                
+                if let popover = controller.popoverPresentationController {
+                    popover.sourceView = uiViewController.view
+                    popover.sourceRect = CGRect(x: uiViewController.view.bounds.midX, y: uiViewController.view.bounds.midY, width: 0, height: 0)
+                    popover.permittedArrowDirections = []
+                }
+                
+                uiViewController.present(controller, animated: true)
+            }
+        }
+    }
+    
+    // MARK: - Live Time Text
+    struct LiveTimeText: View {
+        @State private var currentTime = Date()
+        
+        var body: some View {
+            Text(currentVNTimeString(currentTime))
+                .font(.system(.caption, design: .monospaced))
+                .foregroundColor(.gray)
+                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { input in
+                    currentTime = input
+                }
+        }
+        
+        private func currentVNTimeString(_ date: Date) -> String {
+            let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+            let formatter = DateFormatter()
+            formatter.timeZone = vnTZ
+            formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
+            return formatter.string(from: date)
+        }
+    }
 
 // MARK: - Connection Guide View
 struct ConnectionGuideView: View {
