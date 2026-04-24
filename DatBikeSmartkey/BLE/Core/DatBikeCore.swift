@@ -409,6 +409,20 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
             message: "[CONNECT_PERIPHERAL] name=\(p.name ?? "nil") | uuid=\(p.identifier.uuidString.prefix(8)) | peripheralState=\(p.state.rawValue) | centralState=\(central.state.rawValue)"))
+        
+        // ═══ GUARD: Tránh connect khi peripheral đang trong quá trình .disconnecting ═══
+        // iOS chưa dọn xong link-layer → connect ngay sẽ gây phantom connection + MIC failure.
+        // Chờ 1.5s để iOS hoàn tất ngắt kết nối rồi mới connect lại.
+        if p.state == .disconnecting {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "[CONNECT_PERIPHERAL] Peripheral đang .disconnecting → chờ 1.5s rồi connect lại"))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                guard let self, let central = self.centralManager, central.state == .poweredOn else { return }
+                self.connectPeripheral(p, central: central)
+            }
+            return
+        }
+        
         stateMachine.transition(to: .connecting)
         
         let context = BLEConnectionContext(peripheral: p)
