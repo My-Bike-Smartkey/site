@@ -31,26 +31,36 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
     
     override init() {
         super.init()
-        centralManager = CBCentralManager(delegate: self, queue: nil)
+        print("[PROV] SmartKeyProvisioner INIT")
+        centralManager = CBCentralManager(delegate: self, queue: DispatchQueue.main)
+    }
+    
+    deinit {
+        print("[PROV] SmartKeyProvisioner DEINIT")
     }
     
     func startProvisioning(pin: String, mac: String, frame: String) {
+        print("[PROV] Bắt đầu Provisioning. PIN: \(pin), MAC: \(mac), FRAME: \(frame)")
         self.targetPin = pin
         self.targetMac = mac
         self.targetFrame = frame
         
         guard centralManager.state == .poweredOn else {
+            print("[PROV] Lỗi: Bluetooth chưa được bật. Trạng thái hiện tại: \(centralManager.state.rawValue)")
             state = .error("Bluetooth chưa được bật.")
             return
         }
         
         state = .scanning
-        centralManager.scanForPeripherals(withServices: [serviceUUID], options: nil)
+        print("[PROV] Đang quét tìm thiết bị (với Service UUID \(serviceUUID))...")
+        // Khôi phục bộ lọc serviceUUID vì iOS có thể chặn quét 'nil' nếu nhầm lẫn state background
+        centralManager.scanForPeripherals(withServices: [serviceUUID], options: [CBCentralManagerScanOptionAllowDuplicatesKey: true])
         
         // Timeout cho quá trình scan
         DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) { [weak self] in
             guard let self = self else { return }
             if self.state == .scanning {
+                print("[PROV] Timeout quét (10s)! Không tìm thấy ESP-Smartkey.")
                 self.centralManager.stopScan()
                 self.state = .error("Không tìm thấy mạch ESP-Smartkey.")
             }
@@ -58,6 +68,7 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
     }
     
     func cancel() {
+        print("[PROV] Đã hủy tiến trình Provisioning bởi người dùng.")
         centralManager.stopScan()
         if let p = peripheral {
             centralManager.cancelPeripheralConnection(p)
@@ -69,30 +80,45 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
 // MARK: - CBCentralManagerDelegate
 extension SmartKeyProvisioner: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        print("[PROV] CBCentralManager didUpdateState: \(central.state.rawValue)")
         if central.state != .poweredOn && state != .idle {
             state = .error("Bluetooth bị tắt đột ngột.")
         }
     }
     
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        centralManager.stopScan()
-        self.peripheral = peripheral
-        self.peripheral?.delegate = self
+        let name = peripheral.name ?? (advertisementData[CBAdvertisementDataLocalNameKey] as? String) ?? "Unknown"
         
-        state = .connecting
-        centralManager.connect(peripheral, options: nil)
+        let uuids = advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID] ?? []
+        let hasService = uuids.contains(serviceUUID)
+        
+        // In ra tất cả thiết bị quét được để debug
+        print("[PROV-SCAN] Nhìn thấy thiết bị: \(name), UUID: \(peripheral.identifier), Có Service: \(hasService)")
+        
+        if name.contains("ESP-Smartkey") || hasService {
+            print("[PROV] Đã tìm thấy ESP-Smartkey! UUID: \(peripheral.identifier), RSSI: \(RSSI)")
+            centralManager.stopScan()
+            self.peripheral = peripheral
+            self.peripheral?.delegate = self
+            
+            state = .connecting
+            centralManager.connect(peripheral, options: nil)
+        }
     }
     
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        print("[PROV] Đã kết nối tới \(peripheral.name ?? "thiết bị"). Bắt đầu Discover Services...")
         state = .discovering
         peripheral.discoverServices([serviceUUID])
     }
     
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        print("[PROV] Kết nối thất bại: \(error?.localizedDescription ?? "Unknown")")
         state = .error("Không thể kết nối đến ESP32: \(error?.localizedDescription ?? "Unknown error")")
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        print("[PROV] Bị ngắt kết nối. Lỗi (nếu có): \(error?.localizedDescription ?? "Không có")")
         if state == .success { return }
         state = .error("Bị ngắt kết nối đột ngột.")
     }
@@ -101,41 +127,62 @@ extension SmartKeyProvisioner: CBCentralManagerDelegate {
 // MARK: - CBPeripheralDelegate
 extension SmartKeyProvisioner: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        if let error = error {
+            print("[PROV] Lỗi Discover Services: \(error.localizedDescription)")
+            state = .error("Lỗi khi tìm Service: \(error.localizedDescription)")
+            return
+        }
         guard let service = peripheral.services?.first(where: { $0.uuid == serviceUUID }) else {
+            print("[PROV] Không tìm thấy Config Service (UUID \(serviceUUID)) trên ESP32!")
             state = .error("Không tìm thấy Config Service trên ESP32.")
             return
         }
+        print("[PROV] Tìm thấy Config Service. Bắt đầu Discover Characteristics...")
         peripheral.discoverCharacteristics([pinCharUUID, macCharUUID, frameCharUUID], for: service)
     }
     
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        if let error = error {
+            print("[PROV] Lỗi Discover Characteristics: \(error.localizedDescription)")
+            state = .error("Lỗi khi tìm Characteristics: \(error.localizedDescription)")
+            return
+        }
+        
+        print("[PROV] Tìm thấy Characteristics. Bắt đầu ghi dữ liệu...")
         state = .pairingAndWriting
         
         // Bắt đầu ghi dữ liệu
         if let pinChar = service.characteristics?.first(where: { $0.uuid == pinCharUUID }),
            let pinData = targetPin.data(using: .utf8) {
+            print("[PROV] Ghi mã PIN...")
             peripheral.writeValue(pinData, for: pinChar, type: .withResponse)
         }
         
         if let macChar = service.characteristics?.first(where: { $0.uuid == macCharUUID }),
            let macData = targetMac.data(using: .utf8) {
+            print("[PROV] Ghi địa chỉ MAC...")
             peripheral.writeValue(macData, for: macChar, type: .withResponse)
         }
         
         if let frameChar = service.characteristics?.first(where: { $0.uuid == frameCharUUID }),
            let frameData = targetFrame.data(using: .utf8) {
+            print("[PROV] Ghi Số khung...")
             peripheral.writeValue(frameData, for: frameChar, type: .withResponse)
         }
     }
     
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error = error {
+            print("[PROV] Lỗi ghi dữ liệu tại Char \(characteristic.uuid): \(error.localizedDescription)")
             state = .error("Lỗi ghi dữ liệu (Bạn đã nhấn Cancel?): \(error.localizedDescription)")
             return
         }
         
+        print("[PROV] Đã ghi thành công vào Char \(characteristic.uuid)!")
+        
         // Nếu ghi PIN thành công
         if characteristic.uuid == pinCharUUID {
+            print("[PROV] Quá trình Provisioning thành công! Đang lưu PIN và ngắt kết nối...")
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 self.state = .success

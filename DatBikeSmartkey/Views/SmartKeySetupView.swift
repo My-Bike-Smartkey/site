@@ -155,6 +155,14 @@ struct SmartKeySetupView: View {
     }
     
     private func autofillData() {
+        print("[PROV] Đang tạm dừng DatBikeCore để nhường sóng BLE cho Provisioner...")
+        let core = container.bleCore
+        core.suspendAutoFeatures()
+        
+        // Dừng luôn lệnh quét ngầm của Core nếu có
+        // core.centralManager.stopScan() - Không gọi trực tiếp được vì private, 
+        // nhưng suspendAutoFeatures() đã đổi stateMachine sang manual.
+        
         // Auto-fill from app state to provide seamless UX
         if let savedPin = PreferencesManager.shared.savedPin {
             pinInput = savedPin
