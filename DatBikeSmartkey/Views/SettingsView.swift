@@ -389,21 +389,47 @@ struct SettingsView: View {
                     }
                     
                     settingsSection(title: "GỠ LỖI (NÂNG CAO)") {
-                        Toggle(isOn: $viewModel.isDebugModeEnabled) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "terminal.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.purple)
-                                    .frame(width: 28, height: 28)
-                                    .background(Color.purple.opacity(0.15))
-                                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                                Text("Bật Nhật Ký BLE (Logs)")
-                                    .font(.subheadline)
-                                    .foregroundColor(.white)
+                        VStack(spacing: 0) {
+                            Toggle(isOn: $viewModel.isDebugModeEnabled) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "terminal.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.purple)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.purple.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    Text("Bật Nhật Ký BLE (Logs)")
+                                        .font(.subheadline)
+                                        .foregroundColor(.white)
+                                }
                             }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            
+                            Divider().background(Color.white.opacity(0.06))
+                            
+                            Toggle(isOn: $viewModel.skipProximityToken) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.orange)
+                                        .frame(width: 28, height: 28)
+                                        .background(Color.orange.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Bỏ qua Proximity Token")
+                                            .font(.subheadline)
+                                            .foregroundColor(.white)
+                                        Text("Không gửi token lân cận khi xác thực (dùng khi test ASK)")
+                                            .font(.caption2)
+                                            .foregroundColor(.gray)
+                                    }
+                                }
+                            }
+                            .tint(.orange)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
                     }
                     
                     // Donate section

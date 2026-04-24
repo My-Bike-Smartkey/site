@@ -36,11 +36,19 @@ class BLEConnectionContext {
     
     // MARK: - Teardown
     
+    /// Dọn dẹp toàn bộ state — phiên bản sync (fire-and-forget) cho các call sites không cần đợi.
     func clearState() {
         discoveredCharacteristics.removeAll()
         Task {
             await io.cancelAll()
             await queue.cancelAll()
         }
+    }
+    
+    /// Dọn dẹp toàn bộ state — phiên bản async đảm bảo io/queue đã cancel xong trước khi return.
+    func clearStateAsync() async {
+        discoveredCharacteristics.removeAll()
+        await io.cancelAll()
+        await queue.cancelAll()
     }
 }

@@ -45,7 +45,8 @@ actor BLETaskQueue {
     /// Bắn tín hiệu huỷ 1 task duy nhất (Do user huỷ)
     private func cancelTask(id: UUID) {
         if let index = pendingTasks.firstIndex(where: { $0.0 == id }) {
-            print("⚠️ [BLE_QUEUE] Đã huỷ tác vụ đang xếp hàng: \(id)")
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "[BLE_QUEUE] Đã huỷ tác vụ đang xếp hàng: \(id)"))
             let removed = pendingTasks.remove(at: index)
             removed.1.resume(throwing: CancellationError())
         }

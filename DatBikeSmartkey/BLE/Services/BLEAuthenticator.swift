@@ -39,11 +39,14 @@ class BLEAuthenticator: IoTAuthService {
         }
         
         // ── PROXIMITY TOKEN ──
-        if let autoChar = try? context.requireCharacteristic(BLECharacteristic.autoUnlock) {
+        if PreferencesManager.shared.skipProximityToken {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[AUTH] Bỏ qua Proximity Token (skipProximityToken=true)"))
+        } else if let autoChar = try? context.requireCharacteristic(BLECharacteristic.autoUnlock) {
             let token = UUID().uuidString
             try? await context.io.writeValue(Data(token.utf8), to: autoChar, type: .withResponse)
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "Xác thực: Kích hoạt phiên Token lân cận"))
+                message: "[AUTH] Proximity Token đã gửi: \(token.prefix(8))..."))
         }
         
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
@@ -55,31 +58,36 @@ class BLEAuthenticator: IoTAuthService {
     
     private func authenticateWithSHA(authChar: CBCharacteristic) async throws {
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Xác thực: Quy trình kết nối an toàn (SmartMode)"))
+            message: "[SHA] Bắt đầu | peripheral=\(context.peripheral.identifier.uuidString.prefix(8)) | peripheralState=\(context.peripheral.state.rawValue)"))
         
         // 1. Read challenge (counter)
         let challengeData = try await context.queue.enqueue {
             try await self.context.io.readValue(from: authChar)
         }
         guard challengeData.count >= 4 else {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
+                message: "[SHA] Challenge data quá ngắn: \(challengeData.count) bytes (cần >=4) | raw=\(challengeData.hexString)"))
             throw IoTError.invalidResponseFormat
         }
         
         let currentCounter = challengeData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+        let isEven = currentCounter % 2 == 0
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Xác thực: Bắt đầu dò sóng..."))
+            message: "[SHA] Challenge nhận được | counter=\(currentCounter) | isEven=\(isEven) | rawHex=\(challengeData.hexString) | dataLen=\(challengeData.count)"))
         
         // 2. SHA-256(counter >> 1 + PIN)
         let hashHexStr = try BLECryptography.solveChallenge(challengeBytes: challengeData, pin: pin)
-        
-        // 3. Write hash tức thì — không đợi
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Xác thực: Truyền tải tín hiệu an toàn..."))
+            message: "[SHA] Hash tính xong | hashPrefix=\(hashHexStr.prefix(16))... | hashLen=\(hashHexStr.count)"))
+        
+        // 3. Write hash
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "[SHA] Ghi hash vào authChallenge..."))
         try await context.queue.enqueue {
             try await self.context.io.writeValue(Data(hashHexStr.utf8), to: authChar, type: .withResponse)
         }
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Xác thực: Phản hồi ghi nhận. Bắt đầu phiên điều khiển..."))
+            message: "[SHA] Hash đã ghi thành công. Bắt đầu verify counter..."))
         
         // 4. Verify counter chuyển sang LẺ — retry với delay tăng dần
         // Rule: counter CHẴN = chờ xác thực, counter LẺ = đã xác thực
@@ -105,11 +113,11 @@ class BLEAuthenticator: IoTAuthService {
             
             let isOdd = newCounter % 2 != 0
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "Kiểm tra tín hiệu vòng \(attempt+1)..."))
+                message: "[SHA] Verify vòng \(attempt+1)/\(retryDelays.count) | counter=\(newCounter) | isOdd=\(isOdd) | prevCounter=\(currentCounter) | delta=\(Int(newCounter) - Int(currentCounter)) | delay=\(delayMs)ms"))
             
             if isOdd {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
-                    message: "Xác thực: Thiết lập mã hóa thành công ✅"))
+                    message: "[SHA] Counter chuyển lẻ → auth thành công ✅ | counter=\(newCounter)"))
                 authVerified = true
                 break
             }
@@ -119,20 +127,19 @@ class BLEAuthenticator: IoTAuthService {
         }
         
         if !authVerified {
-            // Kiểm tra: counter CÓ THAY ĐỔI không? Nếu nhảy sang chẵn MỚI → xe từ chối hash
-            // nhưng sẵn sàng cho lần auth mới → retry 1 lần với counter mới
             if let latestCounter = latestVerifiedCounter {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                    message: "[SHA] Auth chưa verified | latestCounter=\(latestCounter) | currentCounter=\(currentCounter) | isEven=\(latestCounter % 2 == 0) | jumped=\(latestCounter != currentCounter)"))
                 if latestCounter != currentCounter && latestCounter % 2 == 0 {
                     PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
-                        message: "Xác thực: Phát hiện ngắt quãng — đang định tuyến lại hệ thống"))
-                    // Retry 1 lần với counter mới
+                        message: "[SHA] Counter nhảy sang chẵn mới (\(currentCounter)→\(latestCounter)) → retry vòng 2"))
                     try await retrySHAWithNewCounter(authChar: authChar, newCounter: latestCounter)
                     return
                 }
             }
             
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
-                message: "Xác thực: Từ chối phiên bản điều khiển."))
+                message: "[SHA] Auth thất bại hoàn toàn | currentCounter=\(currentCounter) | latestCounter=\(latestVerifiedCounter ?? 0)"))
             throw IoTError.shaChallengeFailed
         }
     }
@@ -140,16 +147,15 @@ class BLEAuthenticator: IoTAuthService {
     /// Retry SHA auth 1 lần khi counter nhảy sang chẵn mới (xe từ chối hash trước đó)
     private func retrySHAWithNewCounter(authChar: CBCharacteristic, newCounter: UInt32) async throws {
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Xác thực lại: Đồng bộ module bảo mật vòng 2..."))
+            message: "[SHA_RETRY] Vòng 2 | newCounter=\(newCounter) | peripheral=\(context.peripheral.identifier.uuidString.prefix(8))"))
         
-        // Tạo challenge data giả từ counter mới
         var counterLE = newCounter.littleEndian
         let challengeData = Data(bytes: &counterLE, count: 4)
         
         let hashHexStr = try BLECryptography.solveChallenge(challengeBytes: challengeData, pin: pin)
-        
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "Xác thực lại: Truyền tải tín hiệu vòng 2..."))
+            message: "[SHA_RETRY] Hash vòng 2 | hashPrefix=\(hashHexStr.prefix(16))..."))
+        
         try await context.queue.enqueue {
             try await self.context.io.writeValue(Data(hashHexStr.utf8), to: authChar, type: .withResponse)
         }
@@ -167,11 +173,11 @@ class BLEAuthenticator: IoTAuthService {
             let counter = verifyData.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
             let isOdd = counter % 2 != 0
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "Kiểm tra tín hiệu vòng \(attempt+1)..."))
+                message: "[SHA_RETRY] Verify vòng \(attempt+1) | counter=\(counter) | isOdd=\(isOdd) | delay=\(delayMs)ms"))
             
             if isOdd {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
-                    message: "Xác thực lại: Kết nối an toàn được mở ✅"))
+                    message: "[SHA_RETRY] Vòng 2 thành công ✅ | counter=\(counter)"))
                 return
             }
         }
@@ -245,6 +251,30 @@ class BLEAuthenticator: IoTAuthService {
             
         try await context.queue.enqueue {
             try await self.context.io.writeValue(Data(garbageHash.utf8), to: authChar, type: .withResponse)
+        }
+    }
+    // MARK: - ASK Session Check
+    
+    /// Kiểm tra phiên auth còn sống không bằng cách đọc counter
+    /// Counter LẺ = authenticated, Counter CHẴN = cần auth lại
+    static func isSessionActive(context: BLEConnectionContext) async -> Bool {
+        guard let authChar = try? context.requireCharacteristic(BLECharacteristic.authChallenge) else {
+            return false
+        }
+        do {
+            let data = try await context.queue.enqueue {
+                try await context.io.readValue(from: authChar)
+            }
+            guard data.count >= 4 else { return false }
+            let counter = data.prefix(4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian }
+            let isOdd = counter % 2 != 0
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[SESSION_CHECK] counter=\(counter) | isOdd=\(isOdd) → \(isOdd ? "ACTIVE ✅" : "INACTIVE")"))
+            return isOdd
+        } catch {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "[SESSION_CHECK] Read failed: \(error.localizedDescription) → assume inactive"))
+            return false
         }
     }
 }

@@ -75,6 +75,11 @@ class PreferencesManager {
         didSet { sharedDefaults.set(batteryLowThreshold, forKey: "batteryLowThreshold") }
     }
     
+    /// Bỏ qua gửi Proximity Token khi auth (dùng cho test ASK)
+    @Published var skipProximityToken: Bool {
+        didSet { sharedDefaults.set(skipProximityToken, forKey: "skipProximityToken") }
+    }
+    
     @Published var savedPin: String? {
         didSet { sharedDefaults.set(savedPin, forKey: "savedPin") }
     }
@@ -169,5 +174,6 @@ class PreferencesManager {
         self.notifyOnBatteryThreshold = defaults.object(forKey: "notifyOnBatteryThreshold") as? Bool ?? true
         self.notifyOnChargeDisconnect = defaults.object(forKey: "notifyOnChargeDisconnect") as? Bool ?? true
         self.batteryLowThreshold      = defaults.integer(forKey: "batteryLowThreshold") > 0 ? defaults.integer(forKey: "batteryLowThreshold") : 20
+        self.skipProximityToken        = defaults.object(forKey: "skipProximityToken") as? Bool ?? false
     }
 }

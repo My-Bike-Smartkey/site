@@ -26,7 +26,7 @@ class AppDIContainer: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     
     init() {
-        self.bleCore = DatBikeCore()
+        self.bleCore = DatBikeCore.shared
         self.preferences = PreferencesManager.shared
         
         // Forward dashboardViewModel.objectWillChange → container.objectWillChange

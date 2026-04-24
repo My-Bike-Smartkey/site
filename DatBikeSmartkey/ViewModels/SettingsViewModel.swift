@@ -30,6 +30,7 @@ class SettingsViewModel: ObservableObject {
     
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
+    @Published var skipProximityToken: Bool
     
     @Published var bikeInfo = IoTVehicleInfo()
     @Published var logs: [BLELogEntry] = []
@@ -56,6 +57,7 @@ class SettingsViewModel: ObservableObject {
         self.notifyOnChargeDisconnect = preferences.notifyOnChargeDisconnect
         self.notifyOnBatteryThreshold = preferences.notifyOnBatteryThreshold
         self.batteryLowThreshold      = Double(preferences.batteryLowThreshold)
+        self.skipProximityToken        = preferences.skipProximityToken
         
         setupBindings()
     }
@@ -149,6 +151,11 @@ class SettingsViewModel: ObservableObject {
         $batteryLowThreshold
             .dropFirst()
             .sink { [weak self] val in self?.preferences.batteryLowThreshold = Int(val) }
+            .store(in: &cancellables)
+        
+        $skipProximityToken
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.skipProximityToken = val }
             .store(in: &cancellables)
         
         core.$currentVehicleInfo

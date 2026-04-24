@@ -157,25 +157,31 @@ class DashboardViewModel: ObservableObject {
     }
     
     func refreshStatus() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Tải lại' (Refresh Status)"))
         isProcessing = true
         core.queryTelemetry()
         // isProcessing sẽ tự tắt khi lockState cập nhật (trong setupBindings)
     }
     
     func forceAuthenticate() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Đánh thức xe' (Force Authenticate)"))
         isProcessing = true
         core.forceAuthenticate()
     }
     
     func submitPairingPin(_ pin: String) {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User submitted PIN"))
         core.submitPairingPin(pin)
     }
     
     func forceStandby() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Ngắt kết nối' (Force Standby)"))
         core.forceStandbyOverride()
     }
     
     func lock() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Chống trộm' (Arm Anti-Theft)"))
+        core.suspendAutoFeatures()
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
         Task {
@@ -187,6 +193,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func turnOnBike() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Bật xe' (Turn On Bike)"))
         core.suspendAutoFeatures()
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
@@ -199,6 +206,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func turnOffBike() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Tắt xe' (Turn Off Bike)"))
         core.suspendAutoFeatures()
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
@@ -211,6 +219,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func toggleLock() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped Main V-Hexa Button (Toggle Lock)"))
         core.suspendAutoFeatures()
         guard let dispatcher = try? core.getDispatcher() else { return }
         isProcessing = true
@@ -223,6 +232,7 @@ class DashboardViewModel: ObservableObject {
     }
     
     func findBike() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Tìm xe' (Find Bike)"))
         guard let dispatcher = try? core.getDispatcher() else { return }
         isFinding = true
         Task {

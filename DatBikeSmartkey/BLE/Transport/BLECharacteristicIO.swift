@@ -25,7 +25,8 @@ actor BLECharacteristicIO {
             try await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation { continuation in
                     if let old = self.readContinuations[characteristic.uuid] {
-                        print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Read cho \(characteristic.uuid) bị huỷ đè!")
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                            message: "[BLE_IO] Đè lệnh Read cho \(characteristic.uuid) — huỷ luồng cũ"))
                         old.resume(throwing: CancellationError())
                     }
                     self.readContinuations[characteristic.uuid] = continuation
@@ -45,7 +46,8 @@ actor BLECharacteristicIO {
                 try await withTaskCancellationHandler {
                     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                         if let old = self.writeContinuations[characteristic.uuid] {
-                            print("⚠️ [BLE_IO] CẢNH BÁO ĐÈ LỆNH VÀ LEAK: Đang có luồng truy cập Write cho \(characteristic.uuid) bị huỷ đè!")
+                            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                                message: "[BLE_IO] Đè lệnh Write cho \(characteristic.uuid) — huỷ luồng cũ"))
                             old.resume(throwing: CancellationError())
                         }
                         self.writeContinuations[characteristic.uuid] = continuation
