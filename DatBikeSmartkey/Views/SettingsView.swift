@@ -88,6 +88,20 @@ struct SettingsView: View {
                         }
                     }
                     
+                    Link(destination: URL(string: "https://t.me/+w9mYyeKjcLxlMDI1")!) {
+                        HStack {
+                            Image(systemName: "paperplane.fill")
+                                .foregroundColor(Color(red: 0.15, green: 0.68, blue: 0.93))
+                                .frame(width: 24)
+                            Text("Cộng đồng D-SmartKey")
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                    
                     VStack(alignment: .center, spacing: 12) {
                         Text("Nếu app hữu ích, bạn có thể ủng hộ tác giả 🙏")
                             .font(.caption)
