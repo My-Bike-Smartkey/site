@@ -95,6 +95,11 @@ class PreferencesManager {
         didSet { sharedDefaults.set(skipProximityToken, forKey: "skipProximityToken") }
     }
     
+    /// Ẩn số khung xe trong log khi chia sẻ — bảo vệ quyền riêng tư
+    @Published var redactFrameNumber: Bool {
+        didSet { sharedDefaults.set(redactFrameNumber, forKey: "redactFrameNumber") }
+    }
+    
     @Published var savedPin: String? {
         didSet { sharedDefaults.set(savedPin, forKey: "savedPin") }
     }
@@ -227,6 +232,7 @@ class PreferencesManager {
         self.notifyOnChargeDisconnect = defaults.object(forKey: "notifyOnChargeDisconnect") as? Bool ?? true
         self.batteryLowThreshold      = defaults.integer(forKey: "batteryLowThreshold") > 0 ? defaults.integer(forKey: "batteryLowThreshold") : 20
         self.skipProximityToken        = defaults.object(forKey: "skipProximityToken") as? Bool ?? false
+        self.redactFrameNumber         = defaults.object(forKey: "redactFrameNumber") as? Bool ?? true
         
         // Logging toggle — mặc định BẬT
         let loggingEnabled = defaults.object(forKey: "isLoggingEnabled") as? Bool ?? true

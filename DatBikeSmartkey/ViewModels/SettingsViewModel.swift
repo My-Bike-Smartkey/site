@@ -31,6 +31,7 @@ class SettingsViewModel: ObservableObject {
     @Published var isConnected: Bool = false
     @Published var isSyncingTime: Bool = false
     @Published var skipProximityToken: Bool
+    @Published var redactFrameNumber: Bool
     @Published var isLoggingEnabled: Bool
     @Published var verboseLoggingEnabled: Bool
     
@@ -60,6 +61,7 @@ class SettingsViewModel: ObservableObject {
         self.notifyOnBatteryThreshold = preferences.notifyOnBatteryThreshold
         self.batteryLowThreshold      = Double(preferences.batteryLowThreshold)
         self.skipProximityToken        = preferences.skipProximityToken
+        self.redactFrameNumber         = preferences.redactFrameNumber
         self.isLoggingEnabled          = preferences.isLoggingEnabled
         self.verboseLoggingEnabled     = preferences.verboseLoggingEnabled
         
@@ -160,6 +162,11 @@ class SettingsViewModel: ObservableObject {
         $skipProximityToken
             .dropFirst()
             .sink { [weak self] val in self?.preferences.skipProximityToken = val }
+            .store(in: &cancellables)
+        
+        $redactFrameNumber
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.redactFrameNumber = val }
             .store(in: &cancellables)
         
         $isLoggingEnabled

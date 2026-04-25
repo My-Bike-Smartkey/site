@@ -476,14 +476,28 @@ final class PersistentLogger {
     }
     
     /// Export all logs as a single text string for sharing.
-    func exportAllAsText() -> String {
+    /// - Parameter redactFrameNumber: Nếu true, thay thế số khung xe bằng ***REDACTED***
+    func exportAllAsText(redactFrameNumber: Bool = false) -> String {
         let timeFmt = DateFormatter()
         timeFmt.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        
+        // Thu thập số khung xe từ preferences để tìm và ẩn
+        var framePatterns: [String] = []
+        if redactFrameNumber {
+            if let serial = PreferencesManager.shared.savedBikeSerial, !serial.isEmpty {
+                framePatterns.append(serial)
+            }
+        }
         
         var sb = ""
         for file in getLogFiles() {
             for entry in parseLogFile(file) {
-                sb += "\(timeFmt.string(from: entry.timestamp)) \(entry.level.rawValue) \(entry.message)\n"
+                var message = entry.message
+                // Ẩn số khung xe
+                for pattern in framePatterns {
+                    message = message.replacingOccurrences(of: pattern, with: "***REDACTED***")
+                }
+                sb += "\(timeFmt.string(from: entry.timestamp)) \(entry.level.rawValue) \(message)\n"
             }
         }
         return sb

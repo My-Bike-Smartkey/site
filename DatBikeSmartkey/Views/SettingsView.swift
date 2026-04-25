@@ -546,6 +546,23 @@ struct DeveloperSettingsView: View {
                 .disabled(!viewModel.isLoggingEnabled)
             }
             
+            Section(header: Text("Bảo mật log"), footer: Text("Khi bật, số khung xe sẽ bị ẩn (thay bằng ***) trong log chia sẻ. Mặc định BẬT.")) {
+                Toggle(isOn: $viewModel.redactFrameNumber) {
+                    HStack {
+                        Image(systemName: "eye.slash.fill")
+                            .foregroundColor(.mint)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Ẩn số khung xe trong log")
+                            Text("Bảo vệ quyền riêng tư khi gửi log cho nhà phát triển.")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .tint(.mint)
+            }
+            
             Section(header: Text("Nâng cao"), footer: Text("Không gửi token lân cận khi xác thực (dùng khi test ASK)")) {
                 Toggle(isOn: $viewModel.skipProximityToken) {
                     HStack {
@@ -753,14 +770,20 @@ struct LogView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarLeading) {
                     Button {
-                        let fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
+                        var fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
+                        // Ẩn số khung xe nếu đã bật
+                        if PreferencesManager.shared.redactFrameNumber,
+                           let serial = PreferencesManager.shared.savedBikeSerial, !serial.isEmpty {
+                            fullString = fullString.replacingOccurrences(of: serial, with: "***REDACTED***")
+                        }
                         UIPasteboard.general.string = fullString
                     } label: {
                         Image(systemName: "doc.on.doc")
                     }
                     
                     Button {
-                        let text = PersistentLogger.shared.exportAllAsText()
+                        let redact = PreferencesManager.shared.redactFrameNumber
+                        let text = PersistentLogger.shared.exportAllAsText(redactFrameNumber: redact)
                         let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("datbike_ble_logs.txt")
                         try? text.write(to: tempFile, atomically: true, encoding: .utf8)
                         shareURL = tempFile
