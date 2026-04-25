@@ -212,5 +212,10 @@ struct SmartKeySetupView: View {
         } else if let savedSerial = PreferencesManager.shared.savedBikeSerial {
             frameInput = savedSerial
         }
+        
+        // Lấy địa chỉ MAC xe (hardware MAC thực từ bikeConfigJson)
+        if let savedMac = PreferencesManager.shared.savedBikeMac, !savedMac.isEmpty {
+            macInput = savedMac
+        }
     }
 }

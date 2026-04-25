@@ -119,6 +119,14 @@ class PreferencesManager {
         didSet { sharedDefaults.set(savedBikeMac, forKey: "savedBikeMac") }
     }
     
+    @Published var savedBikeModel: String? {
+        didSet { sharedDefaults.set(savedBikeModel, forKey: "savedBikeModel") }
+    }
+    
+    @Published var savedBikeFirmware: String? {
+        didSet { sharedDefaults.set(savedBikeFirmware, forKey: "savedBikeFirmware") }
+    }
+    
     /// Ngày cuối cùng đã sync time với xe — dùng để auto sync 1 lần/ngày
     var lastTimeSyncDate: Date? {
         get { sharedDefaults.object(forKey: "lastTimeSyncDate") as? Date }
@@ -198,6 +206,8 @@ class PreferencesManager {
         self.savedBikeName = defaults.string(forKey: "savedBikeName")
         self.savedBikeSerial = defaults.string(forKey: "savedBikeSerial")
         self.savedBikeMac = defaults.string(forKey: "savedBikeMac")
+        self.savedBikeModel = defaults.string(forKey: "savedBikeModel")
+        self.savedBikeFirmware = defaults.string(forKey: "savedBikeFirmware")
         
         // Granular notification preferences — default true
         self.notifyOnConnected    = defaults.object(forKey: "notifyOnConnected")    as? Bool ?? true

@@ -1684,6 +1684,7 @@ extension DatBikeCore: CBPeripheralDelegate {
             var serial = ""
             var model = ""
             var fw = ""
+            var hardwareMac = ""
             
             // Device name (vehicleStatus)
             if let char = try? ctx.requireCharacteristic(BLECharacteristic.vehicleStatus),
@@ -1713,7 +1714,53 @@ extension DatBikeCore: CBPeripheralDelegate {
                 fw = str.trimmingCharacters(in: .controlCharacters)
             }
             
-            let vehicleString = "Xe: \(name) / \(model) / \(serial) / FW: \(fw)"
+            // Bike Config JSON — chứa địa chỉ MAC phần cứng thực, số khung, tên xe v.v.
+            // Đây là MAC thực (ví dụ: "C8:EA:F2:XX:YY:ZZ") cần truyền cho ESP32 SmartKey.
+            // iOS CoreBluetooth KHÔNG cho phép đọc MAC trực tiếp, nên phải lấy từ GATT characteristic.
+            if let char = try? ctx.requireCharacteristic(BLECharacteristic.bikeConfigJson),
+               let data = try? await ctx.queue.enqueue(task: { try await ctx.io.readValue(from: char) }),
+               let jsonStr = String(data: data, encoding: .utf8) {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "[DEVICE_INFO] bikeConfigJson raw: \(jsonStr.prefix(300))"))
+                
+                // Parse JSON linh hoạt — firmware có thể dùng nhiều key khác nhau cho MAC
+                if let jsonData = jsonStr.data(using: .utf8),
+                   let dict = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+                    // Tìm MAC address từ các key phổ biến
+                    let macKeys = ["mac", "MAC", "macAddress", "mac_address", "ble_mac", "bleMac", "address"]
+                    for key in macKeys {
+                        if let mac = dict[key] as? String, !mac.isEmpty {
+                            hardwareMac = mac.trimmingCharacters(in: .whitespacesAndNewlines)
+                            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
+                                message: "[DEVICE_INFO] Tìm thấy MAC phần cứng: \(hardwareMac) (key=\(key))"))
+                            break
+                        }
+                    }
+                    
+                    // Fallback: lấy serial/frame từ JSON nếu GATT characteristic trước đó trả về rỗng
+                    if serial.isEmpty {
+                        let serialKeys = ["serial", "serialNumber", "serial_number", "frame", "frameNumber", "frame_number"]
+                        for key in serialKeys {
+                            if let val = dict[key] as? String, !val.isEmpty {
+                                serial = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                                break
+                            }
+                        }
+                    }
+                    if model.isEmpty {
+                        if let val = dict["model"] as? String, !val.isEmpty {
+                            model = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    }
+                    if name.isEmpty || name == "Dat Bike" {
+                        if let val = dict["name"] as? String, !val.isEmpty, val != "Dat Bike" {
+                            name = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    }
+                }
+            }
+            
+            let vehicleString = "Xe: \(name) / \(model) / \(serial) / FW: \(fw) / MAC: \(hardwareMac.isEmpty ? "N/A" : hardwareMac)"
             if vehicleString != self.lastLoggedVehicleString {
                 self.lastLoggedVehicleString = vehicleString
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
@@ -1730,10 +1777,37 @@ extension DatBikeCore: CBPeripheralDelegate {
             // Lưu tên xe thực ngay vào App Group cho Widget
             self.preferences.sharedDefaults.set(displayName, forKey: "widgetBikeName")
             
-            // Lưu thông tin cố định của xe để hiển thị offline trong Settings > Xe của tôi
-            self.preferences.savedBikeName = displayName
-            self.preferences.savedBikeSerial = serial
-            self.preferences.savedBikeMac = ctx.peripheral.identifier.uuidString
+            // ═══ SMART SAVE: Chỉ ghi đè nếu dữ liệu mới KHÔNG rỗng ═══
+            // Tránh trường hợp lần đầu ghép nối bị lỗi read → ghi đè cache offline bằng chuỗi rỗng.
+            // Lần kết nối sau query thành công → dữ liệu sẽ được lưu bổ sung.
+            if !displayName.isEmpty && displayName != "Dat Bike" {
+                self.preferences.savedBikeName = displayName
+            } else if self.preferences.savedBikeName == nil {
+                // Lần đầu chưa có gì → lưu tạm "Dat Bike"
+                self.preferences.savedBikeName = displayName
+            }
+            
+            if !serial.isEmpty {
+                self.preferences.savedBikeSerial = serial
+            }
+            
+            if !model.isEmpty {
+                self.preferences.savedBikeModel = model
+            }
+            
+            if !fw.isEmpty {
+                self.preferences.savedBikeFirmware = fw
+            }
+            
+            // MAC phần cứng: ưu tiên giá trị thực từ bikeConfigJson, fallback về CoreBluetooth UUID
+            if !hardwareMac.isEmpty {
+                self.preferences.savedBikeMac = hardwareMac
+            } else if self.preferences.savedBikeMac == nil {
+                // Chưa có MAC nào → lưu tạm UUID của CoreBluetooth (để ít nhất có thể nhận dạng)
+                self.preferences.savedBikeMac = ctx.peripheral.identifier.uuidString
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                    message: "[DEVICE_INFO] Không tìm thấy MAC phần cứng trong bikeConfigJson — lưu tạm CoreBluetooth UUID"))
+            }
             
             DispatchQueue.main.async {
                 self.currentVehicleInfo = IoTVehicleInfo(

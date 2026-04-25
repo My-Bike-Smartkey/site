@@ -252,14 +252,16 @@ struct MyBikeSettingsView: View {
                             .foregroundColor(.gray)
                     }
                     
-                    if isConnectedWithInfo {
+                    // Model — hiển thị từ BLE hoặc cache offline
+                    let modelStr = isConnectedWithInfo ? viewModel.bikeInfo.model : (PreferencesManager.shared.savedBikeModel ?? "")
+                    if !modelStr.isEmpty {
                         HStack {
                             Image(systemName: "cpu")
                                 .foregroundColor(.cyan)
                                 .frame(width: 24)
                             Text("Model")
                             Spacer()
-                            Text(viewModel.bikeInfo.model)
+                            Text(modelStr)
                                 .foregroundColor(.gray)
                         }
                     }
@@ -274,15 +276,40 @@ struct MyBikeSettingsView: View {
                             .foregroundColor(.gray)
                     }
                     
-                    if isConnectedWithInfo && !viewModel.bikeInfo.firmware.isEmpty {
+                    // Firmware — hiển thị từ BLE hoặc cache offline
+                    let fwStr = isConnectedWithInfo ? viewModel.bikeInfo.firmware : (PreferencesManager.shared.savedBikeFirmware ?? "")
+                    if !fwStr.isEmpty {
                         HStack {
                             Image(systemName: "gearshape.fill")
                                 .foregroundColor(.cyan)
                                 .frame(width: 24)
                             Text("Firmware")
                             Spacer()
-                            Text(viewModel.bikeInfo.firmware)
+                            Text(fwStr)
                                 .foregroundColor(.gray)
+                        }
+                    }
+                    
+                    // MAC Address — hiển thị luôn nếu có (quan trọng cho ESP32 SmartKey)
+                    if let macStr = PreferencesManager.shared.savedBikeMac, !macStr.isEmpty {
+                        HStack {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .foregroundColor(.cyan)
+                                .frame(width: 24)
+                            Text("MAC")
+                            Spacer()
+                            Text(macStr)
+                                .foregroundColor(.gray)
+                                .font(.system(.body, design: .monospaced))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                        }
+                        .contextMenu {
+                            Button {
+                                UIPasteboard.general.string = macStr
+                            } label: {
+                                Label("Sao chép MAC", systemImage: "doc.on.doc")
+                            }
                         }
                     }
                     

@@ -193,6 +193,8 @@ class SettingsViewModel: ObservableObject {
         PreferencesManager.shared.savedBikeName = nil
         PreferencesManager.shared.savedBikeSerial = nil
         PreferencesManager.shared.savedBikeMac = nil
+        PreferencesManager.shared.savedBikeModel = nil
+        PreferencesManager.shared.savedBikeFirmware = nil
     }
     
     func syncTime() {
