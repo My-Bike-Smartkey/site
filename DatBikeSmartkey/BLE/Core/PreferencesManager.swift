@@ -103,6 +103,12 @@ class PreferencesManager {
         didSet { sharedDefaults.set(savedESP32UUID, forKey: "savedESP32UUID") }
     }
     
+    /// Ngày cấu hình thành công gần nhất của khóa phụ ESP32
+    var savedESP32SetupDate: Date? {
+        get { sharedDefaults.object(forKey: "savedESP32SetupDate") as? Date }
+        set { sharedDefaults.set(newValue, forKey: "savedESP32SetupDate") }
+    }
+    
     @Published var savedPeripheralUUID: String? {
         didSet { sharedDefaults.set(savedPeripheralUUID, forKey: "lastPeripheralUUID") }
     }

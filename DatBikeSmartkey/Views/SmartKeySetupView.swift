@@ -1,11 +1,194 @@
 import SwiftUI
 
+// MARK: - SmartKeyManageView (Màn hình quản lý chính)
+
+struct SmartKeyManageView: View {
+    @EnvironmentObject var container: AppDIContainer
+    @State private var showSetupSheet = false
+    @State private var showForgetAlert = false
+    
+    private let prefs = PreferencesManager.shared
+    
+    private var isConfigured: Bool {
+        prefs.savedESP32UUID != nil
+    }
+    
+    var body: some View {
+        Form {
+            if isConfigured {
+                configuredView
+            } else {
+                unconfiguredView
+            }
+        }
+        .navigationTitle("Khóa phụ ESP32")
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showSetupSheet) {
+            SmartKeySetupView(onComplete: {
+                showSetupSheet = false
+            })
+            .environmentObject(container)
+        }
+        .alert("Quên khóa phụ?", isPresented: $showForgetAlert) {
+            Button("Quên", role: .destructive) {
+                SmartKeyProvisioner.forgetESP32()
+            }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            Text("Xóa toàn bộ thông tin kết nối của khóa phụ ESP32. Bạn sẽ cần cấu hình lại từ đầu.")
+        }
+    }
+    
+    // MARK: - Chưa cấu hình
+    
+    @ViewBuilder
+    private var unconfiguredView: some View {
+        Section {
+            VStack(spacing: 16) {
+                Image(systemName: "cpu")
+                    .font(.system(size: 44))
+                    .foregroundColor(.cyan.opacity(0.6))
+                    .padding(.top, 8)
+                
+                Text("Chưa có khóa phụ")
+                    .font(.headline)
+                
+                Text("Khóa phụ ESP32 cho phép bạn bật/tắt xe mà không cần điện thoại. Kết nối lần đầu để đồng bộ mã PIN, địa chỉ MAC và số khung xe.")
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 4)
+                
+                Button(action: { showSetupSheet = true }) {
+                    HStack {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Bắt đầu cấu hình")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.cyan)
+                    .foregroundColor(.black)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.bottom, 8)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        
+        Section {
+            HStack(spacing: 12) {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.blue)
+                Text("Bật ESP32 sang chế độ Provisioning (gõ lệnh 'prov' hoặc giữ nút BOOT 3 giây) trước khi bắt đầu.")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+        }
+    }
+    
+    // MARK: - Đã cấu hình
+    
+    @ViewBuilder
+    private var configuredView: some View {
+        // Thông tin thiết bị
+        Section(header: Text("Thông tin khóa phụ")) {
+            infoRow(icon: "checkmark.seal.fill", iconColor: .green, title: "Trạng thái", value: "Đã cấu hình")
+            
+            if let uuid = prefs.savedESP32UUID {
+                infoRow(icon: "tag.fill", iconColor: .cyan, title: "UUID", value: String(uuid.prefix(8)) + "…" + String(uuid.suffix(4)))
+            }
+            
+            if let date = prefs.savedESP32SetupDate {
+                infoRow(icon: "calendar", iconColor: .cyan, title: "Ngày cấu hình", value: dateFormatter.string(from: date))
+            }
+        }
+        
+        // Thông tin đồng bộ
+        Section(header: Text("Dữ liệu đã đồng bộ")) {
+            infoRow(icon: "key.fill", iconColor: prefs.savedPin != nil ? .green : .orange,
+                    title: "Mã PIN",
+                    value: prefs.savedPin != nil ? "Đã thiết lập" : "Chưa có")
+            
+            infoRow(icon: "antenna.radiowaves.left.and.right", iconColor: hasMac ? .green : .orange,
+                    title: "MAC xe",
+                    value: prefs.savedBikeMac ?? "Chưa có")
+            
+            infoRow(icon: "number", iconColor: hasFrame ? .green : .orange,
+                    title: "Số khung",
+                    value: prefs.savedBikeSerial ?? "Chưa có")
+        }
+        
+        // Hành động
+        Section(header: Text("Quản lý")) {
+            Button(action: { showSetupSheet = true }) {
+                HStack {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .foregroundColor(.cyan)
+                        .frame(width: 24)
+                    Text("Đồng bộ lại dữ liệu")
+                        .foregroundColor(.primary)
+                }
+            }
+            
+            Button(role: .destructive, action: { showForgetAlert = true }) {
+                HStack {
+                    Image(systemName: "trash.fill")
+                        .frame(width: 24)
+                    Text("Quên khóa phụ")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helpers
+    
+    private var hasMac: Bool {
+        if let mac = prefs.savedBikeMac, !mac.isEmpty { return true }
+        return false
+    }
+    
+    private var hasFrame: Bool {
+        if let serial = prefs.savedBikeSerial, !serial.isEmpty { return true }
+        return false
+    }
+    
+    private func infoRow(icon: String, iconColor: Color, title: String, value: String) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundColor(iconColor)
+                .frame(width: 24)
+            Text(title)
+            Spacer()
+            Text(value)
+                .foregroundColor(.gray)
+                .font(.system(.body, design: title == "MAC xe" || title == "UUID" ? .monospaced : .default))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+    }
+    
+    private var dateFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        f.locale = Locale(identifier: "vi_VN")
+        return f
+    }
+}
+
+
+// MARK: - SmartKeySetupView (Wizard cấu hình)
+
 struct SmartKeySetupView: View {
     @StateObject private var provisioner = SmartKeyProvisioner()
     @Environment(\.presentationMode) var presentationMode
     
     // Autofill data from the app's current state
     @EnvironmentObject var container: AppDIContainer
+    
+    /// Callback khi provisioning hoàn thành → dismiss sheet
+    var onComplete: (() -> Void)? = nil
     
     @State private var pinInput: String = ""
     @State private var macInput: String = ""
@@ -128,6 +311,18 @@ struct SmartKeySetupView: View {
             }
             .onAppear {
                 autofillData()
+            }
+            .onChange(of: provisioner.state) { newState in
+                if newState == .success {
+                    // Lưu ngày cấu hình thành công
+                    PreferencesManager.shared.savedESP32SetupDate = Date()
+                    
+                    // Tự động dismiss sau 1.5 giây
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                        onComplete?()
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
             }
         }
         .preferredColorScheme(.dark)

@@ -162,6 +162,13 @@ class SmartKeyProvisioner: NSObject, ObservableObject {
         }
         state = .idle
     }
+    
+    /// Xóa toàn bộ thông tin khóa phụ ESP32 đã lưu
+    static func forgetESP32() {
+        print("[PROV] Quên khóa phụ ESP32 — xóa UUID, ngày cấu hình")
+        PreferencesManager.shared.savedESP32UUID = nil
+        PreferencesManager.shared.savedESP32SetupDate = nil
+    }
 }
 
 // MARK: - CBCentralManagerDelegate

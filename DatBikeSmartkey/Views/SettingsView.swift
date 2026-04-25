@@ -7,7 +7,6 @@ import CoreImage.CIFilterBuiltins
 struct SettingsView: View {
     @EnvironmentObject var container: AppDIContainer
     @ObservedObject var viewModel: SettingsViewModel
-    @State private var showProvisioning = false
     @State private var showConnectionGuide = false
     
     var body: some View {
@@ -52,15 +51,23 @@ struct SettingsView: View {
                 }
                 
                 Section(header: Text("Khóa phụ")) {
-                    Button(action: {
-                        showProvisioning = true
-                    }) {
+                    NavigationLink(destination: SmartKeyManageView()
+                        .environmentObject(container)) {
                         HStack {
                             Image(systemName: "cpu.fill")
                                 .foregroundColor(.cyan)
                                 .frame(width: 24)
-                            Text("Cấu hình khóa phụ (ESP32)")
-                                .foregroundColor(.primary)
+                            Text("Khóa phụ ESP32")
+                            Spacer()
+                            if PreferencesManager.shared.savedESP32UUID != nil {
+                                Text("Đã cấu hình")
+                                    .font(.caption2)
+                                    .foregroundColor(.green)
+                            } else {
+                                Text("Chưa cấu hình")
+                                    .font(.caption2)
+                                    .foregroundColor(.orange)
+                            }
                         }
                     }
                 }
@@ -129,10 +136,6 @@ struct SettingsView: View {
             }
             .navigationTitle("Cài đặt")
             .preferredColorScheme(.dark)
-        }
-        .sheet(isPresented: $showProvisioning) {
-            SmartKeySetupView()
-                .environmentObject(container)
         }
         .sheet(isPresented: $showConnectionGuide) {
             ConnectionGuideView()
