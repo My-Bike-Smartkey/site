@@ -374,17 +374,40 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
             message: "[ASK_CONNECT] uuid=\(uuid.uuidString.prefix(8)) | central=\(centralManager == nil ? "nil" : "state=\(centralManager!.state.rawValue)") | btPowerOff=\(btWasPoweredOff)"))
         guard let central = centralManager else { return }
-        preferences.savedPeripheralUUID = uuid.uuidString
+        
+        let isMainBike = (uuid.uuidString == preferences.savedPeripheralUUID)
         
         if let ctx = activeContext,
            ctx.peripheral.state == .connected || ctx.peripheral.state == .connecting {
-            // B7 FIX: Hủy Phantom Guard nếu đang chạy — ASK sẽ tự quản lý connection lifecycle
-            // App đã bắt đầu connect() nhưng ASK Session Activated mới fire — tin tưởng ASK hơn
-            let wasTimerActive = connectingTimer != nil
-            cancelConnectingTimeout()
-            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "[ASK_CONNECT] Bỏ qua: peripheral đang kết nối (state=\(ctx.peripheral.state.rawValue)) | phantomGuardCancelled=\(wasTimerActive) | smState=\(stateMachine.state.displayText)"))
-            return
+            
+            if ctx.peripheral.identifier == uuid {
+                // B7 FIX: Hủy Phantom Guard nếu đang chạy — ASK sẽ tự quản lý connection lifecycle
+                // App đã bắt đầu connect() nhưng ASK Session Activated mới fire — tin tưởng ASK hơn
+                let wasTimerActive = connectingTimer != nil
+                cancelConnectingTimeout()
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "[ASK_CONNECT] Bỏ qua: peripheral đang kết nối (state=\(ctx.peripheral.state.rawValue)) | phantomGuardCancelled=\(wasTimerActive) | smState=\(stateMachine.state.displayText)"))
+                return
+            } else {
+                // Đang kết nối xe khác. Nếu xe đang kết nối là xe chính (saved UUID), KHÔNG cho phép thiết bị phụ (ví dụ ESP32) ngắt ngang.
+                if let savedStr = preferences.savedPeripheralUUID, ctx.peripheral.identifier.uuidString == savedStr {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "[ASK_CONNECT] Bỏ qua thiết bị phụ (\(uuid.uuidString.prefix(8))) vì đang giữ kết nối ưu tiên với xe chính (\(savedStr.prefix(8)))"))
+                    return
+                } else {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "[ASK_CONNECT] Đang kết nối xe khác (\(ctx.peripheral.identifier.uuidString.prefix(8))) → ngắt kết nối để ưu tiên xe mới (\(uuid.uuidString.prefix(8)))"))
+                    central.cancelPeripheralConnection(ctx.peripheral)
+                    self.activeContext = nil
+                    self.cancelConnectingTimeout()
+                }
+            }
+        }
+        
+        // CHỈ cập nhật savedPeripheralUUID nếu nó đang rỗng, hoặc thiết bị ASK này chính là xe mới người dùng vừa pick.
+        // Tránh bị nhiễu do ASK tự động trả về các thiết bị phụ (ESP) lúc khởi động.
+        if preferences.savedPeripheralUUID == nil || !isMainBike && activeContext == nil {
+            preferences.savedPeripheralUUID = uuid.uuidString
         }
         
         guard central.state == .poweredOn else {
@@ -1005,6 +1028,8 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 pollingEngine = nil
                 isAuthenticating = false
                 // btWasPoweredOff vẫn giữ = true để connect() biết phải scan
+                connect() // Bắt buộc kết nối lại sau power-cycle để tránh kẹt trạng thái
+                return
             }
             
             // ═══ Kiểm tra activeContext từ willRestoreState (dùng peripheral.state, KHÔNG dùng stateMachine.state) ═══
@@ -1062,7 +1087,8 @@ extension DatBikeCore: CBCentralManagerDelegate {
             btWasPoweredOff = true
             if stateMachine.state != .idle {
                 cancelScanTimer()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                // Tăng delay lên 3.0s để tránh hiện lỗi ảo khi iOS đang khởi động lại Bluetooth daemon (đặc biệt khi vừa mở app)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
                     guard let self = self else { return }
                     if self.centralManager.state == .poweredOff && self.stateMachine.state != .idle {
                         self.stateMachine.transition(to: .error("Bluetooth đang bị tắt. Hãy bật Bluetooth."))
@@ -1449,12 +1475,21 @@ extension DatBikeCore: CBPeripheralDelegate {
         Task {
             let isActive = await BLEAuthenticator.isSessionActive(context: ctx)
             
-            if isActive {
-                // Counter LẺ → phiên auth vẫn sống → restore .active TRỰC TIẾP
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
-                    message: "[RESTORE] Phiên auth vẫn active (counter lẻ) → skip auth, vào .active trực tiếp"))
+            DispatchQueue.main.async {
+                // GUARD: Bắt buộc kiểm tra state trước khi thay đổi StateMachine.
+                // Nếu rớt mạng trong lúc đọc BLE, didDisconnect đã xử lý state rồi.
+                guard ctx.peripheral.state == .connected else {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "[SESSION_CHECK] Bỏ qua vì xe đã mất kết nối trong quá trình đọc (state=\(ctx.peripheral.state.rawValue))"))
+                    self.isRestoringSession = false
+                    return
+                }
                 
-                DispatchQueue.main.async {
+                if isActive {
+                    // Counter LẺ → phiên auth vẫn sống → restore .active TRỰC TIẾP
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
+                        message: "[RESTORE] Phiên auth vẫn active (counter lẻ) → skip auth, vào .active trực tiếp"))
+                    
                     self.isRestoringSession = false
                     self.isAuthenticating = false
                     
@@ -1472,30 +1507,30 @@ extension DatBikeCore: CBPeripheralDelegate {
                     self.lastActiveTime = Date()
                     self.stateMachine.transition(to: .active)
                     self.extendBackgroundExecutionTime()
-                }
-                
-                // User requirement: 1 ngày chỉ sync time 1 lần, skip proximity token
-                if self.preferences.needsTimeSyncToday {
-                    if let syncChar = try? ctx.requireCharacteristic(BLECharacteristic.timeSync) {
-                        let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
-                        var cal = Calendar(identifier: .gregorian)
-                        cal.timeZone = vnTZ
-                        let comps = cal.dateComponents([.hour, .minute, .second], from: Date())
-                        let secs = (comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0)
-                        let timeSyncValue = String(secs)
-                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                            message: "[RESTORE] Syncing time (1 lần/ngày) = \(timeSyncValue)"))
-                        try? await ctx.io.writeValue(Data(timeSyncValue.utf8), to: syncChar, type: .withResponse)
-                        DispatchQueue.main.async {
-                            self.preferences.lastTimeSyncDate = Date()
+                    
+                    // User requirement: 1 ngày chỉ sync time 1 lần, skip proximity token
+                    if self.preferences.needsTimeSyncToday {
+                        Task {
+                            if let syncChar = try? ctx.requireCharacteristic(BLECharacteristic.timeSync) {
+                                let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+                                var cal = Calendar(identifier: .gregorian)
+                                cal.timeZone = vnTZ
+                                let comps = cal.dateComponents([.hour, .minute, .second], from: Date())
+                                let secs = (comps.hour ?? 0) * 3600 + (comps.minute ?? 0) * 60 + (comps.second ?? 0)
+                                let timeSyncValue = String(secs)
+                                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                                    message: "[RESTORE] Syncing time (1 lần/ngày) = \(timeSyncValue)"))
+                                try? await ctx.io.writeValue(Data(timeSyncValue.utf8), to: syncChar, type: .withResponse)
+                                DispatchQueue.main.async {
+                                    self.preferences.lastTimeSyncDate = Date()
+                                }
+                            }
                         }
                     }
-                }
-            } else {
-                // Counter CHẴN → cần auth lại
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                    message: "[RESTORE] Phiên auth đã hết (counter chẵn) → vào standby + auth lại"))
-                DispatchQueue.main.async {
+                } else {
+                    // Counter CHẴN → cần auth lại
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                        message: "[RESTORE] Phiên auth đã hết (counter chẵn) → vào standby + auth lại"))
                     self.isRestoringSession = false
                     self.startStandbyProximityChecks(ctx: ctx, pin: pin)
                 }
@@ -1745,17 +1780,33 @@ extension DatBikeCore: CBPeripheralDelegate {
                             if let val = dict[key] as? String, !val.isEmpty {
                                 serial = val.trimmingCharacters(in: .whitespacesAndNewlines)
                                 break
+                            } else if let bikeConfig = dict["bikeConfig"] as? [String: Any], let val = bikeConfig[key] as? String, !val.isEmpty {
+                                serial = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                                break
                             }
                         }
                     }
                     if model.isEmpty {
+                        // Tìm "model" ở root (cũ) hoặc trong "bikeConfig" (mới)
                         if let val = dict["model"] as? String, !val.isEmpty {
+                            model = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                        } else if let bikeConfig = dict["bikeConfig"] as? [String: Any], let val = bikeConfig["model"] as? String, !val.isEmpty {
                             model = val.trimmingCharacters(in: .whitespacesAndNewlines)
                         }
                     }
                     if name.isEmpty || name == "Dat Bike" {
                         if let val = dict["name"] as? String, !val.isEmpty, val != "Dat Bike" {
                             name = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                        } else if let bikeConfig = dict["bikeConfig"] as? [String: Any], let val = bikeConfig["name"] as? String, !val.isEmpty, val != "Dat Bike" {
+                            name = val.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    }
+                    if fw.isEmpty {
+                        // Parse "firmware" object trong JSON
+                        if let fwObj = dict["firmware"] as? [String: Any], let ver = fwObj["version"] as? String, !ver.isEmpty {
+                            fw = ver.trimmingCharacters(in: .whitespacesAndNewlines)
+                        } else if let val = dict["firmware"] as? String, !val.isEmpty {
+                            fw = val.trimmingCharacters(in: .whitespacesAndNewlines)
                         }
                     }
                 }
