@@ -1,6 +1,8 @@
 // SettingsView.swift — Settings, device info, auto-unlock config, and debug log
 
 import SwiftUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 struct SettingsView: View {
     @EnvironmentObject var container: AppDIContainer
@@ -137,180 +139,6 @@ struct SettingsView: View {
         }
     }
 }
-    // MARK: - Log View
-    
-    struct LogView: View {
-        @State var logs: [BLELogEntry]
-        @Environment(\.dismiss) private var dismiss
-        @State private var showClearConfirm = false
-        @State private var showShareSheet = false
-        @State private var shareURL: URL? = nil
-        
-        init(logs: [BLELogEntry]) {
-            self._logs = State(initialValue: logs)
-        }
-        
-        /// Danh sách keyword nhạy cảm — log chứa keyword này sẽ bị ẩn
-        private static let sensitiveKeywords = [
-            "SHA", "hash", "PIN", "pin", "auth", "Auth",
-            "challenge", "counter", "nonce", "token", "Token",
-            "session", "proximity", "Xác thực", "xác thực",
-            "NOTIFY", "serviceChanged"
-        ]
-        
-        /// Hiển thị toàn bộ nhật ký theo yêu cầu
-        private var filteredLogs: [BLELogEntry] {
-            return logs
-        }
-        
-        var body: some View {
-            NavigationView {
-                ZStack {
-                    Color(red: 0.04, green: 0.04, blue: 0.08)
-                        .ignoresSafeArea()
-                    
-                    if filteredLogs.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "doc.text.magnifyingglass")
-                                .font(.system(size: 40))
-                                .foregroundColor(.gray)
-                            Text("Chưa có log")
-                                .foregroundColor(.gray)
-                        }
-                    } else {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 2) {
-                                ForEach(filteredLogs.reversed()) { entry in
-                                    HStack(alignment: .top, spacing: 6) {
-                                        Text(entry.formattedTime)
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .foregroundColor(.gray)
-                                        
-                                        Text(entry.level.rawValue)
-                                            .font(.system(size: 10))
-                                        
-                                        Text(entry.message)
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.white.opacity(0.85))
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 3)
-                                    .contextMenu {
-                                        Button {
-                                            UIPasteboard.general.string = "[\(entry.formattedTime)] \(entry.level.rawValue) \(entry.message)"
-                                        } label: {
-                                            Label("Copy", systemImage: "doc.on.doc")
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 8)
-                        }
-                    }
-                }
-                .navigationTitle("BLE Log")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarLeading) {
-                        Button {
-                            let fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
-                            UIPasteboard.general.string = fullString
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        
-                        Button {
-                            let text = PersistentLogger.shared.exportAllAsText()
-                            let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("datbike_ble_logs.txt")
-                            try? text.write(to: tempFile, atomically: true, encoding: .utf8)
-                            shareURL = tempFile
-                            showShareSheet = true
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                    }
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
-                        Button {
-                            showClearConfirm = true
-                        } label: {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                        }
-                        
-                        Button("Đóng") { dismiss() }
-                            .foregroundColor(.blue)
-                    }
-                }
-                .alert("Xóa toàn bộ Log?", isPresented: $showClearConfirm) {
-                    Button("Xóa", role: .destructive) {
-                        PersistentLogger.shared.clearAll()
-                        logs.removeAll()
-                    }
-                    Button("Hủy", role: .cancel) {}
-                } message: {
-                    Text("Hành động này sẽ xóa vĩnh viễn toàn bộ lịch sử kết nối lưu trên máy.")
-                }
-                .background(
-                    ActivityViewPresenter(isPresented: $showShareSheet, activityItems: [shareURL].compactMap { $0 })
-                )
-            }
-            .navigationViewStyle(.stack)
-            .preferredColorScheme(.dark)
-        }
-    }
-    
-    struct ActivityViewPresenter: UIViewControllerRepresentable {
-        @Binding var isPresented: Bool
-        var activityItems: [Any]
-        
-        func makeUIViewController(context: Context) -> UIViewController {
-            let vc = UIViewController()
-            vc.view.backgroundColor = .clear
-            return vc
-        }
-        
-        func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-            let isActivityShown = uiViewController.presentedViewController is UIActivityViewController
-            
-            if isPresented && !isActivityShown {
-                let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-                controller.completionWithItemsHandler = { _, _, _, _ in
-                    self.isPresented = false
-                }
-                
-                if let popover = controller.popoverPresentationController {
-                    popover.sourceView = uiViewController.view
-                    popover.sourceRect = CGRect(x: uiViewController.view.bounds.midX, y: uiViewController.view.bounds.midY, width: 0, height: 0)
-                    popover.permittedArrowDirections = []
-                }
-                
-                uiViewController.present(controller, animated: true)
-            }
-        }
-    }
-    
-    // MARK: - Live Time Text
-    struct LiveTimeText: View {
-        @State private var currentTime = Date()
-        
-        var body: some View {
-            Text(currentVNTimeString(currentTime))
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.gray)
-                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { input in
-                    currentTime = input
-                }
-        }
-        
-        private func currentVNTimeString(_ date: Date) -> String {
-            let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
-            let formatter = DateFormatter()
-            formatter.timeZone = vnTZ
-            formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
-            return formatter.string(from: date)
-        }
-    }
 
 // MARK: - Connection Guide View
 struct ConnectionGuideView: View {
@@ -399,6 +227,7 @@ struct ConnectionGuideView: View {
         }
     }
 }
+
 
 struct MyBikeSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
@@ -548,6 +377,7 @@ struct MyBikeSettingsView: View {
     }
 }
 
+
 struct ConnectionSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     
@@ -620,6 +450,7 @@ struct ConnectionSettingsView: View {
     }
 }
 
+
 struct DeveloperSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
     @State private var showLogs = false
@@ -690,6 +521,7 @@ struct DeveloperSettingsView: View {
         }
     }
 }
+
 
 struct NotificationSettingsView: View {
     @ObservedObject var viewModel: SettingsViewModel
@@ -799,265 +631,231 @@ struct NotificationSettingsView: View {
         .tint(iconColor)
     }
 }
-    // MARK: - Log View
-    
-    struct LogView: View {
-        @State var logs: [BLELogEntry]
-        @Environment(\.dismiss) private var dismiss
-        @State private var showClearConfirm = false
-        @State private var showShareSheet = false
-        @State private var shareURL: URL? = nil
-        
-        init(logs: [BLELogEntry]) {
-            self._logs = State(initialValue: logs)
-        }
-        
-        /// Danh sách keyword nhạy cảm — log chứa keyword này sẽ bị ẩn
-        private static let sensitiveKeywords = [
-            "SHA", "hash", "PIN", "pin", "auth", "Auth",
-            "challenge", "counter", "nonce", "token", "Token",
-            "session", "proximity", "Xác thực", "xác thực",
-            "NOTIFY", "serviceChanged"
-        ]
-        
-        /// Hiển thị toàn bộ nhật ký theo yêu cầu
-        private var filteredLogs: [BLELogEntry] {
-            return logs
-        }
-        
-        var body: some View {
-            NavigationView {
-                ZStack {
-                    Color(red: 0.04, green: 0.04, blue: 0.08)
-                        .ignoresSafeArea()
-                    
-                    if filteredLogs.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "doc.text.magnifyingglass")
-                                .font(.system(size: 40))
-                                .foregroundColor(.gray)
-                            Text("Chưa có log")
-                                .foregroundColor(.gray)
-                        }
-                    } else {
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 2) {
-                                ForEach(filteredLogs.reversed()) { entry in
-                                    HStack(alignment: .top, spacing: 6) {
-                                        Text(entry.formattedTime)
-                                            .font(.system(size: 10, design: .monospaced))
-                                            .foregroundColor(.gray)
-                                        
-                                        Text(entry.level.rawValue)
-                                            .font(.system(size: 10))
-                                        
-                                        Text(entry.message)
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.white.opacity(0.85))
-                                            .fixedSize(horizontal: false, vertical: true)
-                                    }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 3)
-                                    .contextMenu {
-                                        Button {
-                                            UIPasteboard.general.string = "[\(entry.formattedTime)] \(entry.level.rawValue) \(entry.message)"
-                                        } label: {
-                                            Label("Copy", systemImage: "doc.on.doc")
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 8)
-                        }
-                    }
-                }
-                .navigationTitle("BLE Log")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItemGroup(placement: .navigationBarLeading) {
-                        Button {
-                            let fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
-                            UIPasteboard.general.string = fullString
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                        }
-                        
-                        Button {
-                            let text = PersistentLogger.shared.exportAllAsText()
-                            let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("datbike_ble_logs.txt")
-                            try? text.write(to: tempFile, atomically: true, encoding: .utf8)
-                            shareURL = tempFile
-                            showShareSheet = true
-                        } label: {
-                            Image(systemName: "square.and.arrow.up")
-                        }
-                    }
-                    ToolbarItemGroup(placement: .navigationBarTrailing) {
-                        Button {
-                            showClearConfirm = true
-                        } label: {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                        }
-                        
-                        Button("Đóng") { dismiss() }
-                            .foregroundColor(.blue)
-                    }
-                }
-                .alert("Xóa toàn bộ Log?", isPresented: $showClearConfirm) {
-                    Button("Xóa", role: .destructive) {
-                        PersistentLogger.shared.clearAll()
-                        logs.removeAll()
-                    }
-                    Button("Hủy", role: .cancel) {}
-                } message: {
-                    Text("Hành động này sẽ xóa vĩnh viễn toàn bộ lịch sử kết nối lưu trên máy.")
-                }
-                .background(
-                    ActivityViewPresenter(isPresented: $showShareSheet, activityItems: [shareURL].compactMap { $0 })
-                )
-            }
-            .navigationViewStyle(.stack)
-            .preferredColorScheme(.dark)
-        }
-    }
-    
-    struct ActivityViewPresenter: UIViewControllerRepresentable {
-        @Binding var isPresented: Bool
-        var activityItems: [Any]
-        
-        func makeUIViewController(context: Context) -> UIViewController {
-            let vc = UIViewController()
-            vc.view.backgroundColor = .clear
-            return vc
-        }
-        
-        func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-            let isActivityShown = uiViewController.presentedViewController is UIActivityViewController
-            
-            if isPresented && !isActivityShown {
-                let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
-                controller.completionWithItemsHandler = { _, _, _, _ in
-                    self.isPresented = false
-                }
-                
-                if let popover = controller.popoverPresentationController {
-                    popover.sourceView = uiViewController.view
-                    popover.sourceRect = CGRect(x: uiViewController.view.bounds.midX, y: uiViewController.view.bounds.midY, width: 0, height: 0)
-                    popover.permittedArrowDirections = []
-                }
-                
-                uiViewController.present(controller, animated: true)
-            }
-        }
-    }
-    
-    // MARK: - Live Time Text
-    struct LiveTimeText: View {
-        @State private var currentTime = Date()
-        
-        var body: some View {
-            Text(currentVNTimeString(currentTime))
-                .font(.system(.caption, design: .monospaced))
-                .foregroundColor(.gray)
-                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { input in
-                    currentTime = input
-                }
-        }
-        
-        private func currentVNTimeString(_ date: Date) -> String {
-            let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
-            let formatter = DateFormatter()
-            formatter.timeZone = vnTZ
-            formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
-            return formatter.string(from: date)
-        }
-    }
 
-// MARK: - Connection Guide View
-struct ConnectionGuideView: View {
-    @Environment(\.presentationMode) var presentationMode
+// MARK: - Log View
+
+struct LogView: View {
+    @State var logs: [BLELogEntry]
+    @Environment(\.dismiss) private var dismiss
+    @State private var showClearConfirm = false
+    @State private var showShareSheet = false
+    @State private var shareURL: URL? = nil
+    
+    init(logs: [BLELogEntry]) {
+        self._logs = State(initialValue: logs)
+    }
+    
+    /// Danh sách keyword nhạy cảm — log chứa keyword này sẽ bị ẩn
+    private static let sensitiveKeywords = [
+        "SHA", "hash", "PIN", "pin", "auth", "Auth",
+        "challenge", "counter", "nonce", "token", "Token",
+        "session", "proximity", "Xác thực", "xác thực",
+        "NOTIFY", "serviceChanged"
+    ]
+    
+    /// Hiển thị toàn bộ nhật ký theo yêu cầu
+    private var filteredLogs: [BLELogEntry] {
+        return logs
+    }
     
     var body: some View {
         NavigationView {
             ZStack {
-                Color(red: 0.1, green: 0.1, blue: 0.12).ignoresSafeArea()
+                Color(red: 0.04, green: 0.04, blue: 0.08)
+                    .ignoresSafeArea()
                 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        Text("Hiểu về kết nối D-SmartKey")
-                            .font(.title2).bold()
-                            .foregroundColor(.white)
-                        
-                        guideSection(
-                            icon: "magnifyingglass", iconColor: .blue,
-                            title: "1. Đang tìm xe",
-                            content: "Điện thoại đang liên tục quét các sóng Bluetooth Low Energy (BLE) xung quanh để phát hiện xe Dat Bike của bạn. Trạng thái này thường mất từ 1-3 giây mỗi khi mở app."
-                        )
-                        
-                        guideSection(
-                            icon: "point.3.connected.trianglepath.dotted", iconColor: .orange,
-                            title: "2. Đang kết nối & Xác thực",
-                            content: "Ứng dụng đã tìm thấy sóng của xe và tiến hành thiết lập liên kết an toàn."
-                        )
-                        
-                        guideSection(
-                            icon: "sensor.tag.radiowaves.forward", iconColor: .green,
-                            title: "3. Ngưỡng tự động kết nối",
-                            content: "Mặc định, khi xe phát hiện bạn trong phạm vi phát sóng đủ lớn của 'Ngưỡng kết nối', biểu tượng Bluetooth trên mặt đồng hồ xe sẽ sáng nháp báo hiệu sự kết nối vật lý đã sẵn sàng. Bạn càng kéo thanh này về phía 'Xa' (như -80), xe sẽ bắt sóng bạn càng sớm."
-                        )
-                        
-                        guideSection(
-                            icon: "bolt.fill", iconColor: .yellow,
-                            title: "4. Ngưỡng tự động bật xe",
-                            content: "Nếu bạn đã bật tính năng này, sau khi kết nối, hệ thống sẽ tiếp tục đợi. Chỉ khi bạn tiến lại đủ gần chạm trúng vào 'Ngưỡng bật xe' (như -60), ứng dụng mới xuất lệnh đánh thức và BẬT HỆ THỐNG ĐIỆN của xe hoàn toàn."
-                        )
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Mẹo thiết lập")
-                                .font(.headline).foregroundColor(.white)
-                            Text("• Luôn giữ Ngưỡng bật xe ĐẬM (Gần) hơn Ngưỡng kết nối để tránh việc xe tự bật sáng khi bạn chỉ đang lướt ngang qua sân nhà.")
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                        }
-                        .padding()
-                        .background(Color.orange.opacity(0.1))
-                        .cornerRadius(12)
-                    }
-                    .padding()
-                    .padding(.top, 10)
-                }
-            }
-            .navigationTitle("Trợ giúp")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                        Image(systemName: "xmark.circle.fill")
+                if filteredLogs.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 40))
+                            .foregroundColor(.gray)
+                        Text("Chưa có log")
                             .foregroundColor(.gray)
                     }
+                } else {
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(filteredLogs.reversed()) { entry in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text(entry.formattedTime)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundColor(.gray)
+                                    
+                                    Text(entry.level.rawValue)
+                                        .font(.system(size: 10))
+                                    
+                                    Text(entry.message)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.white.opacity(0.85))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 3)
+                                .contextMenu {
+                                    Button {
+                                        UIPasteboard.general.string = "[\(entry.formattedTime)] \(entry.level.rawValue) \(entry.message)"
+                                    } label: {
+                                        Label("Copy", systemImage: "doc.on.doc")
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+            }
+            .navigationTitle("BLE Log")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .navigationBarLeading) {
+                    Button {
+                        let fullString = filteredLogs.reversed().map { "[\($0.formattedTime)] \($0.level.rawValue) \($0.message)" }.joined(separator: "\n")
+                        UIPasteboard.general.string = fullString
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                    }
+                    
+                    Button {
+                        let text = PersistentLogger.shared.exportAllAsText()
+                        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("datbike_ble_logs.txt")
+                        try? text.write(to: tempFile, atomically: true, encoding: .utf8)
+                        shareURL = tempFile
+                        showShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                }
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button {
+                        showClearConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .foregroundColor(.red)
+                    }
+                    
+                    Button("Đóng") { dismiss() }
+                        .foregroundColor(.blue)
+                }
+            }
+            .alert("Xóa toàn bộ Log?", isPresented: $showClearConfirm) {
+                Button("Xóa", role: .destructive) {
+                    PersistentLogger.shared.clearAll()
+                    logs.removeAll()
+                }
+                Button("Hủy", role: .cancel) {}
+            } message: {
+                Text("Hành động này sẽ xóa vĩnh viễn toàn bộ lịch sử kết nối lưu trên máy.")
+            }
+            .background(
+                ActivityViewPresenter(isPresented: $showShareSheet, activityItems: [shareURL].compactMap { $0 })
+            )
+        }
+        .navigationViewStyle(.stack)
+        .preferredColorScheme(.dark)
+    }
+}
+
+struct ActivityViewPresenter: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    var activityItems: [Any]
+    
+    func makeUIViewController(context: Context) -> UIViewController {
+        let vc = UIViewController()
+        vc.view.backgroundColor = .clear
+        return vc
+    }
+    
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        let isActivityShown = uiViewController.presentedViewController is UIActivityViewController
+        
+        if isPresented && !isActivityShown {
+            let controller = UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+            controller.completionWithItemsHandler = { _, _, _, _ in
+                self.isPresented = false
+            }
+            
+            if let popover = controller.popoverPresentationController {
+                popover.sourceView = uiViewController.view
+                popover.sourceRect = CGRect(x: uiViewController.view.bounds.midX, y: uiViewController.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
+            }
+            
+            uiViewController.present(controller, animated: true)
+        }
+    }
+}
+
+// MARK: - Live Time Text
+struct LiveTimeText: View {
+    @State private var currentTime = Date()
+    
+    var body: some View {
+        Text(currentVNTimeString(currentTime))
+            .font(.system(.caption, design: .monospaced))
+            .foregroundColor(.gray)
+            .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { input in
+                currentTime = input
+            }
+    }
+    
+    private func currentVNTimeString(_ date: Date) -> String {
+        let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let formatter = DateFormatter()
+        formatter.timeZone = vnTZ
+        formatter.dateFormat = "HH:mm:ss (dd/MM/yyyy)"
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - QR Code View
+struct QRCodeView: View {
+    let content: String
+    let size: CGFloat
+    @State private var cachedImage: UIImage?
+    
+    var body: some View {
+        Group {
+            if let image = cachedImage {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+            } else {
+                Color.white.frame(width: size, height: size)
+                    .overlay(ProgressView())
+            }
+        }
+        .onAppear {
+            Task {
+                if cachedImage == nil {
+                    cachedImage = generateQRCode(from: content)
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
     
-    private func guideSection(icon: String, iconColor: Color, title: String, content: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 20))
-                .foregroundColor(iconColor)
-                .frame(width: 32)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(.white)
-                Text(content)
-                    .font(.subheadline)
-                    .foregroundColor(.gray)
-                    .lineSpacing(2)
+    private func generateQRCode(from string: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(string.utf8)
+        filter.correctionLevel = "M"
+        guard let ciImage = filter.outputImage else { return nil }
+        let scale = size / ciImage.extent.width
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        guard let inverted = CIFilter(name: "CIColorInvert", parameters: [kCIInputImageKey: scaled])?.outputImage,
+              CIFilter(name: "CIMaskToAlpha", parameters: [kCIInputImageKey: inverted])?.outputImage != nil else {
+            let context = CIContext()
+            if let cgImage = context.createCGImage(scaled, from: scaled.extent) {
+                return UIImage(cgImage: cgImage)
             }
+            return nil
         }
+        let bg = CIImage(color: CIColor.white).cropped(to: scaled.extent)
+        guard let composed = CIFilter(name: "CISourceOverCompositing",
+                                      parameters: [kCIInputImageKey: scaled,
+                                         kCIInputBackgroundImageKey: bg])?.outputImage else { return nil }
+        let context = CIContext()
+        guard let cgImage = context.createCGImage(composed, from: composed.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
