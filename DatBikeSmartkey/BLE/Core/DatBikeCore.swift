@@ -152,7 +152,8 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         }
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
             message: "[INIT] Khởi tạo CBCentralManager | savedUUID=\(preferences.savedPeripheralUUID?.prefix(8).description ?? "nil") | savedPin=\(preferences.savedPin != nil ? "có" : "nil") | connectOnlyWhenNear=\(preferences.connectOnlyWhenNear)"))
-        let queue = DispatchQueue(label: "datbike.core.ble", qos: .userInitiated)
+        let bundleId = Bundle.main.bundleIdentifier ?? "app.mybike.smartkey"
+        let queue = DispatchQueue(label: "\(bundleId).core.ble", qos: .userInitiated)
         self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [
             CBCentralManagerOptionRestoreIdentifierKey: "DatBikeCentralManagerRestoreID",
             CBCentralManagerOptionShowPowerAlertKey: true

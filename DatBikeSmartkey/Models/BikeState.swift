@@ -362,7 +362,7 @@ final class PersistentLogger {
     
     private let logDir: URL
     private let dateFormatter: DateFormatter
-    private let queue = DispatchQueue(label: "app.mybike.smartkey.persistentlogger", qos: .utility)
+    private let queue = DispatchQueue(label: "\(Bundle.main.bundleIdentifier ?? "app.mybike.smartkey").persistentlogger", qos: .utility)
     private let sessionMarker = "────────── Phiên mới ──────────"
     private let maxKeepDays = 365
     
