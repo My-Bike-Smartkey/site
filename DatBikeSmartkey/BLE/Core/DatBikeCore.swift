@@ -76,6 +76,10 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private var micRetryCount = 0
     private let maxMicRetries = 3
     
+    /// Guard chống connectPeripheral().disconnecting retry loop bị gọi đồng thời từ nhiều luồng
+    /// (ví dụ: foreground connect() + didDiscover callback cùng fire một lúc).
+    private var disconnectingRetryActive = false
+    
     // Guard chống downgradeToStandby chạy trùng lặp
     private var isDowngrading = false
     
@@ -147,11 +151,11 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     func initializeBluetoothHardware() {
         guard centralManager == nil else {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "[INIT] initializeBluetoothHardware() bỏ qua — centralManager đã tồn tại"))
+                message: "[INIT] initializeBluetoothHardware() bỏ qua — centralManager đã tồn tại | savedPin=\(preferences.savedPin ?? "nil")"))
             return
         }
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-            message: "[INIT] Khởi tạo CBCentralManager | savedUUID=\(preferences.savedPeripheralUUID?.prefix(8).description ?? "nil") | savedPin=\(preferences.savedPin != nil ? "có" : "nil") | connectOnlyWhenNear=\(preferences.connectOnlyWhenNear)"))
+            message: "[INIT] Khởi tạo CBCentralManager | savedUUID=\(preferences.savedPeripheralUUID?.prefix(8).description ?? "nil") | savedPin=\(preferences.savedPin ?? "nil") | connectOnlyWhenNear=\(preferences.connectOnlyWhenNear)"))
         let bundleId = Bundle.main.bundleIdentifier ?? "app.mybike.smartkey"
         let queue = DispatchQueue(label: "\(bundleId).core.ble", qos: .userInitiated)
         self.centralManager = CBCentralManager(delegate: self, queue: queue, options: [
@@ -325,6 +329,18 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         }
         scanRetryCount = 0
         
+        // ═══ GUARD: Scan đang chạy → bỏ qua duplicate call ═══
+        // Nguyên nhân MIC failure khi cold-launch:
+        // 1. centralManagerDidUpdateState(.poweredOn) sau power-cycle → connect() → startScanWithTimeout() → reset btWasPoweredOff=false
+        // 2. appWillEnterForeground / iOS 18 delay init → connect() được gọi lại ngay lập tức
+        // 3. Lần gọi thứ 2 thấy btWasPoweredOff=false → dùng cache → MIC failure!
+        // Fix: Nếu scan timer đang chạy, KHÔNG cho phép bất kỳ code path nào dùng cache.
+        if scanTimer != nil {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[CONNECT] Scan timer đang chạy → bỏ qua duplicate call | smState=\(stateMachine.state.displayText)"))
+            return
+        }
+        
         // Đã pair trước đó → thử retrieve (giống 7c3227a tryReconnectKnown)
         if preferences.savedPin != nil,
            let savedUUIDStr = preferences.savedPeripheralUUID,
@@ -357,9 +373,20 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             // Với State Restoration, iOS duy trì encryption context → an toàn connect
             let known = central.retrievePeripherals(withIdentifiers: [savedUUID])
             if let p = known.first {
+                // ═══ GUARD: Peripheral stale (.disconnecting) → KHÔNG dùng cache ═══
+                // Sau khi app bị suspend dài (>5 phút), iOS giữ peripheral ở .disconnecting.
+                // Connect vào peripheral này sẽ kẹt retry loop vô hạn.
+                // Fix: force fresh scan để iOS negotiate kết nối mới hoàn toàn.
+                if p.state == .disconnecting {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "Peripheral cache đang .disconnecting (stale sau suspend) → force scan mới | state=\(p.state.rawValue)"))
+                    forceFullScan = false
+                    startScanWithTimeout(central: central)
+                    return
+                }
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                     message: "Retrieve peripheral từ cache: \(p.name ?? savedUUIDStr.prefix(8).description)"))
-                connectPeripheral(p, central: central)
+                connectPeripheral(p, central: central, isPendingConnect: true)
                 return
             }
             
@@ -432,7 +459,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         if let p = known.first {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                 message: "ASK Retrieve peripheral thành công: \(p.name ?? uuid.uuidString.prefix(8).description)"))
-            connectPeripheral(p, central: central)
+            connectPeripheral(p, central: central, isPendingConnect: true)
         } else {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
                 message: "ASK UUID không tìm thấy trong cache, kích hoạt fallback scan"))
@@ -441,7 +468,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     }
     
     /// Thiết lập context + kết nối peripheral (dùng chung cho retrieve và scan)
-    private func connectPeripheral(_ p: CBPeripheral, central: CBCentralManager) {
+    private func connectPeripheral(_ p: CBPeripheral, central: CBCentralManager, isPendingConnect: Bool = false, disconnectRetryCount: Int = 0) {
         cancelScanTimer()
         
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
@@ -451,14 +478,48 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         // iOS chưa dọn xong link-layer → connect ngay sẽ gây phantom connection + MIC failure.
         // Chờ 1.5s để iOS hoàn tất ngắt kết nối rồi mới connect lại.
         if p.state == .disconnecting {
+            // ─── Guard: Chỉ cho phép 1 retry chain duy nhất chạy tại một thời điểm ───
+            // Khi foreground + didDiscover cùng gọi connectPeripheral(), cả 2 đều thấy
+            // .disconnecting và khởi chạy retry loop riêng → 2 chain song song gây rối.
+            // Fix: nếu retry đã đang chạy (disconnectingRetryActive=true), bỏ qua call mới.
+            if disconnectRetryCount == 0 {
+                guard !disconnectingRetryActive else {
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                        message: "[CONNECT_PERIPHERAL] Bỏ qua — disconnectingRetry đã chạy | uuid=\(p.identifier.uuidString.prefix(8))"))
+                    return
+                }
+                disconnectingRetryActive = true
+                // Gọi cancelPeripheralConnection ngay để iOS dọn link-layer nhanh hơn
+                // (đặc biệt sau khi app bị suspend dài — peripheral có thể kẹt .disconnecting hàng phút)
+                central.cancelPeripheralConnection(p)
+            }
+            
+            // Giảm threshold từ 5 → 3: Sau 3 lần retry (4.5s) mà vẫn .disconnecting là iOS kẹt
+            if disconnectRetryCount >= 3 {
+                disconnectingRetryActive = false
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
+                    message: "[CONNECT_PERIPHERAL] Peripheral kẹt ở .disconnecting quá lâu → force scan mới"))
+                self.forceFullScan = true
+                self.activeContext = nil
+                central.cancelPeripheralConnection(p)
+                self.startScanWithTimeout(central: central)
+                return
+            }
+            
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
-                message: "[CONNECT_PERIPHERAL] Peripheral đang .disconnecting → chờ 1.5s rồi connect lại"))
+                message: "[CONNECT_PERIPHERAL] Peripheral đang .disconnecting → chờ 1.5s rồi connect lại (retry: \(disconnectRetryCount))"))
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                guard let self, let central = self.centralManager, central.state == .poweredOn else { return }
-                self.connectPeripheral(p, central: central)
+                guard let self, let central = self.centralManager, central.state == .poweredOn else {
+                    self?.disconnectingRetryActive = false
+                    return
+                }
+                self.connectPeripheral(p, central: central, isPendingConnect: isPendingConnect, disconnectRetryCount: disconnectRetryCount + 1)
             }
             return
         }
+        
+        // Đã thoát khỏi .disconnecting (hoặc không bao giờ vào) — reset guard
+        disconnectingRetryActive = false
         
         stateMachine.transition(to: .connecting)
         
@@ -474,7 +535,12 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             CBConnectPeripheralOptionNotifyOnDisconnectionKey: true
         ])
         
-        startConnectingTimeout()
+        if !isPendingConnect {
+            startConnectingTimeout()
+        } else {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[PENDING_CONNECT] Bỏ qua Phantom Guard timeout vì đây là kết nối ngầm (Pending Connect)"))
+        }
     }
     
     /// Bắt đầu quét BLE với timeout
@@ -526,7 +592,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                     if let p = known.first {
                         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
                             message: "Hết hạn quét xe — chuyển sang bám sóng nền (pending connect)"))
-                        self.connectPeripheral(p, central: central)
+                        self.connectPeripheral(p, central: central, isPendingConnect: true)
                         return
                     }
                 }
@@ -1131,9 +1197,11 @@ extension DatBikeCore: CBCentralManagerDelegate {
         
         // Đã pair trước đó (có savedPin) → auto-connect luôn, không cần chọn
         if preferences.savedPin != nil {
-            if isAppInBackground {
-                // Background: BẮT BUỘC bỏ qua các sóng yếu và tiếp tục Scan bằng hạ tầng hệ điều hành.
-                // Nếu kết nối ở xa trong Background, Timer bị đóng băng -> App không bao giờ xác thực được!
+            if isAppInBackground && preferences.connectOnlyWhenNear {
+                // Background + chế độ "Chỉ kết nối khi gần" BẬT:
+                // Bỏ qua sóng yếu để tránh kết nối từ xa → timer standby bị iOS đóng băng → không bao giờ xác thực được.
+                // KHÔNG áp dụng khi connectOnlyWhenNear=false: auth đi theo fast path (không timer),
+                // nên an toàn kết nối bất kể khoảng cách.
                 if Double(RSSI.intValue) < preferences.rssiThreshold {
                     return
                 }
@@ -1141,12 +1209,18 @@ extension DatBikeCore: CBCentralManagerDelegate {
             
             // ═══ UUID FILTER: Khi có 2 xe DatBike gần nhau, chỉ kết nối xe đã ghép đôi ═══
             // Nếu UUID khớp → connect ngay
-            if let savedUUIDStr = preferences.savedPeripheralUUID,
-               peripheral.identifier.uuidString == savedUUIDStr {
-                cancelScanTimer()
-                central.stopScan()
-                connectPeripheral(peripheral, central: central)
-                return
+            if let savedUUIDStr = preferences.savedPeripheralUUID {
+                if peripheral.identifier.uuidString == savedUUIDStr {
+                    cancelScanTimer()
+                    central.stopScan()
+                    connectPeripheral(peripheral, central: central)
+                    return
+                } else {
+                    // ═══ RPA DETECTION LOG ═══
+                    // Nếu quét ra Dat Bike nhưng UUID khác với UUID đã lưu, rất có thể là do MAC quay vòng (RPA)
+                    PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                        message: "[RPA-DETECTED] Phát hiện xe nhưng UUID khác (Cũ: \(savedUUIDStr.prefix(8)) | Mới: \(peripheral.identifier.uuidString.prefix(8))). Đây có thể là MAC quay vòng hoặc xe của người khác. iOS sẽ không tự ghép vào Pending Connect!"))
+                }
             }
             
             // UUID không khớp → tiếp tục scan (chờ đúng xe)
@@ -1238,14 +1312,32 @@ extension DatBikeCore: CBCentralManagerDelegate {
         
         // Error 14: Peer removed pairing
         if let cbError = error as? CBError, cbError.code == .peerRemovedPairingInformation {
-            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
-                message: "Xe đã xóa bonding (code 14). Cần ghép đôi lại."))
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "Xe đã xóa bonding (code 14). Đang tự động gỡ iOS Bluetooth bằng ASKManager và yêu cầu ghép đôi lại..."))
+            
+            // Xóa ở cấp độ OS (iOS 18+)
+            if #available(iOS 18.0, *), let savedUUID = preferences.savedPeripheralUUID {
+                ASKManager.shared.removeAccessory(withUUID: savedUUID)
+            }
+            
             preferences.savedPeripheralUUID = nil
-            stateMachine.transition(to: .error(
-                "Xe đã xóa kết nối BLE.\n" +
-                "Vào Cài đặt → Bluetooth → chọn xe → Quên thiết bị này.\n" +
-                "Sau đó quay lại app để ghép đôi lại."
-            ))
+            micRetryCount = 0
+            btWasPoweredOff = true
+            forceFullScan = true
+            
+            if #available(iOS 18.0, *) {
+                stateMachine.transition(to: .scanning)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    ASKManager.shared.showPicker()
+                }
+            } else {
+                stateMachine.transition(to: .error(
+                    "Đã phát hiện thiết bị khác chiếm kết nối xe.\n" +
+                    "Bạn dùng phiên bản iOS cũ nên App không thể tự động gỡ lỗi. Vui lòng:\n" +
+                    "1. Vào Cài đặt → Bluetooth → chọn chữ (i) cạnh xe Ngựa sắt → Quên thiết bị này\n" +
+                    "2. Quay lại App để kết nối."
+                ))
+            }
             return
         }
         

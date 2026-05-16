@@ -110,6 +110,22 @@ class ASKManager: NSObject {
         #endif
     }
     
+    func removeAccessory(withUUID uuidString: String) {
+        #if canImport(AccessorySetupKit)
+        guard let targetUUID = UUID(uuidString: uuidString) else { return }
+        let accessories = session?.accessories ?? []
+        for accessory in accessories {
+            if accessory.bluetoothIdentifier == targetUUID {
+                Task {
+                    // Xoá thiết bị khỏi ASK (Apple đã đổi hàm này thành async throws trên iOS 18)
+                    try? await session?.removeAccessory(accessory)
+                }
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "ASKManager: Đã yêu cầu xóa (Unpair) phụ kiện \(uuidString) khỏi hệ thống iOS"))
+            }
+        }
+        #endif
+    }
+    
     #if canImport(AccessorySetupKit)
     private func handleSessionEvent(_ event: ASAccessoryEvent) {
         switch event.eventType {
