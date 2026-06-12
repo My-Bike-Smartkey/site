@@ -30,6 +30,12 @@ class PreferencesManager {
         didSet { sharedDefaults.set(connectOnlyWhenNear, forKey: "connectOnlyWhenNear") }
     }
     
+    /// Chế độ "Đang ở gần": phát hiện xe gần nhưng KHÔNG tự auth/bật xe.
+    /// Khi user mở app (foreground) mới auth.
+    @Published var nearbyModeEnabled: Bool {
+        didSet { sharedDefaults.set(nearbyModeEnabled, forKey: "nearbyModeEnabled") }
+    }
+    
     @Published var notificationsEnabled: Bool {
         didSet { sharedDefaults.set(notificationsEnabled, forKey: "notificationsEnabled") }
     }
@@ -104,15 +110,6 @@ class PreferencesManager {
         didSet { sharedDefaults.set(savedPin, forKey: "savedPin") }
     }
     
-    @Published var savedESP32UUID: String? {
-        didSet { sharedDefaults.set(savedESP32UUID, forKey: "savedESP32UUID") }
-    }
-    
-    /// Ngày cấu hình thành công gần nhất của khóa phụ ESP32
-    var savedESP32SetupDate: Date? {
-        get { sharedDefaults.object(forKey: "savedESP32SetupDate") as? Date }
-        set { sharedDefaults.set(newValue, forKey: "savedESP32SetupDate") }
-    }
     
     @Published var savedPeripheralUUID: String? {
         didSet { sharedDefaults.set(savedPeripheralUUID, forKey: "lastPeripheralUUID") }
@@ -209,9 +206,9 @@ class PreferencesManager {
         }
         
         self.connectOnlyWhenNear = defaults.bool(forKey: "connectOnlyWhenNear")
+        self.nearbyModeEnabled = defaults.bool(forKey: "nearbyModeEnabled")
         self.isDebugModeEnabled = defaults.object(forKey: "isDebugModeEnabled") as? Bool ?? false
         self.savedPin = defaults.string(forKey: "savedPin")
-        self.savedESP32UUID = defaults.string(forKey: "savedESP32UUID")
         self.savedPeripheralUUID = defaults.string(forKey: "lastPeripheralUUID")
         
         self.savedBikeName = defaults.string(forKey: "savedBikeName")

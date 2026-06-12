@@ -12,6 +12,7 @@ class SettingsViewModel: ObservableObject {
     @Published var autoUnlockEnabled: Bool
     @Published var autoTurnOnThreshold: Double
     @Published var connectOnlyWhenNear: Bool
+    @Published var nearbyModeEnabled: Bool
     @Published var isDebugModeEnabled: Bool
     @Published var notificationsEnabled: Bool
     @Published var widgetAndLiveActivityEnabled: Bool
@@ -48,6 +49,7 @@ class SettingsViewModel: ObservableObject {
         self.autoUnlockEnabled = preferences.autoUnlockEnabled
         self.autoTurnOnThreshold = preferences.autoTurnOnThreshold
         self.connectOnlyWhenNear = preferences.connectOnlyWhenNear
+        self.nearbyModeEnabled = preferences.nearbyModeEnabled
         self.isDebugModeEnabled = preferences.isDebugModeEnabled
         self.notificationsEnabled = preferences.notificationsEnabled
         self.widgetAndLiveActivityEnabled = preferences.widgetAndLiveActivityEnabled
@@ -102,6 +104,11 @@ class SettingsViewModel: ObservableObject {
         $connectOnlyWhenNear
             .dropFirst()
             .sink { [weak self] val in self?.preferences.connectOnlyWhenNear = val }
+            .store(in: &cancellables)
+        
+        $nearbyModeEnabled
+            .dropFirst()
+            .sink { [weak self] val in self?.preferences.nearbyModeEnabled = val }
             .store(in: &cancellables)
             
         $isDebugModeEnabled

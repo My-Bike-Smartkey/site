@@ -186,6 +186,26 @@ class DashboardViewModel: ObservableObject {
         core.forceStandbyOverride()
     }
     
+    /// User bấm "Kết nối" khi đang ở nearby → auth ngay
+    func connectFromNearby() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Kết nối' từ chế độ gần xe"))
+        isProcessing = true
+        core.connectFromNearby()
+    }
+    
+    /// User bật chế độ "Đang ở gần"
+    func activateNearbyMode() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User bật chế độ 'Đang ở gần'"))
+        core.activateNearbyMode()
+    }
+    
+    /// User tắt chế độ "Đang ở gần"
+    func deactivateNearbyMode() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tắt chế độ 'Đang ở gần'"))
+        isProcessing = true
+        core.deactivateNearbyMode()
+    }
+    
     func lock() {
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Chống trộm' (Arm Anti-Theft)"))
         core.suspendAutoFeatures()

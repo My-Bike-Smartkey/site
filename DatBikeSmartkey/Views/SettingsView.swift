@@ -50,27 +50,6 @@ struct SettingsView: View {
                     }
                 }
                 
-                Section(header: Text("Khóa phụ")) {
-                    NavigationLink(destination: SmartKeyManageView()
-                        .environmentObject(container)) {
-                        HStack {
-                            Image(systemName: "cpu.fill")
-                                .foregroundColor(.cyan)
-                                .frame(width: 24)
-                            Text("Khóa phụ ESP32")
-                            Spacer()
-                            if PreferencesManager.shared.savedESP32UUID != nil {
-                                Text("Đã cấu hình")
-                                    .font(.caption2)
-                                    .foregroundColor(.green)
-                            } else {
-                                Text("Chưa cấu hình")
-                                    .font(.caption2)
-                                    .foregroundColor(.orange)
-                            }
-                        }
-                    }
-                }
                 
                 Section(header: Text("Hỗ trợ"), footer: VStack(alignment: .leading, spacing: 4) {
                     Text("D-SmartKey v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
@@ -427,6 +406,24 @@ struct ConnectionSettingsView: View {
     
     var body: some View {
         Form {
+            Section(header: Text("Chế độ gần xe"),
+                    footer: Text("Khi bật, app chỉ phát hiện xe gần mà KHÔNG tự kết nối hay bật xe. Mở app khi muốn sử dụng. Tiết kiệm pin.")) {
+                Toggle(isOn: $viewModel.nearbyModeEnabled) {
+                    HStack {
+                        Image(systemName: "location.circle.fill")
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Chỉ phát hiện gần xe")
+                            Text("Không tự kết nối, tiết kiệm pin")
+                                .font(.caption2)
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .tint(.blue)
+            }
+            
             Section(header: Text("Tự động kết nối"), footer: Text("Khi đạt ngưỡng này điện thoại sẽ tự động kết nối, biểu tượng bluetooth trên đồng hồ xe sẽ sáng.")) {
                 Toggle(isOn: $viewModel.connectOnlyWhenNear) {
                     HStack {
@@ -437,8 +434,9 @@ struct ConnectionSettingsView: View {
                     }
                 }
                 .tint(.green)
+                .disabled(viewModel.nearbyModeEnabled)
                 
-                if viewModel.connectOnlyWhenNear {
+                if viewModel.connectOnlyWhenNear && !viewModel.nearbyModeEnabled {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("Độ nhạy: ")
@@ -468,8 +466,9 @@ struct ConnectionSettingsView: View {
                     }
                 }
                 .tint(.orange)
+                .disabled(viewModel.nearbyModeEnabled)
                 
-                if viewModel.autoUnlockEnabled {
+                if viewModel.autoUnlockEnabled && !viewModel.nearbyModeEnabled {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack {
                             Text("Độ nhạy: ")

@@ -15,11 +15,8 @@ class ASKManager: NSObject {
     #endif
     
     var onAccessorySelected: ((UUID) -> Void)?
-    var onESP32Selected: ((UUID) -> Void)?
     var onPickerDismissed: ((Error?) -> Void)?
     
-    // Flag to differentiate which picker was called
-    private var isESP32PickerActive = false
     
     var hasAuthorizedAccessory: Bool {
         #if canImport(AccessorySetupKit)
@@ -46,7 +43,6 @@ class ASKManager: NSObject {
     }
     
     func showPicker() {
-        isESP32PickerActive = false
         #if canImport(AccessorySetupKit)
         let desc1 = ASDiscoveryDescriptor()
         desc1.bluetoothServiceUUID = CBUUID(string: "0000FCF1-0000-1000-8000-00805F9B34FB")
@@ -86,29 +82,6 @@ class ASKManager: NSObject {
         #endif
     }
     
-    func showPickerForESP32() {
-        isESP32PickerActive = true
-        #if canImport(AccessorySetupKit)
-        let desc = ASDiscoveryDescriptor()
-        desc.bluetoothServiceUUID = CBUUID(string: "12340000-1234-1234-1234-123400000000")
-        
-        let image = UIImage(systemName: "key.fill") ?? UIImage()
-        
-        let item = ASPickerDisplayItem(name: "Khóa Phụ ESP-Smartkey", productImage: image, descriptor: desc)
-        
-        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "ASKManager: Kích hoạt System Picker (ESP32)"))
-        
-        session?.showPicker(for: [item]) { [weak self] error in
-            if let error = error {
-                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning, message: "ASK showPicker ESP32 lỗi hoặc user huỷ: \(error.localizedDescription)"))
-                self?.onPickerDismissed?(error)
-            }
-        }
-        #else
-        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning, message: "AccessorySetupKit không được hỗ trợ"))
-        self.onPickerDismissed?(nil)
-        #endif
-    }
     
     func removeAccessory(withUUID uuidString: String) {
         #if canImport(AccessorySetupKit)
@@ -133,11 +106,7 @@ class ASKManager: NSObject {
             if let accessory = event.accessory, let uuid = accessory.bluetoothIdentifier {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "ASK Event: Đã xác nhận thiết bị (UUID: \(uuid.uuidString))"))
                 
-                if isESP32PickerActive {
-                    self.onESP32Selected?(uuid)
-                } else {
-                    self.onAccessorySelected?(uuid)
-                }
+                self.onAccessorySelected?(uuid)
             }
         case .accessoryRemoved:
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning, message: "ASK Event: Thiết bị bị gỡ bỏ"))

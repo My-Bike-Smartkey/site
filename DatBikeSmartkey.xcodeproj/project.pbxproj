@@ -13,7 +13,6 @@
 		0A1BMS01AA000005A0000001BMS00005 /* BatteryGaugeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1BMS01AA000006A0000001BMS00006 /* BatteryGaugeView.swift */; };
 		0A1BMS01AA000007A0000001BMS00007 /* TemperatureBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A1BMS01AA000008A0000001BMS00008 /* TemperatureBarView.swift */; };
 		1317C389CF45A175FE36A45ABDEEB886 /* AppDIContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9199096C02324C14D9AFEA1B8548F24 /* AppDIContainer.swift */; };
-		1D03119282446363D3DE853E /* SmartKeyProvisioner.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD7D4087631CC6A7D20E3098 /* SmartKeyProvisioner.swift */; };
 		2BFF2E5A7B82271FAB05C0307935B45E /* LockButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A617757174092E8071FDE590A4848C /* LockButton.swift */; };
 		32FE182834CB327E643E603CC1D3A002 /* IoTError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61550F75A7B3022BC7FA942A039DECF4 /* IoTError.swift */; };
 		337ADBAA3B70A21C0EE26A4931EB761E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */; };
@@ -32,7 +31,6 @@
 		7610617F7A326290C1D5806FD08DC90A /* BLEStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8653E8961F943307958265B058C12AD /* BLEStateMachine.swift */; };
 		884B9C4CFA2D537F7EA18B02C6B0F43D /* DatBikeSmartKeyApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BEA4F56BF3C02A8F164BE1CBAD119AE /* DatBikeSmartKeyApp.swift */; };
 		A8A7D9CD2580F244342951F0CFF56636 /* SignalIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C12AC83C26941D4927CCA134AF380F /* SignalIndicator.swift */; };
-		A9D11FEC20705D563C35BC04 /* SmartKeySetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6FFB4D579C79E6E1536AB90 /* SmartKeySetupView.swift */; };
 		ABCDEF000000000000000002 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000001 /* LiveActivityManager.swift */; };
 		ABCDEF000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 21050B43FC72C8A173A4EF52A36EFD2F /* Assets.xcassets */; };
 		ABCDEF000000000000000012 /* DatBikeLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABCDEF000000000000000010 /* DatBikeLiveActivityAttributes.swift */; };
@@ -109,9 +107,7 @@
 		ABCDEF000000000000000001 /* LiveActivityManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
 		ABCDEF000000000000000010 /* DatBikeLiveActivityAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WidgetShared/DatBikeLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		ABCDEF000000000000000011 /* DatBikeLiveActivity.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WidgetShared/DatBikeLiveActivity.swift; sourceTree = "<group>"; };
-		AD7D4087631CC6A7D20E3098 /* SmartKeyProvisioner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartKeyProvisioner.swift; sourceTree = "<group>"; };
 		B1C12AC83C26941D4927CCA134AF380F /* SignalIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignalIndicator.swift; sourceTree = "<group>"; };
-		B6FFB4D579C79E6E1536AB90 /* SmartKeySetupView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SmartKeySetupView.swift; sourceTree = "<group>"; };
 		C05562CDF9B9DBFC719F257DD560252B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		C8E159FB9312D6ABD2942B1F9B70352E /* BLECharacteristicIO.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BLECharacteristicIO.swift; sourceTree = "<group>"; };
 		C9199096C02324C14D9AFEA1B8548F24 /* AppDIContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDIContainer.swift; sourceTree = "<group>"; };
@@ -212,7 +208,6 @@
 				8D8A4DD9F679F79F85EBCC1EEBC0E8AE /* MainView.swift */,
 				C05562CDF9B9DBFC719F257DD560252B /* SettingsView.swift */,
 				2C7B919E938ADAAC5315A045A31F1A41 /* Components */,
-				B6FFB4D579C79E6E1536AB90 /* SmartKeySetupView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -236,7 +231,6 @@
 				57692E101394A49F5DB2FF058CA1AD5B /* BLECryptography.swift */,
 				4AF1CEB9359552D533990522A6E6B9F7 /* BLEPollingEngine.swift */,
 				7002A3AC9A896F9AFF52C1C9A878F12B /* BLETelemetryParser.swift */,
-				AD7D4087631CC6A7D20E3098 /* SmartKeyProvisioner.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -447,8 +441,6 @@
 				0A1BMS01AA000007A0000001BMS00007 /* TemperatureBarView.swift in Sources */,
 				6F92E32CB14FE0710FE4F4B9 /* ASKManager.swift in Sources */,
 				33D7C8D27FB43A3B4A7E8E77 /* NotificationManager.swift in Sources */,
-				1D03119282446363D3DE853E /* SmartKeyProvisioner.swift in Sources */,
-				A9D11FEC20705D563C35BC04 /* SmartKeySetupView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -531,9 +523,9 @@
 		AAA0CCA643B5F37CC60C23F5622DD718 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 4.3.2;
+				MARKETING_VERSION = 4.5.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};
@@ -542,9 +534,9 @@
 		ED6738C8FFCC9AF625DCD51A0582473F /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 4.3.2;
+				MARKETING_VERSION = 4.5.0;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.9;
 			};
@@ -588,7 +580,7 @@
 				CODE_SIGN_ENTITLEMENTS = DatBikeWidgetExtension/DatBikeWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -619,7 +611,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 4.3.2;
+				MARKETING_VERSION = 4.5.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -675,7 +667,7 @@
 				CODE_SIGN_ENTITLEMENTS = DatBikeWidgetExtension/DatBikeWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = MH385VJBCB;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -700,7 +692,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 4.3.2;
+				MARKETING_VERSION = 4.5.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = app.mybike.smartkey.widget;

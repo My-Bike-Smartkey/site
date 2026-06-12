@@ -118,6 +118,31 @@ struct ConnectingSplashView: View {
                         }
                     }
                     
+                    // Nút bật/tắt chế độ "Đang ở gần"
+                    if dashboardVM.connectionState == .active || dashboardVM.connectionState == .standby {
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            dashboardVM.activateNearbyMode()
+                        }) {
+                            Image(systemName: "location.circle")
+                                .font(.system(size: 20))
+                                .foregroundColor(.blue.opacity(0.6))
+                                .padding(.vertical)
+                        }
+                    } else if case .nearby = dashboardVM.connectionState {
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            dashboardVM.deactivateNearbyMode()
+                        }) {
+                            Image(systemName: "location.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.blue)
+                                .padding(.vertical)
+                        }
+                    }
+                    
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 20))
@@ -306,6 +331,70 @@ struct ConnectingSplashView: View {
                                     .foregroundColor(.gray.opacity(0.6))
                             }
                         }
+                    } else if case .nearby = dashboardVM.connectionState {
+                        // ── NEARBY STATE: Hiện thông tin + nút kết nối ──
+                        VStack(spacing: 16) {
+                            // Thông tin xe cơ bản
+                            HStack(spacing: 20) {
+                                VStack(spacing: 4) {
+                                    Image(systemName: "battery.75percent")
+                                        .font(.title2)
+                                        .foregroundColor(.green)
+                                    Text("\(Int(dashboardVM.telemetry.soc))%")
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundColor(.white)
+                                }
+                                
+                                VStack(spacing: 4) {
+                                    Image(systemName: dashboardVM.lockState == .unlocked ? "lock.open.fill" : (dashboardVM.lockState == .armed ? "shield.fill" : "lock.fill"))
+                                        .font(.title2)
+                                        .foregroundColor(dashboardVM.lockState == .unlocked ? .green : (dashboardVM.lockState == .armed ? .orange : .gray))
+                                    Text(dashboardVM.lockState.description)
+                                        .font(.caption2)
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                                
+                                VStack(spacing: 4) {
+                                    Image(systemName: "antenna.radiowaves.left.and.right")
+                                        .font(.title2)
+                                        .foregroundColor(.cyan)
+                                    Text("\(dashboardVM.rssi) dBm")
+                                        .font(.system(.caption2, design: .monospaced))
+                                        .foregroundColor(.white.opacity(0.7))
+                                }
+                            }
+                            .padding(.vertical, 8)
+                            
+                            // Nút kết nối
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .heavy)
+                                generator.impactOccurred()
+                                dashboardVM.connectFromNearby()
+                            }) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "bolt.circle.fill")
+                                        .font(.title2)
+                                    Text("Kết nối ngay")
+                                        .font(.headline)
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 36)
+                                .padding(.vertical, 14)
+                                .background(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.3, green: 0.7, blue: 1.0), Color(red: 0.2, green: 0.5, blue: 0.9)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .clipShape(Capsule())
+                                .shadow(color: Color(red: 0.3, green: 0.7, blue: 1.0).opacity(0.4), radius: 10, y: 5)
+                            }
+                            
+                            Text("Chế độ gần xe • Bấm để kết nối & điều khiển")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.4))
+                        }
                     } else if !dashboardVM.hasAuthorizedAccessory && PreferencesManager.shared.savedPeripheralUUID == nil {
                         // No bike paired — show add button
                         Button(action: { dashboardVM.connectBike() }) {
@@ -371,6 +460,7 @@ struct ConnectingSplashView: View {
         case .connecting: baseText = "Đang kết nối"
         case .authenticating: baseText = "Đang xác thực & Ghép đôi"
         case .standby: baseText = "Kết nối chờ"
+        case .nearby: baseText = "Đang ở gần xe"
         default: baseText = "Đang kết nối"
         }
         let dots = String(repeating: ".", count: (dotCount % 3) + 1)
@@ -384,6 +474,7 @@ struct ConnectingSplashView: View {
         case .connecting: return .orange
         case .authenticating: return .yellow
         case .standby: return Color(red: 0.2, green: 0.8, blue: 0.4)
+        case .nearby: return Color(red: 0.3, green: 0.7, blue: 1.0)
         default: return .orange
         }
     }

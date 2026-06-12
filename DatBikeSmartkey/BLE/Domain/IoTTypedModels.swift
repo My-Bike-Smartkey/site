@@ -5,6 +5,7 @@ enum IoTConnectionState: Equatable {
     case idle
     case scanning
     case connecting
+    case nearby          // NEARBY: Đã kết nối BLE, chưa auth, đang ở gần xe (passive mode)
     case standby         // KẾT NỐI CHỜ: Đã kết nối BLE, chờ lại gần để xác thực
     case pairingRequired // Bổ sung trạng thái chờ xác thực/NFC
     case authenticating
@@ -15,6 +16,7 @@ enum IoTConnectionState: Equatable {
     var isConnected: Bool {
         if case .active = self { return true }
         if case .standby = self { return true }
+        if case .nearby = self { return true }
         if case .authenticating = self { return true } // Ngăn chặn văng màn hình splash
         return false
     }
@@ -31,6 +33,7 @@ enum IoTConnectionState: Equatable {
         case .idle: return "Chưa kết nối (Idle)"
         case .scanning: return "Đang quét tìm xe..."
         case .connecting: return "Hệ thống đang kết nối..."
+        case .nearby: return "Đang ở gần xe"
         case .standby: return "Kết nối ngầm (Chờ lại gần)"
         case .pairingRequired: return "Chờ xác thực bảo mật..."
         case .authenticating: return "App đang xác thực..."

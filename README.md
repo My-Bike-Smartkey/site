@@ -8,7 +8,7 @@
 
 | Hạng mục | Chi tiết |
 |---|---|
-| **Phiên bản** | 3.0.1 |
+| **Phiên bản** | 4.5.0 (Build 7) |
 | **Nền tảng** | iOS 15+, Swift 5.9, SwiftUI |
 | **BLE Stack** | CoreBluetooth + Background BLE (State Restoration) |
 | **Mã hóa** | SHA-256 (CryptoKit), PIN challenge-response |
@@ -18,7 +18,7 @@
 
 ---
 
-## Kiến trúc v3.0
+## Kiến trúc v4.5
 
 ```
 ┌─────────────────────────────────────────┐
@@ -90,15 +90,16 @@ User → Quẹt thẻ NFC lên xe → Xác nhận Bonding
 
 ---
 
-## Tính năng v3.0
+## Tính năng v4.5
 
 | Tính năng | Trạng thái |
 |---|---|
 | Pairing NFC + secure PIN (12 chars) | ✅ |
 | Reconnect SHA-256 (odd/even counter) | ✅ |
-| Background BLE (State Restoration) | ✅ |
+| Background BLE (Zero leaks) | ✅ |
 | Auto-reconnect khi xe vào tầm (pending connect) | ✅ |
-| MIC failure auto-recovery (6 retries) | ✅ |
+| Aggressive Foreground Reconnect (< 0.5s) | ✅ |
+| MIC failure auto-recovery (Progressive backoff + Cluster guard) | ✅ |
 | Bật / Tắt xe | ✅ |
 | Khóa chống trộm (Arm) | ✅ |
 | Tìm xe (còi) | ✅ |
@@ -166,9 +167,7 @@ Xem chi tiết tại [ROADMAP.md](ROADMAP.md)
 
 | Version | Mô tả | Thời gian |
 |---|---|---|
-| **v3.0** *(hiện tại)* | Foreground-first + State Restoration | ✅ Đã ship |
-| **v3.5** | + AccessorySetupKit pairing (iOS 17+) | Q2 2026 |
-| **v4.0** | Full background BLE + auto-unlock proximity | Q3 2026 |
+| **v4.5** *(hiện tại)* | Background cực kỳ ổn định + Aggressive reconnect + Cleanup ESP32 | ✅ Đã ship |
 
 ---
 
