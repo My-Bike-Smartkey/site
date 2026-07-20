@@ -60,6 +60,11 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private var consecutiveStandbyCount = 0
     private let maxConsecutiveStandbyBeforePending = 3
     
+    /// Đếm số vòng scan khi btWasPoweredOff=true — giới hạn scan loop.
+    /// Sau 3 vòng (6 retries) mà không tìm thấy xe → reset flag, fallback pending connect.
+    private var btPowerCycleScanRounds = 0
+    private let maxBtPowerCycleScanRounds = 3
+    
     /// Đếm số lần RSSI liên tục yếu hơn ngưỡng trong quá trình standby polling.
     /// Sau 10 lần liên tục (≈5s ở tần suất poll 0.5s), chủ động disconnect + pending connect
     /// thay vì chờ iOS supervision timeout (~30-60s) gây lãng phí CPU và pin.
@@ -645,9 +650,31 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 // Hết quota scan -> Cắm lệnh kết nối chờ (pending connect) của iOS.
                 // ═══ GUARD: Nếu đang trong trạng thái power-cycle, KHÔNG dùng cache ═══
                 // Dùng cache sau power-cycle sẽ gây encryption failure / MIC failure.
+                // Giới hạn số vòng scan để tránh loop vô tận khi xe ở xa.
                 if self.btWasPoweredOff {
+                    self.btPowerCycleScanRounds += 1
+                    if self.btPowerCycleScanRounds >= self.maxBtPowerCycleScanRounds {
+                        // Đã scan 3 vòng (6 retries) mà không thấy xe
+                        // → reset flag, chuyển sang pending connect tiết kiệm pin
+                        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                            message: "Hết hạn quét xe (power-cycle) — đã scan \(self.btPowerCycleScanRounds) vòng mà không tìm thấy xe → reset btWasPoweredOff, chuyển pending connect"))
+                        self.btWasPoweredOff = false
+                        self.btPowerCycleScanRounds = 0
+                        // Fallback sang pending connect
+                        if let savedUUIDStr = self.preferences.savedPeripheralUUID,
+                           let savedUUID = UUID(uuidString: savedUUIDStr) {
+                            let known = central.retrievePeripherals(withIdentifiers: [savedUUID])
+                            if let p = known.first {
+                                self.connectPeripheral(p, central: central, isPendingConnect: true)
+                                return
+                            }
+                        }
+                        // Không tìm thấy trong cache → báo lỗi
+                        self.stateMachine.transition(to: .error("Không tìm thấy xe. Hãy kiểm tra xe đã bật chưa."))
+                        return
+                    }
                     PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
-                        message: "Hết hạn quét xe (power-cycle) — tiếp tục scan, không dùng cache"))
+                        message: "Hết hạn quét xe (power-cycle) — vòng \(self.btPowerCycleScanRounds)/\(self.maxBtPowerCycleScanRounds), tiếp tục scan"))
                     self.scanRetryCount = 0
                     self.startScanWithTimeout(central: central)
                     return
@@ -777,6 +804,63 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         standbyTimer = nil
         DispatchQueue.main.async {
             self.discoveredBikes = []
+        }
+    }
+    
+    /// Escape hatch: User bấm nút "Kết nối lại" trên màn hình scanning.
+    /// Reset TOÀN BỘ trạng thái BLE (flags, timers, context) rồi connect từ đầu.
+    /// Giải quyết mọi trường hợp kẹt: scan loop, stale flags, phantom connections.
+    func forceReconnect() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+            message: "[FORCE_RECONNECT] User yêu cầu kết nối lại | smState=\(stateMachine.state.displayText) | btPowerOff=\(btWasPoweredOff) | forceScan=\(forceFullScan) | micRetry=\(micRetryCount) | scanRetry=\(scanRetryCount)"))
+        
+        // 1. Hủy mọi kết nối/scan đang chạy
+        cancelScanTimer()
+        cancelConnectingTimeout()
+        disconnectFallbackTimer?.cancel()
+        disconnectFallbackTimer = nil
+        centralManager?.stopScan()
+        authTask?.cancel()
+        authTask = nil
+        standbyTimer?.invalidate()
+        standbyTimer = nil
+        pollingEngine?.stopPolling()
+        
+        // 2. Cancel peripheral connection nếu có
+        if let ctx = activeContext {
+            centralManager?.cancelPeripheralConnection(ctx.peripheral)
+        }
+        activeContext = nil
+        commandDispatcher = nil
+        pollingEngine = nil
+        
+        // 3. Reset TẤT CẢ flags về trạng thái sạch
+        btWasPoweredOff = false
+        forceFullScan = false
+        btPowerCycleScanRounds = 0
+        micRetryCount = 0
+        scanRetryCount = 0
+        consecutiveStandbyCount = 0
+        weakRssiConsecutiveCount = 0
+        phantomGuardFailCount = 0
+        isAuthenticating = false
+        isRestoringSession = false
+        isSessionAutoSuspended = false
+        isDowngrading = false
+        disconnectingRetryActive = false
+        
+        // 4. Chuyển về scanning rồi connect mới
+        stateMachine.transition(to: .scanning)
+        DispatchQueue.main.async {
+            self.discoveredBikes = []
+        }
+        
+        // 5. Delay nhẹ 0.3s để iOS cleanup pending connections
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.centralManager?.state == .poweredOn else { return }
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[FORCE_RECONNECT] Bắt đầu kết nối mới (clean state)"))
+            self.connect()
         }
     }
     
@@ -1188,7 +1272,11 @@ extension DatBikeCore: CBCentralManagerDelegate {
                 stateMachine.transition(to: .connecting)
             } else {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                    message: "Peripheral restore nhưng đã disconnect (state: \(restored.state.rawValue)) → bỏ qua, sẽ scan mới"))
+                    message: "Peripheral restore nhưng đã disconnect (state: \(restored.state.rawValue)) → cancel + scan mới"))
+                // Cancel peripheral connection ngay để iOS flush stale encryption keys.
+                // Nếu không cancel, peripheral ở state .connecting sẽ mang stale keys
+                // → MIC failure liên tiếp khi vuốt tắt app rồi mở lại nhanh.
+                central.cancelPeripheralConnection(restored)
                 // Dùng forceFullScan (không phải btWasPoweredOff) vì BT không bị tắt/bật —
                 // chỉ peripheral bị disconnect. btWasPoweredOff dành riêng cho BT power-cycle.
                 forceFullScan = true
@@ -1377,6 +1465,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
         btWasPoweredOff = false  // ═══ ĐÂY LÀ NƠI DUY NHẤT RESET btWasPoweredOff ═══
         forceFullScan = false
         micRetryCount = 0
+        btPowerCycleScanRounds = 0  // Reset scan loop counter khi connect thành công
         consecutiveStandbyCount = 0  // Reset standby drain counter khi connect thành công
         
         // ═══ CANCEL TIMERS: tránh double-scan từ fallback timer hoặc phantom timeout ═══
@@ -1561,6 +1650,16 @@ extension DatBikeCore: CBCentralManagerDelegate {
             } else {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                     message: "Bỏ qua sự kiện ngắt kết nối không lỗi vì đang trong luồng mới (\(stateMachine.state.displayText))"))
+                
+                // ═══ FIX: AUTO-CONNECT SAU KHI RỜI XE THỜI GIAN NGẮN ═══
+                // Nếu app đang ở BG và đã chuyển sang scanning (phát lệnh pending connect),
+                // PHẢI end bg task để app suspend ngay.
+                // Nếu không, bg task cũ chạy tiếp. Khi user quay lại nhanh (trong vòng 30s),
+                // didConnect fire nhưng dùng thời gian CÒN LẠI của bg task cũ.
+                // bg task cũ expire giữa chừng → iOS suspend app → kẹt auth.
+                if isAppInBackground && stateMachine.state == .scanning && scanTimer == nil {
+                    stopBackgroundExecutionTime()
+                }
             }
             return
         }
@@ -1594,13 +1693,15 @@ extension DatBikeCore: CBCentralManagerDelegate {
         
         // ═══ Connection timeout (code 6) → invalidate encryption cache ═══
         // Sau disconnect bất ngờ (code 6), iOS có thể giữ stale encryption keys.
-        // Set btWasPoweredOff=true để lần reconnect tiếp theo buộc scan mới,
-        // tránh MIC failure (code 31) ở lần connect sau.
+        // Dùng forceFullScan thay vì btWasPoweredOff để tránh scan loop vô tận.
+        // forceFullScan: buộc scan mới (tránh MIC failure) nhưng KHÔNG kích hoạt
+        //   infinite scan guard trong startScanWithTimeout() → an toàn hơn.
+        // btWasPoweredOff: CHỈ dùng khi centralManagerDidUpdateState(.poweredOff) thật sự.
         let isConnectionTimeout = (nsError?.code ?? 0) == 6
         if isConnectionTimeout {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "[DID_DISCONNECT] Connection timeout (code=6) → invalidate encryption cache (btWasPoweredOff=true)"))
-            btWasPoweredOff = true
+                message: "[DID_DISCONNECT] Connection timeout (code=6) → invalidate encryption cache (forceFullScan=true)"))
+            forceFullScan = true
         }
         
         // Disconnect thông thường → pending reconnect
@@ -1625,9 +1726,13 @@ extension DatBikeCore: CBCentralManagerDelegate {
         // iOS pending connect sẽ tự fire khi xe quay lại gần.
         if isAppInBackground && isConnectionTimeout && wasConnected {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
-                message: "[DID_DISCONNECT] BG + timeout + wasConnected → chỉ pending connect, bỏ fallback timer"))
-            // Giữ BG task sống — iOS cấp ~30s CPU, đủ cho pending connect fire nếu xe gần
-            // Nếu hết 30s mà chưa connect → expiration handler tự cleanup
+                message: "[DID_DISCONNECT] BG + timeout + wasConnected → chỉ pending connect, bắt buộc suspend app (end bg task)"))
+            // ═══ FIX: AUTO-CONNECT SAU KHI RỜI XE THỜI GIAN NGẮN ═══
+            // Bắt buộc stop bgTask để app suspend. 
+            // Nếu không, bgTask cũ tiếp tục sống. Nếu xe lại gần trong vòng 30s, didConnect fire
+            // nhưng chỉ dùng thời gian CÒN LẠI của bgTask cũ → expire giữa chừng → fail auth.
+            // Khi suspend, OS vẫn theo dõi pending connect và sẽ wake app dậy + cấp trọn vẹn 30s mới.
+            stopBackgroundExecutionTime()
             return
         }
         

@@ -108,7 +108,19 @@ class SettingsViewModel: ObservableObject {
         
         $nearbyModeEnabled
             .dropFirst()
-            .sink { [weak self] val in self?.preferences.nearbyModeEnabled = val }
+            .sink { [weak self] val in
+                guard let self = self else { return }
+                self.preferences.nearbyModeEnabled = val
+                // ═══ ĐỒNG BỘ State Machine với DatBikeCore ═══
+                // Nếu chỉ lưu preference mà không gọi DatBikeCore,
+                // state machine vẫn kẹt ở trạng thái cũ (.nearby hoặc .active)
+                // → vuốt tắt mở lại vẫn bị ảnh hưởng bởi state cũ.
+                if val {
+                    self.core.activateNearbyMode()
+                } else {
+                    self.core.connectFromNearby()
+                }
+            }
             .store(in: &cancellables)
             
         $isDebugModeEnabled

@@ -193,6 +193,13 @@ class DashboardViewModel: ObservableObject {
         core.connectFromNearby()
     }
     
+    /// User bấm "Kết nối lại" khi bị kẹt ở scanning → reset toàn bộ flags + connect mới
+    func forceReconnect() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Kết nối lại' (Force Reconnect)"))
+        isProcessing = true
+        core.forceReconnect()
+    }
+    
     /// User bật chế độ "Đang ở gần"
     func activateNearbyMode() {
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User bật chế độ 'Đang ở gần'"))

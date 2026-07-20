@@ -423,7 +423,39 @@ struct ConnectingSplashView: View {
                             .foregroundColor(.orange.opacity(0.8))
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)
-                     } else {
+                     } else if dashboardVM.connectionState == .scanning && PreferencesManager.shared.savedPin != nil {
+                        // ── SCANNING + đã pair trước đó: hiện nút Kết nối lại ──
+                        // Escape hatch cho user khi bị kẹt ở scanning (scan loop, stale flags...)
+                        VStack(spacing: 12) {
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .heavy)
+                                generator.impactOccurred()
+                                dashboardVM.forceReconnect()
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "arrow.triangle.2.circlepath")
+                                        .font(.system(size: 16, weight: .semibold))
+                                    Text("Kết nối lại")
+                                        .font(.system(size: 15, weight: .semibold))
+                                }
+                                .foregroundColor(.white.opacity(0.9))
+                                .padding(.horizontal, 28)
+                                .padding(.vertical, 11)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.08))
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
+                                        )
+                                )
+                            }
+                            
+                            Text("Bấm nếu chờ quá lâu")
+                                .font(.caption2)
+                                .foregroundColor(.white.opacity(0.3))
+                        }
+                    } else {
                         // Trạng thái chờ/kết nối -> ẩn (đã hiển thị ở trên)
                     }
                 }
