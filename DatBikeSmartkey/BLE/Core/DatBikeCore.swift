@@ -28,6 +28,9 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private var previousBatteryTelemetry: BatteryTelemetry?
     
     @Published private(set) var currentRSSI: Int = 0
+    /// RSSI đã được làm mịn bằng EMA — giảm nhiễu/jitter (BLE dao động ±5-10dB)
+    /// để tránh false-trigger "auto-turn-on" khi RSSI spike mạnh chỉ trong 1-2 mẫu.
+    @Published private(set) var smoothedRSSI: Int = 0
     
     /// Danh sách xe tìm thấy trong quá trình scan
     @Published private(set) var discoveredBikes: [DiscoveredBike] = []
@@ -1000,23 +1003,26 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     private func setupAutoUnlock(engine: BLEPollingEngine) {
         engineCancellables.removeAll()
         
-        // Forward RSSI to published property for UI
+        // Forward RSSI to published property for UI + cập nhật EMA smoothedRSSI
         engine.$currentRSSI
             .receive(on: DispatchQueue.main)
             .sink { [weak self] rssi in
-                self?.currentRSSI = Int(rssi)
+                self?.updateRSSI(Int(rssi))
             }
             .store(in: &engineCancellables)
-        
-        engine.$currentRSSI
+
+        // ═══ LUỒNG A: Auto-bật xe khi lại gần ═══
+        // Dùng smoothedRSSI (EMA) thay vì raw RSSI để tránh false-trigger do spike nhiễu
+        // (BLE jitter ±5-10dB). Chỉ unlock khi thật sự đủ gần ổn định.
+        $smoothedRSSI
             .combineLatest($currentLockState, preferences.$autoUnlockEnabled, preferences.$autoTurnOnThreshold)
             .sink { [weak self] (rssi, lockState, isAutoUnlockOn, threshold) in
                 // Yêu cầu: Tính năng này chỉ cho phép dùng khi sử dụng ngưỡng kết nối (connectOnlyWhenNear = true)
                 guard let self = self, isAutoUnlockOn, self.preferences.connectOnlyWhenNear else { return }
                 guard !self.isSessionAutoSuspended else { return } // Nếu user đã can thiệp thủ công (nhấn nút), đình chỉ auto-turn on
-                
+
                 // Yêu cầu: Tính năng này chỉ hoạt động khi thoả ngưỡng
-                if rssi >= threshold, lockState == .locked {
+                if Double(rssi) >= threshold, lockState == .locked {
                     self.isSessionAutoSuspended = true // Khi đã auto-turn on rồi, xem như khoá auto các tác vụ tiếp theo (vào trạng thái manual riding)
                     Task {
                         try? await self.commandDispatcher?.turnOnBike()
@@ -1029,29 +1035,26 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
                 }
             }
             .store(in: &engineCancellables)
-            
-        // Logic downgrading từ Active về Standby khi rời khỏi xe
-        // ═══ FIX: dropFirst(3) + debounce để tránh fire trên giá trị khởi tạo ═══
-        // Khi subscribe, Combine fire giá trị hiện tại ngay → RSSI = 0 (khởi tạo)
-        // → trigger downgrade ngay lập tức → auth-standby loop vô hạn.
-        // dropFirst bỏ qua 3 giá trị đầu (subscribe init + ~1s warm-up).
-        // debounce đợi 2s ổn định trước khi hành động.
-        engine.$currentRSSI
-            .dropFirst(3)
-            .combineLatest($currentLockState, preferences.$rssiThreshold, preferences.$connectOnlyWhenNear)
-            .debounce(for: .seconds(2), scheduler: DispatchQueue.main)
-            .sink { [weak self] (rssi, lockState, threshold, connectOnlyWhenNear) in
-                guard let self = self, connectOnlyWhenNear else { return }
-                guard !self.isSessionAutoSuspended else { return } // Đình chỉ auto-downgrade nếu user đã can thiệp
-                
-                if lockState == .locked || lockState == .armed {
-                    let farThreshold = threshold - 3.0 // Vừa bước ra khỏi vùng kết nối 3dBm sẽ ngắt
-                    if rssi < farThreshold && self.stateMachine.state == .active {
-                        self.downgradeToStandby()
-                    }
-                }
-            }
-            .store(in: &engineCancellables)
+
+        // ═══ LUỒNG B (auto-downgrade khi RSSI yếu) ĐÃ BỎ ═══
+        // Lý do: RSSI BLE không ổn định (jitter ±5-10dB), dùng nó làm trigger disconnect
+        // GATT gây vòng lặp: active → (RSSI spike yếu) → standby/nearby → giữ GATT →
+        // xe idleOff → code=6 → reconnect → lặp ~5s/lần (2.354 lần code=6 trong log 3 tháng).
+        // Giờ app GIỮ .active đến khi xe tự tắt (idleOff); khi đó code=6 → iOS pending
+        // connect (xử lý ở didDisconnectPeripheral) tự wake app khi user lại gần.
+        // standby/nearby vẫn dùng được khi USER chủ động (forceStandbyOverride / activateNearbyMode).
+    }
+
+    /// Cập nhật currentRSSI + smoothedRSSI (EMA) tại mọi điểm đọc RSSI.
+    /// Tập trung 2 nguồn: engine poll (active) và didReadRSSI (standby/nearby).
+    private func updateRSSI(_ value: Int) {
+        currentRSSI = value
+        if smoothedRSSI == 0 {
+            smoothedRSSI = value // khởi tạo bằng mẫu đầu tiên
+        } else {
+            let alpha = 0.3
+            smoothedRSSI = Int(Double(smoothedRSSI) * (1 - alpha) + Double(value) * alpha)
+        }
     }
     
     // MARK: - Battery Monitoring Wiring
@@ -1193,7 +1196,7 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         
         NotificationManager.shared.sendNotification(
             title: "Trạng thái kết nối",
-            body: "Phát hiện di chuyển ra xa, chuyển trạng thái chờ",
+            body: "Đang chờ kết nối lại với xe",
             identifier: "DowngradeToStandby"
         )
         
@@ -1711,7 +1714,7 @@ extension DatBikeCore: CBCentralManagerDelegate {
         if wasConnected && preferences.connectOnlyWhenNear {
             NotificationManager.shared.sendNotification(
                 title: "Trạng thái kết nối",
-                body: "Phát hiện di chuyển ra xa, chuyển trạng thái chờ",
+                body: "Đang chờ kết nối lại với xe",
                 identifier: "DowngradeToStandby"
             )
         }
@@ -2348,7 +2351,7 @@ extension DatBikeCore: CBPeripheralDelegate {
         let rssiValue = RSSI.intValue
         
         DispatchQueue.main.async {
-            self.currentRSSI = rssiValue
+            self.updateRSSI(rssiValue)
             
             if self.stateMachine.state == .standby {
                 let threshold = self.preferences.connectOnlyWhenNear ? self.preferences.rssiThreshold : -70.0
