@@ -11,7 +11,7 @@ struct MainView: View {
     
     var body: some View {
         Group {
-            if container.dashboardViewModel.isConnected || container.dashboardViewModel.isPaused {
+            if container.dashboardViewModel.isConnected {
                 DashboardView(viewModel: container.dashboardViewModel)
                     .transition(.opacity)
             } else {
@@ -25,7 +25,7 @@ struct MainView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut, value: container.dashboardViewModel.isConnected || container.dashboardViewModel.isPaused)
+        .animation(.easeInOut, value: container.dashboardViewModel.isConnected)
         .preferredColorScheme(.dark)
         .onAppear {
             if !UserDefaults.standard.bool(forKey: "disclaimerAccepted") {
@@ -219,7 +219,38 @@ struct ConnectingSplashView: View {
                 
                 // ── BOTTOM STATUS AREA ──
                 VStack(spacing: 16) {
-                    if let err = dashboardVM.pairingError {
+                    // LỚP 3: trạng thái Tạm dừng — ưu tiên trước mọi nhánh khác.
+                    // KHÔNG tự scan/connect (connect() đã bị guard isUserPaused chặn).
+                    if dashboardVM.isPaused {
+                        Image(systemName: "pause.circle.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(.orange)
+
+                        Text("Đã tạm dừng kết nối")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .multilineTextAlignment(.center)
+
+                        Text("App sẽ không tự kết nối lại với xe. Bấm để tiếp tục.")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            dashboardVM.resumeConnection()
+                        }) {
+                            Text("Tiếp tục kết nối")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 30)
+                                .padding(.vertical, 12)
+                                .background(Color.green)
+                                .clipShape(Capsule())
+                        }
+                    } else if let err = dashboardVM.pairingError {
                         // Error state
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.largeTitle)
@@ -486,6 +517,7 @@ struct ConnectingSplashView: View {
     }
     
     private var statusLabel: String {
+        if dashboardVM.isPaused { return "Đã tạm dừng" }
         let baseText: String
         switch dashboardVM.connectionState {
         case .scanning: baseText = "Đang tìm xe"
@@ -501,6 +533,7 @@ struct ConnectingSplashView: View {
     
     // Dynamic theme color based on connection state
     private var stateColor: Color {
+        if dashboardVM.isPaused { return .orange }
         switch dashboardVM.connectionState {
         case .scanning: return .cyan
         case .connecting: return .orange
