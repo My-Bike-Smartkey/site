@@ -25,6 +25,9 @@ class DashboardViewModel: ObservableObject {
     @Published var discoveredBikes: [DiscoveredBike] = []
     
     @Published var bikeInfo = IoTVehicleInfo()
+
+    /// LỚP 3: User đang ở trạng thái "Tạm dừng" (đã ngắt BLE, không auto-reconnect).
+    @Published var isPaused: Bool = false
     
     // Accessor cho View
     var batteryPercentage: Int { Int(telemetry.soc) }
@@ -52,6 +55,7 @@ class DashboardViewModel: ObservableObject {
     init(core: DatBikeCore, preferences: PreferencesManager) {
         self.core = core
         self.preferences = preferences
+        self.isPaused = core.isConnectionPaused // sync trạng thái pause persist qua relaunch
         setupBindings()
     }
     
@@ -211,6 +215,23 @@ class DashboardViewModel: ObservableObject {
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tắt chế độ 'Đang ở gần'"))
         isProcessing = true
         core.deactivateNearbyMode()
+    }
+
+    // MARK: - Lớp 3: Tạm dừng / Tiếp tục kết nối
+
+    /// User bấm "Tạm dừng" → ngắt BLE hoàn toàn, chặn auto-reconnect (dẹp code=6).
+    func pauseConnection() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Tạm dừng' (Pause)"))
+        core.pauseConnection()
+        isPaused = true
+    }
+
+    /// User bấm "Tiếp tục kết nối" → mở lại auto-reconnect.
+    func resumeConnection() {
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info, message: "[UI ACTION] User tapped 'Tiếp tục' (Resume)"))
+        isPaused = false
+        isProcessing = true
+        core.resumeConnection()
     }
     
     func lock() {

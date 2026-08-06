@@ -155,7 +155,17 @@ struct DashboardView: View {
                 HStack(spacing: 8) {
                     // Connection status badge
                     ConnectionStatusBadge(isConnected: viewModel.isConnected, isStandby: viewModel.connectionState == .standby)
-                    
+
+                    // LỚP 3: badge trạng thái tạm dừng (đã ngắt BLE, không auto-reconnect)
+                    if viewModel.isPaused {
+                        Text("Đã tạm dừng")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(Color.orange.opacity(0.15)))
+                    }
+
                     // Signal strength indicator
                     if viewModel.isConnected {
                         SignalStrengthBadge(
@@ -169,6 +179,34 @@ struct DashboardView: View {
             Spacer()
             
             HStack(spacing: 12) {
+                // LỚP 3: Tạm dừng / Tiếp tục kết nối
+                // Pause: ngắt BLE hoàn toàn + chặn auto-reconnect (dẹp code=6).
+                // Resume: mở lại auto-reconnect.
+                Button(action: {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.impactOccurred()
+                    if viewModel.isPaused {
+                        viewModel.resumeConnection()
+                    } else {
+                        viewModel.pauseConnection()
+                    }
+                }) {
+                    Image(systemName: viewModel.isPaused ? "play.circle.fill" : "pause.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(viewModel.isPaused ? .green : .gray)
+                        .frame(width: 44, height: 44)
+                        .background(
+                            Circle()
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                                )
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(viewModel.isPaused ? "Tiếp tục kết nối" : "Tạm dừng kết nối")
+
                 // Disconnect/Standby Button
                 if viewModel.connectionState == .active {
                     Button(action: {

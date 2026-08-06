@@ -122,6 +122,14 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     
     /// Guard chống SESSION_CHECK / tryRestoreActiveSession bị gọi 2 lần (race condition).
     private var isRestoringSession = false
+
+    /// LỚP 3: User chủ động "Tạm dừng" kết nối (nút Pause). Persist qua relaunch.
+    /// Khi true: mọi auto-reconnect/pending-connect bị chặn cho tới khi user "Tiếp tục".
+    /// Dẹp hoàn toàn code=6 trong thời gian tạm dừng (app không "ôm" GATT).
+    private var isUserPaused: Bool {
+        get { UserDefaults.standard.bool(forKey: "isUserPaused") }
+        set { UserDefaults.standard.set(newValue, forKey: "isUserPaused") }
+    }
     
     /// Đếm số lần Phantom Guard timeout liên tiếp — dùng cho exponential backoff.
     private var phantomGuardFailCount = 0
@@ -329,6 +337,12 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
     }
     
     func connect() {
+        // LỚP 3: đang tạm dừng → chặn mọi auto-reconnect (scan/retrieve/pending).
+        if isUserPaused {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[CONNECT] Bỏ qua — đang tạm dừng (isUserPaused). Gọi resumeConnection() để mở lại."))
+            return
+        }
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
             message: "[CONNECT] Bắt đầu | central=\(centralManager == nil ? "nil" : "có") | activeCtx=\(activeContext == nil ? "nil" : activeContext!.peripheral.identifier.uuidString.prefix(8).description) | peripheralState=\(activeContext?.peripheral.state.rawValue ?? -1) | smState=\(stateMachine.state.displayText) | btPowerOff=\(btWasPoweredOff) | forceScan=\(forceFullScan) | isAuth=\(isAuthenticating) | isBackground=\(isAppInBackground) | autoSuspended=\(isSessionAutoSuspended)"))
         guard let central = centralManager else {
@@ -809,8 +823,30 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             self.discoveredBikes = []
         }
     }
-    
-    /// Escape hatch: User bấm nút "Kết nối lại" trên màn hình scanning.
+
+    /// Public read cho ViewModel/UI biết đang tạm dừng hay không.
+    var isConnectionPaused: Bool { isUserPaused }
+
+    /// LỚP 3: User chủ động Tạm dừng — ngắt BLE hoàn toàn, KHÔNG auto-reconnect
+    /// (kể cả khi app relaunch). isUserPaused chặn mọi pending-connect/connect()
+    /// nên không còn code=6 trong thời gian tạm dừng. Gọi resumeConnection() để mở lại.
+    func pauseConnection() {
+        guard !isUserPaused else { return }
+        isUserPaused = true
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+            message: "[PAUSE] User tạm dừng kết nối — ngắt BLE, chặn auto-reconnect"))
+        // disconnect() ngắt hẳn + .idle; isUserPaused=true đã chặn mọi pending/connect.
+        disconnect()
+    }
+
+    /// LỚP 3: User Tiếp tục sau khi tạm dừng.
+    func resumeConnection() {
+        guard isUserPaused else { return }
+        isUserPaused = false
+        PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+            message: "[RESUME] User tiếp tục kết nối"))
+        connect()
+    }
     /// Reset TOÀN BỘ trạng thái BLE (flags, timers, context) rồi connect từ đầu.
     /// Giải quyết mọi trường hợp kẹt: scan loop, stale flags, phantom connections.
     func forceReconnect() {
@@ -1252,6 +1288,15 @@ extension DatBikeCore: CBCentralManagerDelegate {
         let peripheralCount = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral])?.count ?? 0
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
             message: "[RESTORE] willRestoreState | peripheralCount=\(peripheralCount) | centralState=\(central.state.rawValue)"))
+        // LỚP 3: đang tạm dừng → ngắt peripheral iOS restore, KHÔNG thiết lập lại phiên.
+        if isUserPaused {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[RESTORE] isUserPaused → ngắt peripheral được restore, giữ idle"))
+            if let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] {
+                peripherals.forEach { central.cancelPeripheralConnection($0) }
+            }
+            return
+        }
         if let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral],
            let restored = peripherals.first {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
@@ -1505,7 +1550,15 @@ extension DatBikeCore: CBCentralManagerDelegate {
             timestamp: Date(), level: .error,
             message: "[DID_FAIL_CONNECT] name=\(peripheral.name ?? "nil") | uuid=\(peripheral.identifier.uuidString.prefix(8)) | error=\(errorMsg) | code=\(nsError?.code ?? -1) | domain=\(nsError?.domain ?? "nil") | micRetry=\(micRetryCount)/\(maxMicRetries) | scanRetry=\(scanRetryCount)/\(maxScanRetries)"
         ))
-        
+
+        // LỚP 3: đang tạm dừng → không retry/reconnect.
+        if isUserPaused {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[DID_FAIL_CONNECT] isUserPaused → không retry, giữ idle"))
+            stateMachine.transition(to: .idle)
+            return
+        }
+
         activeContext = nil
         commandDispatcher = nil
         pollingEngine = nil
@@ -1629,8 +1682,24 @@ extension DatBikeCore: CBCentralManagerDelegate {
         let nsError = error as NSError?
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
             message: "[DID_DISCONNECT] name=\(peripheral.name ?? "nil") | uuid=\(peripheral.identifier.uuidString.prefix(8)) | error=\(errorMsg) | code=\(nsError?.code ?? 0) | smState=\(stateMachine.state.displayText) | isBackground=\(isAppInBackground) | wasConnected=\(stateMachine.state.isConnected) | autoSuspended=\(isSessionAutoSuspended)"))
-        
-        
+
+        // LỚP 3: đang tạm dừng → KHÔNG pending-connect. Chặn gốc rễ loop code=6.
+        if isUserPaused {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[DID_DISCONNECT] isUserPaused → không reconnect, giữ idle"))
+            pollingEngine?.stopPolling()
+            standbyTimer?.invalidate()
+            standbyTimer = nil
+            authTask?.cancel()
+            authTask = nil
+            activeContext = nil
+            commandDispatcher = nil
+            pollingEngine = nil
+            stateMachine.transition(to: .idle)
+            return
+        }
+
+
         // ═══ KHÔNG gọi stopBackgroundExecutionTime() ở đây ═══
         // BG task phải sống đến khi pending reconnect hoàn tất.
         // Nếu end ở đây → iOS suspend ngay → didConnect không fire → kẹt .scanning.
