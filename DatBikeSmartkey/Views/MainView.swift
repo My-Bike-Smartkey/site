@@ -11,7 +11,7 @@ struct MainView: View {
     
     var body: some View {
         Group {
-            if container.dashboardViewModel.isConnected {
+            if container.dashboardViewModel.isConnected || container.dashboardViewModel.isPaused {
                 DashboardView(viewModel: container.dashboardViewModel)
                     .transition(.opacity)
             } else {
@@ -25,7 +25,7 @@ struct MainView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut, value: container.dashboardViewModel.isConnected)
+        .animation(.easeInOut, value: container.dashboardViewModel.isConnected || container.dashboardViewModel.isPaused)
         .preferredColorScheme(.dark)
         .onAppear {
             if !UserDefaults.standard.bool(forKey: "disclaimerAccepted") {
