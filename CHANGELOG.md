@@ -3,7 +3,19 @@
 Định dạng [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning [SemVer](https://semver.org/).
 Mỗi mục ghi **bằng chứng kèm theo** — những gì chưa nghiệm thu trên xe thật được ghi rõ là "field-test pending".
 
-## [2.0.0] — 2026 (unreleased, dev build 4)
+## [2.1.0] — 2026-09-10 (unreleased, build 5)
+
+### Changed — UI màn hình kết nối
+
+- **Timeline dọc thay pill ngang**: 4 node (Tìm xe → Kết nối → Xác thực → Sẵn sàng) với connector; node xong = check xanh, node đang chạy = pulse màu trạng thái + icon, node chờ = mờ.
+- **Giảm text**: bỏ dòng hint dưới pipeline, bỏ đồng hồ "đã chờ Xs", bỏ caption "Bấm nếu chờ quá lâu", "App sẽ không tự kết nối...", rút gọn caption chế độ gần xe. Hint bây giờ chỉ tồn tại 1 dòng duy nhất trên node active.
+- Giữ nguyên mọi hành vi/nút: forceReconnect, "Ở gần xe, chưa dùng", pending-connect label "Chờ xe".
+
+### Version
+
+- `MARKETING_VERSION` 2.0.0 → 2.1.0, `CURRENT_PROJECT_VERSION` 4 → 5. Bản 2.0.0 được công nhận đã ổn định theo đánh giá của chủ dự án sau đợt remediation (nghiệm thu trên xe vẫn theo ma trận trong `docs/TEST_AND_DEPLOYMENT_GUIDE.md`).
+
+## [2.0.0] — 2026-09-10 (released, build 3–4)
 
 Bản viết lại nền tảng ổn định: concurrency, background/reconnect, proximity gating, và docs trung thực. Nguyên tắc xuyên suốt: không tuyên bố gì không đo được.
 

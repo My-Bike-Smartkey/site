@@ -240,27 +240,16 @@ struct ConnectingSplashView: View {
                 
                 Spacer().frame(height: 8)
                 
-                // ── STAGE PIPELINE (§UX: phân biệt Tìm xe → Kết nối → Xác thực) ──
-                // Trước đây 3 giai đoạn chỉ khác nhau 1 dòng chữ nhỏ 14pt — user quay lại
-                // xe không biết app đang tiến triển hay kẹt. Giờ: pills + check +
-                // hint + đồng hồ đếm giây (reset mỗi khi đổi giai đoạn).
+                // ── STAGE TIMELINE (§UX v2: timeline dọc thay pill ngang + hint + đếm giây) ──
+                // User feedback: quá nhiều text. Timeline tự nói chuyện: node xong = check
+                // xanh, node đang chạy = pulse màu trạng thái, node chờ = mờ. Chỉ node
+                // active có 1 dòng hint duy nhất.
                 if currentStage != nil {
-                    stagePipeline
+                    stageTimeline
+                        .padding(.horizontal, 8)
                         .onReceive(dotTimer) { _ in
                             dotCount += 1
                         }
-
-                    Text(stageHint)
-                        .font(.system(size: 12))
-                        .foregroundColor(.white.opacity(0.45))
-                        .multilineTextAlignment(.center)
-
-                    if stageSeconds >= 3 {
-                        // Chỉ hiện từ giây thứ 3 — auth nhanh (median 0.5s) không cần
-                        Text("đã chờ \(stageSeconds)s")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.white.opacity(0.3))
-                    }
                 } else {
                     // ── TRẠNG THÁI NHỎ (các state khác: standby/nearby/idle...) ──
                     Text(statusLabel)
@@ -308,12 +297,6 @@ struct ConnectingSplashView: View {
                                     .clipShape(Capsule())
                             }
                             .accessibilityLabel("Kết nối để dùng xe")
-
-                            Text("App sẽ không tự kết nối cho tới khi bạn yêu cầu.")
-                                .font(.caption)
-                                .foregroundColor(.gray.opacity(0.7))
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
                         } else {
                             // ═══ PAUSE truyền thống ═══
                             Image(systemName: "pause.circle.fill")
@@ -517,7 +500,7 @@ struct ConnectingSplashView: View {
                                 .shadow(color: Color(red: 0.3, green: 0.7, blue: 1.0).opacity(0.4), radius: 10, y: 5)
                             }
                             
-                            Text("Chế độ gần xe • Bấm để kết nối & điều khiển")
+                            Text("Bấm để kết nối & điều khiển")
                                 .font(.caption2)
                                 .foregroundColor(.white.opacity(0.4))
                         }
@@ -585,9 +568,6 @@ struct ConnectingSplashView: View {
                                  }
                                  .accessibilityLabel("Kết nối lại")
 
-                                 Text("Bấm nếu chờ quá lâu")
-                                     .font(.caption2)
-                                     .foregroundColor(.white.opacity(0.3))
                              }
 
                              // ── Nút 2: "Ở gần xe, chưa dùng" — ngừng hẳn việc đang quét/kết nối,
@@ -629,10 +609,6 @@ struct ConnectingSplashView: View {
         .onAppear {
             pulsePhase = 1
         }
-        .onChange(of: dashboardVM.connectionState) { _, _ in
-            // §UX: đổi giai đoạn ⇒ reset đồng hồ đếm
-            stageStartedAt = Date()
-        }
     }
 
     @State private var dotCount = 0
@@ -651,6 +627,29 @@ struct ConnectingSplashView: View {
             case .ready: return "Sẵn sàng"
             }
         }
+
+        var icon: String {
+            switch self {
+            case .search: return "antenna.radiowaves.left.and.right"
+            case .connect: return "link"
+            case .auth: return "key.fill"
+            case .ready: return "bolt.fill"
+            }
+        }
+
+        /// Hint ngắn — CHỈ node active hiển thị (1 dòng duy nhất cho cả màn hình).
+        func shortHint(isPendingConnect: Bool) -> String {
+            switch self {
+            case .search:
+                return isPendingConnect ? "Sẽ tự kết nối khi xe vào tầm sóng" : "Đang quét Bluetooth quanh đây"
+            case .connect:
+                return isPendingConnect ? "Chờ xe vào tầm sóng" : "Đã thấy xe — đang thiết lập liên kết"
+            case .auth:
+                return "Đang xác thực chìa khoá điện tử"
+            case .ready:
+                return ""
+            }
+        }
     }
 
     /// nil khi không trong pipeline (standby/nearby/paused/idle) → dùng statusLabel cũ.
@@ -664,55 +663,88 @@ struct ConnectingSplashView: View {
         }
     }
 
-    private var stageHint: String {
-        switch currentStage {
-        case .search:
-            return dashboardVM.isPendingConnect
-                ? "App sẽ tự kết nối khi xe vào tầm sóng — không tốn pin"
-                : "Đang quét sóng Bluetooth quanh đây để tìm xe"
-        case .connect:
-            return dashboardVM.isPendingConnect
-                ? "Không thấy xe trong tầm sóng — sẽ tự kết nối khi bạn lại gần"
-                : "Đã thấy xe — đang thiết lập liên kết an toàn"
-        case .auth: return "Đang xác thực chìa khoá điện tử với xe"
-        default: return ""
-        }
-    }
+    // ═══ §UX v2: TIMELINE DỌC — node + connector, text tối thiểu ═══
 
-    @State private var stageStartedAt = Date()
-    private var stageSeconds: Int { max(0, Int(Date().timeIntervalSince(stageStartedAt))) }
-
-    private var stagePipeline: some View {
+    private var stageTimeline: some View {
         let idx = currentStage?.rawValue ?? 0
-        let dots = String(repeating: ".", count: (dotCount % 3) + 1)
-        return HStack(spacing: 6) {
+        return VStack(alignment: .leading, spacing: 0) {
             ForEach(ConnectStage.allCases, id: \.self) { stage in
                 let i = stage.rawValue
                 let isDone = i < idx
                 let isActive = i == idx
 
-                HStack(spacing: 4) {
-                    if isDone {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
-                    }
-                    // §UX: pending connect ⇒ pill nói đúng bản chất "Chờ xe"
-                    let pillLabel: String = {
-                        if stage == .connect && dashboardVM.isPendingConnect { return "Chờ xe" }
-                        return stage.label
-                    }()
-                    Text(pillLabel + (isActive ? dots : ""))
-                        .font(.system(size: 12, weight: isActive ? .bold : .regular))
-                }
-                .foregroundColor(isActive ? stateColor : (isDone ? .green : .white.opacity(0.35)))
+                timelineRow(stage: stage, isDone: isDone, isActive: isActive)
 
                 if stage != .ready {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.2))
+                    timelineConnector(isDone: isDone, isActive: isActive)
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: dashboardVM.connectionState)
+    }
+
+    private func timelineRow(stage: ConnectStage, isDone: Bool, isActive: Bool) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            // ── NODE ──
+            ZStack {
+                if isActive {
+                    // Vòng pulse quanh node đang chạy
+                    Circle()
+                        .stroke(stateColor.opacity(0.5), lineWidth: 1.5)
+                        .frame(width: 34, height: 34)
+                        .scaleEffect(dotCount % 2 == 0 ? 1.0 : 1.35)
+                        .opacity(dotCount % 2 == 0 ? 0.6 : 0.0)
+                        .animation(.easeOut(duration: 1.0), value: dotCount)
+                }
+
+                if isDone {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundColor(.green)
+                } else {
+                    Circle()
+                        .fill(isActive ? stateColor.opacity(0.18) : Color.white.opacity(0.04))
+                        .frame(width: 34, height: 34)
+
+                    Circle()
+                        .stroke(isActive ? stateColor : Color.white.opacity(0.18),
+                                lineWidth: isActive ? 2 : 1)
+                        .frame(width: 34, height: 34)
+
+                    Image(systemName: stage.icon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(isActive ? stateColor : .white.opacity(0.3))
+                }
+            }
+            .frame(width: 36, height: 36)
+
+            // ── LABEL + hint (chỉ active) ──
+            VStack(alignment: .leading, spacing: 3) {
+                // §UX: pending connect ⇒ label nói đúng bản chất "Chờ xe"
+                let label = (stage == .connect && dashboardVM.isPendingConnect) ? "Chờ xe" : stage.label
+                Text(label)
+                    .font(.system(size: 14, weight: isActive ? .bold : .regular))
+                    .foregroundColor(isActive ? .white : (isDone ? .white.opacity(0.55) : .white.opacity(0.3)))
+
+                if isActive {
+                    Text(stage.shortHint(isPendingConnect: dashboardVM.isPendingConnect))
+                        .font(.system(size: 11))
+                        .foregroundColor(.white.opacity(0.4))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 1)
+    }
+
+    private func timelineConnector(isDone: Bool, isActive: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 1)
+            .fill(isDone ? Color.green.opacity(0.8)
+                 : (isActive ? stateColor.opacity(0.7) : Color.white.opacity(0.12)))
+            .frame(width: 2, height: 16)
+            .padding(.leading, 17) // căn giữa với node 34pt (36/2 - 1)
     }
     
     private var bikeName: String {
