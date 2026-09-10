@@ -3,7 +3,9 @@
 Định dạng [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning [SemVer](https://semver.org/).
 Mỗi mục ghi **bằng chứng kèm theo** — những gì chưa nghiệm thu trên xe thật được ghi rõ là "field-test pending".
 
-## [2.1.0] — 2026-09-10 (unreleased, build 6)
+## [5.0.0] — 2026-09-10 (unreleased, build 6)
+
+Đánh số nối tiếp dòng cũ (4.9.1 → 5.0.0) theo quyết định của chủ dự án; các số 2.0.0/2.1.0 tạm dùng trong lúc dev không còn dùng nữa.
 
 ### Added — FG-OPEN GUARANTEE: "mở app đang gần xe → kết nối ngay"
 
@@ -30,9 +32,9 @@ Ranh giới vật lý (không thể app sửa được): xe tắt/ngủ sâu kh�
 
 ### Version
 
-- `MARKETING_VERSION` 2.0.0 → 2.1.0, `CURRENT_PROJECT_VERSION` 4 → 5. Bản 2.0.0 được công nhận đã ổn định theo đánh giá của chủ dự án sau đợt remediation (nghiệm thu trên xe vẫn theo ma trận trong `docs/TEST_AND_DEPLOYMENT_GUIDE.md`).
+- `MARKETING_VERSION` = **5.0.0** (nối tiếp 4.9.1 của dòng cũ), `CURRENT_PROJECT_VERSION` = 6. Đợt remediation được công nhận đã ổn định theo đánh giá của chủ dự án (nghiệm thu trên xe vẫn theo ma trận trong `docs/TEST_AND_DEPLOYMENT_GUIDE.md`).
 
-## [2.0.0] — 2026-09-10 (released, build 3–4)
+## [4.9.1 → ổn định hóa] — 2026-09-10 (các build dev 3–4)
 
 Bản viết lại nền tảng ổn định: concurrency, background/reconnect, proximity gating, và docs trung thực. Nguyên tắc xuyên suốt: không tuyên bố gì không đo được.
 

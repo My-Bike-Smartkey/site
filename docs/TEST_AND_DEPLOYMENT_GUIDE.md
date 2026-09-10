@@ -60,7 +60,7 @@ Ghi phiên bản app/iOS/firmware, cấu hình auto, ngưỡng RSSI, intent, th�
 
 `intent → connect request → didConnect → GATT ready → auth → RSSI đủ điều kiện → command → xác nhận unlocked`
 
-### Định dạng log [CYCLE] / [CKPT] (từ 2.1.0)
+### Định dạng log [CYCLE] / [CKPT] (từ 5.0.0)
 
 Mỗi lượt tiếp cận tự đo bằng các dòng log có thể grep:
 
