@@ -1,5 +1,7 @@
 # Dat Bike Smartkey — Lộ trình phát triển
 
+> **Ghi chú trạng thái (2.0.0):** Tài liệu này là **lịch sử kế hoạch** — các mốc v3.x/v4.x dưới đây đã hoàn thành và được gộp/thay thế bằng bản viết lại 2.0.0 (ASK + iOS 18 + stability rework). Nhiệm vụ đang mở hiện tại nằm ở [`docs/ARCHITECTURE_BLE_AND_ASK.md` §7](docs/ARCHITECTURE_BLE_AND_ASK.md) và ma trận nghiệm thu trong [`docs/TEST_AND_DEPLOYMENT_GUIDE.md`](docs/TEST_AND_DEPLOYMENT_GUIDE.md).
+
 ## So sánh tổng quát
 
 | | **v3.0 (Hiện tại)** | **v3.5 (+ ASK)** | **v4.0 (Auto Unlock)** |

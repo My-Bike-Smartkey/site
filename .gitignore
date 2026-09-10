@@ -76,3 +76,14 @@ fastlane/test_output/
 *.certSigningRequest
 ExportOptions.plist
 build.log
+
+# ===========================
+# Local BLE logs & field data (chứa định danh thiết bị — không commit)
+# ===========================
+datbike_ble_logs*.txt
+log*.txt
+IMG_*.PNG
+IMG_*.jpg
+
+# Agent scratch
+.agent/full_git_log.txt
