@@ -48,6 +48,7 @@
 		E87709C0F7B1BC2A5BBEFC9B /* ConnectionIntentMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C150CFA5FCDDF27799BBF1E5 /* ConnectionIntentMigrationTests.swift */; };
 		ED3684EE0A35C52C7B9D827F /* BLEStateMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8653E8961F943307958265B /* BLEStateMachine.swift */; };
 		F5C13544F540815267F5AB50 /* BLECommandDispatcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D5BFF499347F9F3C5AB8683 /* BLECommandDispatcher.swift */; };
+		F9C0F46DBCBFA116DA07DE6F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2F071340448D2017BDEDAF33 /* PrivacyInfo.xcprivacy */; };
 		FD23847C3D8A4F42AB57E18D /* MainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D8A4DD9F679F79F85EBCC1E /* MainView.swift */; };
 /* End PBXBuildFile section */
 
@@ -68,6 +69,7 @@
 		21050B43FC72C8A173A4EF52 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		298378ADD809153C87C9A3F2 /* DomainModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModelTests.swift; sourceTree = "<group>"; };
 		2E9AD700EBC7D8BA4FED18A5 /* ASKManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ASKManager.swift; sourceTree = "<group>"; };
+		2F071340448D2017BDEDAF33 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		388B85BD6205C62981FA7651 /* BikeState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BikeState.swift; sourceTree = "<group>"; };
 		3B85AA99388E35EDABEC8870 /* StatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusCard.swift; sourceTree = "<group>"; };
 		462CAF55A920EC3568500A3C /* BLE_ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = BLE_ARCHITECTURE.md; sourceTree = "<group>"; };
@@ -223,6 +225,7 @@
 				21050B43FC72C8A173A4EF52 /* Assets.xcassets */,
 				9BEA4F56BF3C02A8F164BE1C /* DatBikeSmartKeyApp.swift */,
 				16CBCE3CABCBDE15A8ECC284 /* Info.plist */,
+				2F071340448D2017BDEDAF33 /* PrivacyInfo.xcprivacy */,
 				F6139BC99B813739C4693248 /* BLE */,
 				122EB9B16032F4204D7D1785 /* Models */,
 				9F7B242263F3F5A976476610 /* ViewModels */,
@@ -342,6 +345,7 @@
 			files = (
 				9031ED94E42DEA1B3F38B15E /* Assets.xcassets in Resources */,
 				1C0825B1A0182EEF3F9FD900 /* BLE_ARCHITECTURE.md in Resources */,
+				F9C0F46DBCBFA116DA07DE6F /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -522,7 +526,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -607,7 +611,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
