@@ -59,6 +59,19 @@ Ghi phiên bản app/iOS/firmware, cấu hình auto, ngưỡng RSSI, intent, th�
 
 `intent → connect request → didConnect → GATT ready → auth → RSSI đủ điều kiện → command → xác nhận unlocked`
 
+### Định dạng log [CYCLE] / [CKPT] (từ 2.1.0)
+
+Mỗi lượt tiếp cận tự đo bằng các dòng log có thể grep:
+
+- `[CKPT request]` — connect() / ASK request bắt đầu (kèm source, intent, bg/fg)
+- `[CKPT did-connect] sid=xxx | req→dc=…ms` — link vật lý lên (đo độ trễ chờ xe vào sóng)
+- `[CKPT gatt-ready] sid=xxx t=+…ms | dc→gatt=…ms | chars=N` — GATT discovery xong
+- `[CKPT rssi-cross] dir=enter|exit | smoothed | raw | threshold | fresh` — EMA vào/ra vùng ngưỡng auto-bật (chỉ log khi đổi band, không flood)
+- `[CKPT auto-cmd]` — quyết định gửi turnOnBike (kèm toàn bộ input của gate)
+- `[CYCLE] sid=xxx outcome=success|fail|disconnected via=auth|session-restore | req→dc=…ms dc→gatt=…ms gatt→now=…ms total=…ms [stage=… code=… linkDur=…ms]` — tổng kết mỗi chu kỳ
+
+Phân tích: grep `\[CYCLE\]` → bảng kết quả 20 lượt (outcome + total + stage fail nếu có); grep `\[CKPT` → tái lập timeline từng lượt theo `sid` (6 ký tự đầu sessionID). `linkDur` trên disconnected cho biết link sống bao lâu trước khi rớt — phân biệt "kết nối rồi rớt" với "không bao giờ kết nối được".
+
 Đo tỷ lệ thành công và thời gian các bước; không hứa trước reconnect 1–2 giây. Pending connect không chứng minh khoảng cách hoặc mức pin bằng 0. Timer/polling 10 giây không được bảo đảm chạy khi iOS suspend app.
 
 ## Chưa nghiệm thu

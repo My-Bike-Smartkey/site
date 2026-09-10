@@ -9,6 +9,9 @@ class BLEConnectionContext {
     /// §3.5: định danh phiên — io gắn với session này; log truy vết late-response.
     let sessionID: UUID
 
+    /// §LOG: thời điểm tạo context — mốc t=0 cho trace elapsed của phiên.
+    let createdAt = Date()
+
     /// Hàng đợi lệnh ngăn chặn GATT Collision (Bảo đảm không gọi Read/Write đè lên nhau)
     let queue: BLETaskQueue
 
