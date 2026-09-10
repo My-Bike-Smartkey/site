@@ -22,12 +22,13 @@ targets:
       - path: DatBikeSmartkey
         excludes:
           - "**/*.entitlements"
-    scheme: {}
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.mybike.smartkey
         INFOPLIST_FILE: DatBikeSmartkey/Info.plist
-        PRODUCT_NAME: DatBikeSmartkey
+        # QUAN TRỌNG: giữ nguyên tên product cũ — module Swift là D_SmartKey
+        # (test dùng @testable import D_SmartKey).
+        PRODUCT_NAME: "D-SmartKey"
         CODE_SIGN_STYLE: Automatic
         DEVELOPMENT_TEAM: "MH385VJBCB"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -41,6 +42,8 @@ targets:
         SUPPORTS_MACCATALYST: false
         CODE_SIGN_ENTITLEMENTS: DatBikeSmartkey/DatBikeSmartkey.entitlements
       configs:
+        Debug:
+          ENABLE_TESTABILITY: "YES"
         Release:
           DEPLOYMENT_POSTPROCESSING: "YES"
           STRIP_INSTALLED_PRODUCT: "YES"
@@ -49,3 +52,32 @@ targets:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
           GCC_SYMBOLS_PRIVATE_EXTERN: "YES"
 
+  DatBikeSmartkeyTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: DatBikeSmartkeyTests
+    dependencies:
+      - target: DatBikeSmartkey
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.mybike.smartkey.tests
+        GENERATE_INFOPLIST_FILE: "YES"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: "MH385VJBCB"
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/D-SmartKey.app/D-SmartKey"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
+schemes:
+  DatBikeSmartkey:
+    build:
+      targets:
+        DatBikeSmartkey: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - DatBikeSmartkeyTests

@@ -56,8 +56,6 @@
 	<string>D-SmartKey cần Bluetooth để kết nối và điều khiển xe của bạn, kể cả khi ứng dụng chạy nền.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>D-SmartKey sử dụng Bluetooth Low Energy để giao tiếp với hệ thống khóa thông minh trên xe.</string>
-	<key>NSSupportsLiveActivities</key>
-	<true/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

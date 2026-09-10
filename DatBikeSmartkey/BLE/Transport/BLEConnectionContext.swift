@@ -5,30 +5,47 @@ import CoreBluetooth
 /// Đóng gói CBPeripheral và các hệ thống Input/Output của riêng nó.
 class BLEConnectionContext {
     let peripheral: CBPeripheral
-    
+
+    /// §3.5: định danh phiên — io gắn với session này; log truy vết late-response.
+    let sessionID: UUID
+
     /// Hàng đợi lệnh ngăn chặn GATT Collision (Bảo đảm không gọi Read/Write đè lên nhau)
     let queue: BLETaskQueue
-    
+
     /// Động cơ trao đổi Byte ở dạng Async Await
     let io: BLECharacteristicIO
-    
+
+    /// Khóa bảo vệ đa luồng cho bảng tra cứu Characteristic (Thread-Safe Dictionary)
+    private let charLock = NSLock()
+    private var _discoveredCharacteristics: [CBUUID: CBCharacteristic] = [:]
+
     /// Danh mục các nốt (Characteristic) đã được dò tìm thành công
-    private(set) var discoveredCharacteristics: [CBUUID: CBCharacteristic] = [:]
-    
+    var discoveredCharacteristics: [CBUUID: CBCharacteristic] {
+        charLock.lock()
+        defer { charLock.unlock() }
+        return _discoveredCharacteristics
+    }
+
     init(peripheral: CBPeripheral) {
         self.peripheral = peripheral
+        let sessionID = UUID()
+        self.sessionID = sessionID
         self.queue = BLETaskQueue()
-        self.io = BLECharacteristicIO(peripheral: peripheral)
+        self.io = BLECharacteristicIO(peripheral: peripheral, sessionID: sessionID)
     }
     
     // MARK: - Registry
     
     func register(characteristic: CBCharacteristic) {
-        discoveredCharacteristics[characteristic.uuid] = characteristic
+        charLock.lock()
+        defer { charLock.unlock() }
+        _discoveredCharacteristics[characteristic.uuid] = characteristic
     }
     
     func requireCharacteristic(_ uuid: CBUUID) throws -> CBCharacteristic {
-        guard let char = discoveredCharacteristics[uuid] else {
+        charLock.lock()
+        defer { charLock.unlock() }
+        guard let char = _discoveredCharacteristics[uuid] else {
             throw IoTError.characteristicNotFound(uuid.uuidString)
         }
         return char
@@ -38,7 +55,9 @@ class BLEConnectionContext {
     
     /// Dọn dẹp toàn bộ state — phiên bản sync (fire-and-forget) cho các call sites không cần đợi.
     func clearState() {
-        discoveredCharacteristics.removeAll()
+        charLock.lock()
+        _discoveredCharacteristics.removeAll()
+        charLock.unlock()
         Task {
             await io.cancelAll()
             await queue.cancelAll()
@@ -47,7 +66,9 @@ class BLEConnectionContext {
     
     /// Dọn dẹp toàn bộ state — phiên bản async đảm bảo io/queue đã cancel xong trước khi return.
     func clearStateAsync() async {
-        discoveredCharacteristics.removeAll()
+        charLock.lock()
+        _discoveredCharacteristics.removeAll()
+        charLock.unlock()
         await io.cancelAll()
         await queue.cancelAll()
     }

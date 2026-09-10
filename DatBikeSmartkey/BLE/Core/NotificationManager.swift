@@ -34,6 +34,7 @@ enum NotificationCategory: String {
 class NotificationManager: NSObject, @unchecked Sendable, UNUserNotificationCenterDelegate {
     static let shared = NotificationManager()
     
+    private let lock = NSLock()
     private var lastNotificationTimes: [String: Date] = [:]
     private let debounceInterval: TimeInterval = 10.0 // 10 giây debounce cho tất cả
     
@@ -74,15 +75,17 @@ class NotificationManager: NSObject, @unchecked Sendable, UNUserNotificationCent
             return
         }
         
-        // Gate 3: Debounce — tránh spam cùng 1 loại thông báo
+        // Gate 3: Debounce — tránh spam cùng 1 loại thông báo (Thread-Safe với NSLock)
         let now = Date()
+        lock.lock()
         if let lastTime = lastNotificationTimes[identifier] {
             if now.timeIntervalSince(lastTime) < debounceInterval {
+                lock.unlock()
                 return
             }
         }
-        
         lastNotificationTimes[identifier] = now
+        lock.unlock()
         
         let content = UNMutableNotificationContent()
         content.title = title

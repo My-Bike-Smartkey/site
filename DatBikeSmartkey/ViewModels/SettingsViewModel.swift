@@ -5,6 +5,12 @@ import Combine
 class SettingsViewModel: ObservableObject {
     
     private let core: DatBikeCore
+
+    /// §4.4 (P3): intent kết nối cho SettingsView.
+    var isManualOnly: Bool { core.isManualOnly }
+    var connectionIntent: ConnectionIntent { core.connectionIntent }
+    /// Thoát manualOnly + kết nối ngay (nút "Kết nối để dùng xe" trong Settings).
+    func connectForRide() { core.connectForRide() }
     let preferences: PreferencesManager
     
     // Outputs cho giao diện Cài đặt
@@ -15,8 +21,7 @@ class SettingsViewModel: ObservableObject {
     @Published var nearbyModeEnabled: Bool
     @Published var isDebugModeEnabled: Bool
     @Published var notificationsEnabled: Bool
-    @Published var widgetAndLiveActivityEnabled: Bool
-    
+
     // Granular notification toggles
     @Published var notifyOnConnected: Bool
     @Published var notifyOnDisconnected: Bool
@@ -52,7 +57,6 @@ class SettingsViewModel: ObservableObject {
         self.nearbyModeEnabled = preferences.nearbyModeEnabled
         self.isDebugModeEnabled = preferences.isDebugModeEnabled
         self.notificationsEnabled = preferences.notificationsEnabled
-        self.widgetAndLiveActivityEnabled = preferences.widgetAndLiveActivityEnabled
         self.notifyOnConnected    = preferences.notifyOnConnected
         self.notifyOnDisconnected = preferences.notifyOnDisconnected
         self.notifyOnStandby      = preferences.notifyOnStandby
@@ -132,12 +136,7 @@ class SettingsViewModel: ObservableObject {
             .dropFirst()
             .sink { [weak self] val in self?.preferences.notificationsEnabled = val }
             .store(in: &cancellables)
-            
-        $widgetAndLiveActivityEnabled
-            .dropFirst()
-            .sink { [weak self] val in self?.preferences.widgetAndLiveActivityEnabled = val }
-            .store(in: &cancellables)
-        
+
         $notifyOnConnected
             .dropFirst()
             .sink { [weak self] val in self?.preferences.notifyOnConnected = val }

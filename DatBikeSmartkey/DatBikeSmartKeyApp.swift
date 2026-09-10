@@ -74,7 +74,14 @@ struct DatBikeSmartKeyApp: App {
             if let dispatcher = try? container.bleCore.getDispatcher() {
                 Task { try? await dispatcher.turnOnBike() }
             }
-        case "connect":   container.bleCore.wakeUpFromStandby()
+        case "connect":
+            // §4.5 (P3): deep-link connect là hành động CHỦ ĐỘNG của user —
+            // nếu đang manualOnly thì THOÁT manualOnly rồi kết nối (quyết định #1).
+            if container.bleCore.isManualOnly {
+                container.bleCore.connectForRide()
+            } else {
+                container.bleCore.wakeUpFromStandby()
+            }
         case "disconnect": container.dashboardViewModel.forceStandby()
         case "dashboard": break  // app mở bình thường
         default:          break

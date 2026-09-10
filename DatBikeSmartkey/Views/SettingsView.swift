@@ -406,6 +406,45 @@ struct ConnectionSettingsView: View {
     
     var body: some View {
         Form {
+            // ═══ §4.4 (P3): Trạng thái ý định kết nối + lối thoát manualOnly ═══
+            Section(header: Text("Ý định kết nối"),
+                    footer: Text("Khi đang ở chế độ thủ công (Tạm dừng / Ở gần xe, chưa dùng), app không tự kết nối lại bởi bất kỳ điều gì — kể cả mở app hay bật lại Bluetooth.")) {
+                HStack {
+                    Image(systemName: viewModel.isManualOnly ? "pause.circle.fill" : "bolt.badge.checkmark")
+                        .foregroundColor(viewModel.isManualOnly ? .orange : .green)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(viewModel.isManualOnly ? "Đang ở chế độ thủ công" : "Tự động kết nối")
+                        Text(viewModel.isManualOnly
+                             ? (viewModel.connectionIntent == .manualOnlyNearbyNotInUse
+                                ? "Ở gần xe, chưa dùng — chờ bạn yêu cầu"
+                                : "Đã tạm dừng — chờ bạn yêu cầu")
+                             : "App sẽ tự kết nối khi ở gần xe")
+                            .font(.caption2)
+                            .foregroundColor(.gray)
+                    }
+                }
+                if viewModel.isManualOnly {
+                    Button {
+                        viewModel.connectForRide()
+                    } label: {
+                        Text("Kết nối để dùng xe")
+                            .fontWeight(.semibold)
+                    }
+                    .accessibilityLabel("Kết nối để dùng xe")
+                } else {
+                    // §4.4 (P3): chỉ dẫn đúng cách ngừng hẳn auto-connect —
+                    // công tắc "Chỉ kết nối khi ở gần" bên dưới KHÔ phải on/off của auto-connect.
+                    Label {
+                        Text("Muốn ngừng hẳn tự động kết nối? Dùng nút \"Ở gần xe, chưa dùng\" (icon người đứng) trên màn hình chính.")
+                            .font(.caption2)
+                    } icon: {
+                        Image(systemName: "figure.stand")
+                            .foregroundColor(.cyan)
+                    }
+                }
+            }
+
             Section(header: Text("Chế độ gần xe"),
                     footer: Text("Khi bật, app chỉ phát hiện xe gần mà KHÔNG tự kết nối hay bật xe. Mở app khi muốn sử dụng. Tiết kiệm pin.")) {
                 Toggle(isOn: $viewModel.nearbyModeEnabled) {
@@ -424,13 +463,16 @@ struct ConnectionSettingsView: View {
                 .tint(.blue)
             }
             
-            Section(header: Text("Tự động kết nối"), footer: Text("Khi đạt ngưỡng này điện thoại sẽ tự động kết nối, biểu tượng bluetooth trên đồng hồ xe sẽ sáng.")) {
+            // §UX-fix: nhãn cũ "Ngưỡng tự động kết nối" gây hiểu nhầm là on/off của
+            // auto-connect — thực chất là chọn CHẾ ĐỘ (gần xe vs mọi lúc). Đổi tên rõ nghĩa.
+            Section(header: Text("Cách thức tự động kết nối"),
+                    footer: Text("Bật: app chờ ở trạng thái standby và chỉ xác thực khi bạn ở gần xe theo ngưỡng dưới đây. Tắt: app tự kết nối và xác thực ngay bất kể khoảng cách. Tự bật xe chỉ hoạt động khi bật chế độ này.")) {
                 Toggle(isOn: $viewModel.connectOnlyWhenNear) {
                     HStack {
                         Image(systemName: "sensor.tag.radiowaves.forward")
                             .foregroundColor(.green)
                             .frame(width: 24)
-                        Text("Ngưỡng tự động kết nối với xe")
+                        Text("Chỉ kết nối khi ở gần xe")
                     }
                 }
                 .tint(.green)
@@ -456,7 +498,7 @@ struct ConnectionSettingsView: View {
                 }
             }
             
-            Section(header: Text("Tự động bật xe"), footer: Text("Khi đã kết nối, nếu đạt ngưỡng này và xe đang tắt thì tự động bật lên.")) {
+            Section(header: Text("Tự động bật xe"), footer: Text("Khi đã kết nối, nếu đạt ngưỡng này và xe đang tắt thì tự động bật lên. Chỉ hoạt động khi \"Chỉ kết nối khi ở gần xe\" đang bật.")) {
                 Toggle(isOn: $viewModel.autoUnlockEnabled) {
                     HStack {
                         Image(systemName: "bolt.fill")
@@ -655,18 +697,6 @@ struct NotificationSettingsView: View {
                         .animation(.easeInOut, value: viewModel.notifyOnBatteryThreshold)
                     }
                 }
-            }
-            
-            Section(header: Text("Tiện ích")) {
-                Toggle(isOn: $viewModel.widgetAndLiveActivityEnabled) {
-                    HStack {
-                        Image(systemName: "bolt.badge.clock.fill")
-                            .foregroundColor(.yellow)
-                            .frame(width: 24)
-                        Text("Bật Widget & Live Activity")
-                    }
-                }
-                .tint(Color(red: 0.0, green: 0.96, blue: 1.0))
             }
         }
         .navigationTitle("Thông báo")

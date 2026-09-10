@@ -16,7 +16,7 @@ class BLEAuthenticator: IoTAuthService {
     func authenticate() async throws -> Bool {
         let authChar = try context.requireCharacteristic(BLECharacteristic.authChallenge)
         let pinData = Data(pin.utf8)
-        
+
         if isKnownDevice {
             // ── RECONNECT FLOW (SHA-256 + Counter Verification) ──
             try await authenticateWithSHA(authChar: authChar)
@@ -24,8 +24,13 @@ class BLEAuthenticator: IoTAuthService {
             // ── PAIRING FLOW (NFC PIN plain-text) ──
             try await pairWithPIN(authChar: authChar, pinData: pinData)
         }
-        
+
+        // §3.3: sau mỗi chặng await dài — kiểm tra cancellation trước khi đi tiếp.
+        try Task.checkCancellation()
+
         // ── TIME SYNC (44e2bde6) — seconds since midnight UTC+7 ──
+        // §3.3: KHÔNG dùng `try?` (nuốt luôn CancellationError → app tưởng auth xong).
+        // Lỗi GATT thật được downgrade thành warning; cancellation phải throw lên.
         if let syncChar = try? context.requireCharacteristic(BLECharacteristic.timeSync) {
             let vnTZ = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
             var cal = Calendar(identifier: .gregorian)
@@ -35,23 +40,43 @@ class BLEAuthenticator: IoTAuthService {
             let timeSyncValue = String(secs)
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                 message: "Xác thực: Đồng bộ thời gian = \(timeSyncValue) (\(comps.hour ?? 0):\(String(format: "%02d", comps.minute ?? 0)):\(String(format: "%02d", comps.second ?? 0)) VN)"))
-            try? await context.io.writeValue(Data(timeSyncValue.utf8), to: syncChar, type: .withResponse)
+            try await performNonCritical("TimeSync") {
+                try await context.io.writeValue(Data(timeSyncValue.utf8), to: syncChar, type: .withResponse)
+            }
         }
-        
+
         // ── PROXIMITY TOKEN ──
         if PreferencesManager.shared.skipProximityToken {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                 message: "[AUTH] Bỏ qua Proximity Token (skipProximityToken=true)"))
         } else if let autoChar = try? context.requireCharacteristic(BLECharacteristic.autoUnlock) {
             let token = UUID().uuidString
-            try? await context.io.writeValue(Data(token.utf8), to: autoChar, type: .withResponse)
+            try await performNonCritical("ProximityToken") {
+                try await context.io.writeValue(Data(token.utf8), to: autoChar, type: .withResponse)
+            }
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
                 message: "[AUTH] Proximity Token đã gửi: \(token.prefix(8))..."))
         }
-        
+
+        try Task.checkCancellation()
         PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
             message: "Xác thực: Phiên làm việc sẵn sàng ✅"))
         return true
+    }
+
+    /// §3.3: Bước không chặn (timeSync / token / confirm) — lỗi GATT chỉ là warning,
+    /// nhưng CancellationError PHẢI ném tiếp để caller dừng hẳn (không publish .active ảo).
+    private func performNonCritical(_ op: String, _ body: () async throws -> Void) async throws {
+        do {
+            try await body()
+        } catch is CancellationError {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "[AUTH] \(op) bị cancel → dừng xác thực (không coi là thành công)"))
+            throw CancellationError()
+        } catch {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "[AUTH] \(op) thất bại (không chặn xác thực): \(error.localizedDescription)"))
+        }
     }
     
     // MARK: - SHA-256 Reconnect Flow
@@ -206,28 +231,35 @@ class BLEAuthenticator: IoTAuthService {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .success,
                     message: "Xác thực: Mã hóa thiết bị hoàn tất!"))
                 break
+            } catch is CancellationError {
+                // §3.3: task bị cancel → dừng ngay, không retry tiếp
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                    message: "Xác thực: Bị cancel lúc liên kết thẻ (\(i)/10) → dừng"))
+                throw CancellationError()
             } catch {
                 if i < 10 {
                     try await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
         }
-        
+
         if !isPaired {
             PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .error,
                 message: "Xác thực: Hết thời gian giao tiếp vật lý thiết bị"))
             throw IoTError.shaChallengeFailed
         }
-        
-        // PIN confirm lần 1
-        try? await context.queue.enqueue {
-            try await self.context.io.writeValue(pinData, to: authChar, type: .withResponse)
+
+        // PIN confirm lần 1 + lần 2 (§3.3: cancellation-aware, lỗi GATT chỉ warning)
+        try await performNonCritical("PINConfirm#1") {
+            try await context.queue.enqueue {
+                try await self.context.io.writeValue(pinData, to: authChar, type: .withResponse)
+            }
         }
         try await Task.sleep(nanoseconds: 500_000_000)
-        
-        // PIN confirm lần 2
-        try? await context.queue.enqueue {
-            try await self.context.io.writeValue(pinData, to: authChar, type: .withResponse)
+        try await performNonCritical("PINConfirm#2") {
+            try await context.queue.enqueue {
+                try await self.context.io.writeValue(pinData, to: authChar, type: .withResponse)
+            }
         }
         try await Task.sleep(nanoseconds: 500_000_000)
     }

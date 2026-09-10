@@ -74,7 +74,7 @@ struct MainView: View {
                 // Trì hoãn 0.5s để hộp thoại (Alert) kịp đóng lại hoàn toàn.
                 // Tránh lỗi "Application is not in foreground" của AccessorySetupKit trên iOS 18.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    container.dashboardViewModel.connectBike()
+                    container.dashboardViewModel.startPairing()
                 }
             }
         } message: {
@@ -93,6 +93,8 @@ struct ConnectingSplashView: View {
     @Binding var showingNFCPrompt: Bool
     
     @State private var pulsePhase: CGFloat = 0
+    /// §4.4 (P3): confirm trước khi bật "Ở gần xe, chưa dùng" khi xe đang mở.
+    @State private var showingNearbyNotInUseConfirm = false
     
     var body: some View {
         ZStack {
@@ -143,6 +145,37 @@ struct ConnectingSplashView: View {
                         }
                     }
                     
+                    // Nút "Ở gần xe, chưa dùng" (§4.4) — cùng hàng với nút Nearby
+                    if !dashboardVM.isPaused,
+                       dashboardVM.connectionState == .active || dashboardVM.connectionState == .standby {
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.impactOccurred()
+                            // Xe đang mở/bật → xác nhận để tránh khoá nhầm lúc vừa chạy
+                            if !dashboardVM.lockState.isLocked {
+                                showingNearbyNotInUseConfirm = true
+                            } else {
+                                dashboardVM.setNearbyNotInUse()
+                            }
+                        }) {
+                            Image(systemName: "figure.stand")
+                                .font(.system(size: 20))
+                                .foregroundColor(.cyan.opacity(0.7))
+                                .padding(.vertical)
+                        }
+                        .accessibilityLabel("Ở gần xe, chưa dùng")
+                        .confirmationDialog("Xe đang mở khoá",
+                            isPresented: $showingNearbyNotInUseConfirm,
+                            titleVisibility: .visible) {
+                            Button("Vẫn tắt kết nối") {
+                                dashboardVM.setNearbyNotInUse()
+                            }
+                            Button("Huỷ", role: .cancel) {}
+                        } message: {
+                            Text("Xe sẽ không bị tắt ngay — firmware tự tắt theo idleOff. Bạn sẽ không nhận được cập nhật cho tới khi kết nối lại.")
+                        }
+                    }
+
                     Button(action: { showingSettings = true }) {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 20))
@@ -207,48 +240,110 @@ struct ConnectingSplashView: View {
                 
                 Spacer().frame(height: 8)
                 
-                // ── TRẠNG THÁI NHỎ ──
-                Text(statusLabel)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(stateColor.opacity(0.7))
-                    .onReceive(dotTimer) { _ in
-                        dotCount += 1
+                // ── STAGE PIPELINE (§UX: phân biệt Tìm xe → Kết nối → Xác thực) ──
+                // Trước đây 3 giai đoạn chỉ khác nhau 1 dòng chữ nhỏ 14pt — user quay lại
+                // xe không biết app đang tiến triển hay kẹt. Giờ: pills + check +
+                // hint + đồng hồ đếm giây (reset mỗi khi đổi giai đoạn).
+                if currentStage != nil {
+                    stagePipeline
+                        .onReceive(dotTimer) { _ in
+                            dotCount += 1
+                        }
+
+                    Text(stageHint)
+                        .font(.system(size: 12))
+                        .foregroundColor(.white.opacity(0.45))
+                        .multilineTextAlignment(.center)
+
+                    if stageSeconds >= 3 {
+                        // Chỉ hiện từ giây thứ 3 — auth nhanh (median 0.5s) không cần
+                        Text("đã chờ \(stageSeconds)s")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(.white.opacity(0.3))
                     }
+                } else {
+                    // ── TRẠNG THÁI NHỎ (các state khác: standby/nearby/idle...) ──
+                    Text(statusLabel)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(stateColor.opacity(0.7))
+                        .onReceive(dotTimer) { _ in
+                            dotCount += 1
+                        }
+                }
                 
                 Spacer()
                 
                 // ── BOTTOM STATUS AREA ──
                 VStack(spacing: 16) {
-                    // LỚP 3: trạng thái Tạm dừng — ưu tiên trước mọi nhánh khác.
-                    // KHÔNG tự scan/connect (connect() đã bị guard isUserPaused chặn).
+                    // LỚP 3 + §4 (P3): trạng thái manualOnly — ưu tiên trước mọi nhánh khác.
+                    // Một cơ chế, hai reason: pausedByUser (PAUSE) | nearbyNotInUse (nút mới).
                     if dashboardVM.isPaused {
-                        Image(systemName: "pause.circle.fill")
-                            .font(.system(size: 50))
-                            .foregroundColor(.orange)
+                        if dashboardVM.isNearbyNotInUse {
+                            // ═══ §4.4-3: CARD "Ở GẦN XE, CHƯA DÙNG" ═══
+                            Image(systemName: "bicycle")
+                                .font(.system(size: 50))
+                                .foregroundColor(.cyan)
 
-                        Text("Đã tạm dừng kết nối")
-                            .font(.headline)
-                            .foregroundColor(.white)
-                            .multilineTextAlignment(.center)
-
-                        Text("App sẽ không tự kết nối lại với xe. Bấm để tiếp tục.")
-                            .font(.subheadline)
-                            .foregroundColor(.gray)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-
-                        Button(action: {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.impactOccurred()
-                            dashboardVM.resumeConnection()
-                        }) {
-                            Text("Tiếp tục kết nối")
+                            Text("Đang ở gần xe — kết nối đã tắt")
                                 .font(.headline)
                                 .foregroundColor(.white)
-                                .padding(.horizontal, 30)
-                                .padding(.vertical, 12)
-                                .background(Color.green)
-                                .clipShape(Capsule())
+                                .multilineTextAlignment(.center)
+
+                            Text(dashboardVM.staleDataLine)
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.impactOccurred()
+                                dashboardVM.connectForRide()
+                            }) {
+                                Text("Kết nối để dùng xe")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 30)
+                                    .padding(.vertical, 12)
+                                    .background(Color.cyan)
+                                    .clipShape(Capsule())
+                            }
+                            .accessibilityLabel("Kết nối để dùng xe")
+
+                            Text("App sẽ không tự kết nối cho tới khi bạn yêu cầu.")
+                                .font(.caption)
+                                .foregroundColor(.gray.opacity(0.7))
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        } else {
+                            // ═══ PAUSE truyền thống ═══
+                            Image(systemName: "pause.circle.fill")
+                                .font(.system(size: 50))
+                                .foregroundColor(.orange)
+
+                            Text("Đã tạm dừng kết nối")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .multilineTextAlignment(.center)
+
+                            Text("App sẽ không tự kết nối lại với xe. Bấm để tiếp tục.")
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.impactOccurred()
+                                dashboardVM.resumeConnection()
+                            }) {
+                                Text("Tiếp tục kết nối")
+                                    .font(.headline)
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 30)
+                                    .padding(.vertical, 12)
+                                    .background(Color.green)
+                                    .clipShape(Capsule())
+                            }
                         }
                     } else if let err = dashboardVM.pairingError {
                         // Error state
@@ -427,8 +522,9 @@ struct ConnectingSplashView: View {
                                 .foregroundColor(.white.opacity(0.4))
                         }
                     } else if !dashboardVM.hasAuthorizedAccessory && PreferencesManager.shared.savedPeripheralUUID == nil {
-                        // No bike paired — show add button
-                        Button(action: { dashboardVM.connectBike() }) {
+                        // No bike paired — show add button (user gesture → F2: đường
+                        // DUY NHẤT mở ASK picker)
+                        Button(action: { dashboardVM.startPairing() }) {
                             HStack(spacing: 12) {
                                 Image(systemName: "plus.circle.fill")
                                     .font(.title2)
@@ -454,38 +550,74 @@ struct ConnectingSplashView: View {
                             .foregroundColor(.orange.opacity(0.8))
                             .multilineTextAlignment(.center)
                             .padding(.top, 4)
-                     } else if dashboardVM.connectionState == .scanning && PreferencesManager.shared.savedPin != nil {
-                        // ── SCANNING + đã pair trước đó: hiện nút Kết nối lại ──
-                        // Escape hatch cho user khi bị kẹt ở scanning (scan loop, stale flags...)
-                        VStack(spacing: 12) {
-                            Button(action: {
-                                let generator = UIImpactFeedbackGenerator(style: .heavy)
-                                generator.impactOccurred()
-                                dashboardVM.forceReconnect()
-                            }) {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "arrow.triangle.2.circlepath")
-                                        .font(.system(size: 16, weight: .semibold))
-                                    Text("Kết nối lại")
-                                        .font(.system(size: 15, weight: .semibold))
-                                }
-                                .foregroundColor(.white.opacity(0.9))
-                                .padding(.horizontal, 28)
-                                .padding(.vertical, 11)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.08))
-                                        .overlay(
-                                            Capsule()
-                                                .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
-                                        )
-                                )
-                            }
-                            
-                            Text("Bấm nếu chờ quá lâu")
-                                .font(.caption2)
-                                .foregroundColor(.white.opacity(0.3))
-                        }
+                     } else if dashboardVM.connectionState == .scanning
+                                || dashboardVM.connectionState == .connecting
+                                || dashboardVM.connectionState == .authenticating {
+                         // ── SCANNING / CONNECTING / AUTHENTICATING: 2 escape hatch ──
+                         // (trước đây chỉ .scanning có "Kết nối lại" — user kẹt radar
+                         //  trong 10s watchdog không có gì bấm; connecting/authenticating
+                         //  hoàn toàn trống.)
+                         VStack(spacing: 12) {
+                             if PreferencesManager.shared.savedPin != nil {
+                                 // ── Nút 1: Kết nối lại (forceReconnect — cancel sạch mọi pending) ──
+                                 Button(action: {
+                                     let generator = UIImpactFeedbackGenerator(style: .heavy)
+                                     generator.impactOccurred()
+                                     dashboardVM.forceReconnect()
+                                 }) {
+                                     HStack(spacing: 8) {
+                                         Image(systemName: "arrow.triangle.2.circlepath")
+                                             .font(.system(size: 16, weight: .semibold))
+                                         Text("Kết nối lại")
+                                             .font(.system(size: 15, weight: .semibold))
+                                     }
+                                     .foregroundColor(.white.opacity(0.9))
+                                     .padding(.horizontal, 28)
+                                     .padding(.vertical, 11)
+                                     .background(
+                                         Capsule()
+                                             .fill(Color.white.opacity(0.08))
+                                             .overlay(
+                                                 Capsule()
+                                                     .stroke(Color.cyan.opacity(0.3), lineWidth: 1)
+                                             )
+                                     )
+                                 }
+                                 .accessibilityLabel("Kết nối lại")
+
+                                 Text("Bấm nếu chờ quá lâu")
+                                     .font(.caption2)
+                                     .foregroundColor(.white.opacity(0.3))
+                             }
+
+                             // ── Nút 2: "Ở gần xe, chưa dùng" — ngừng hẳn việc đang quét/kết nối,
+                             // vào manualOnly (card cyan + "Kết nối để dùng xe").
+                             // Chưa kết nối nên không cần confirm lock-state.
+                             Button(action: {
+                                 let generator = UIImpactFeedbackGenerator(style: .medium)
+                                 generator.impactOccurred()
+                                 dashboardVM.setNearbyNotInUse()
+                             }) {
+                                 HStack(spacing: 8) {
+                                     Image(systemName: "figure.stand")
+                                         .font(.system(size: 16, weight: .semibold))
+                                     Text("Ở gần xe, chưa dùng")
+                                         .font(.system(size: 15, weight: .semibold))
+                                 }
+                                 .foregroundColor(.cyan.opacity(0.9))
+                                 .padding(.horizontal, 28)
+                                 .padding(.vertical, 11)
+                                 .background(
+                                     Capsule()
+                                         .fill(Color.cyan.opacity(0.08))
+                                         .overlay(
+                                             Capsule()
+                                                 .stroke(Color.cyan.opacity(0.25), lineWidth: 1)
+                                         )
+                                 )
+                             }
+                             .accessibilityLabel("Ở gần xe, chưa dùng")
+                         }
                     } else {
                         // Trạng thái chờ/kết nối -> ẩn (đã hiển thị ở trên)
                     }
@@ -497,10 +629,91 @@ struct ConnectingSplashView: View {
         .onAppear {
             pulsePhase = 1
         }
+        .onChange(of: dashboardVM.connectionState) { _, _ in
+            // §UX: đổi giai đoạn ⇒ reset đồng hồ đếm
+            stageStartedAt = Date()
+        }
     }
-    
+
     @State private var dotCount = 0
     let dotTimer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+
+    // ═══════════════ §UX: STAGE PIPELINE — phân biệt 3 giai đoạn quay lại xe ═══════════════
+
+    private enum ConnectStage: Int, CaseIterable {
+        case search = 0, connect = 1, auth = 2, ready = 3
+
+        var label: String {
+            switch self {
+            case .search: return "Tìm xe"
+            case .connect: return "Kết nối"
+            case .auth: return "Xác thực"
+            case .ready: return "Sẵn sàng"
+            }
+        }
+    }
+
+    /// nil khi không trong pipeline (standby/nearby/paused/idle) → dùng statusLabel cũ.
+    private var currentStage: ConnectStage? {
+        if dashboardVM.isPaused { return nil }
+        switch dashboardVM.connectionState {
+        case .scanning: return .search
+        case .connecting: return .connect
+        case .authenticating: return .auth
+        default: return nil
+        }
+    }
+
+    private var stageHint: String {
+        switch currentStage {
+        case .search:
+            return dashboardVM.isPendingConnect
+                ? "App sẽ tự kết nối khi xe vào tầm sóng — không tốn pin"
+                : "Đang quét sóng Bluetooth quanh đây để tìm xe"
+        case .connect:
+            return dashboardVM.isPendingConnect
+                ? "Không thấy xe trong tầm sóng — sẽ tự kết nối khi bạn lại gần"
+                : "Đã thấy xe — đang thiết lập liên kết an toàn"
+        case .auth: return "Đang xác thực chìa khoá điện tử với xe"
+        default: return ""
+        }
+    }
+
+    @State private var stageStartedAt = Date()
+    private var stageSeconds: Int { max(0, Int(Date().timeIntervalSince(stageStartedAt))) }
+
+    private var stagePipeline: some View {
+        let idx = currentStage?.rawValue ?? 0
+        let dots = String(repeating: ".", count: (dotCount % 3) + 1)
+        return HStack(spacing: 6) {
+            ForEach(ConnectStage.allCases, id: \.self) { stage in
+                let i = stage.rawValue
+                let isDone = i < idx
+                let isActive = i == idx
+
+                HStack(spacing: 4) {
+                    if isDone {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                    }
+                    // §UX: pending connect ⇒ pill nói đúng bản chất "Chờ xe"
+                    let pillLabel: String = {
+                        if stage == .connect && dashboardVM.isPendingConnect { return "Chờ xe" }
+                        return stage.label
+                    }()
+                    Text(pillLabel + (isActive ? dots : ""))
+                        .font(.system(size: 12, weight: isActive ? .bold : .regular))
+                }
+                .foregroundColor(isActive ? stateColor : (isDone ? .green : .white.opacity(0.35)))
+
+                if stage != .ready {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.2))
+                }
+            }
+        }
+    }
     
     private var bikeName: String {
         let infoName = dashboardVM.bikeInfo.name
@@ -517,11 +730,18 @@ struct ConnectingSplashView: View {
     }
     
     private var statusLabel: String {
-        if dashboardVM.isPaused { return "Đã tạm dừng" }
+        if dashboardVM.isPaused {
+            return dashboardVM.isNearbyNotInUse ? "Ở gần xe, chưa dùng" : "Đã tạm dừng"
+        }
         let baseText: String
         switch dashboardVM.connectionState {
-        case .scanning: baseText = "Đang tìm xe"
-        case .connecting: baseText = "Đang kết nối"
+        case .scanning:
+            // §UX (code-driven): .scanning + pending = didDisconnect đã đặt pending connect,
+            // KHÔNG có radio scan nào chạy → đừng nói "Đang tìm xe" sai sự thật
+            baseText = dashboardVM.isPendingConnect ? "Đang chờ xe vào tầm sóng" : "Đang tìm xe"
+        case .connecting:
+            // §UX: pending connect (cache, chờ xe) khác hẳn handshake active (xe đã thấy)
+            baseText = dashboardVM.isPendingConnect ? "Đang chờ xe vào tầm sóng" : "Đang kết nối"
         case .authenticating: baseText = "Đang xác thực & Ghép đôi"
         case .standby: baseText = "Kết nối chờ"
         case .nearby: baseText = "Đang ở gần xe"
@@ -533,7 +753,7 @@ struct ConnectingSplashView: View {
     
     // Dynamic theme color based on connection state
     private var stateColor: Color {
-        if dashboardVM.isPaused { return .orange }
+        if dashboardVM.isPaused { return dashboardVM.isNearbyNotInUse ? .cyan : .orange }
         switch dashboardVM.connectionState {
         case .scanning: return .cyan
         case .connecting: return .orange

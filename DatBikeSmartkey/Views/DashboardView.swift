@@ -98,8 +98,8 @@ struct DashboardView: View {
         .alert("Thoát ứng dụng", isPresented: $showExitConfirm) {
             Button("Hủy", role: .cancel) { }
             Button("Thoát", role: .destructive) {
-                // Suspend to background first for a smoother exit, then kill process
-                UIApplication.shared.perform(#selector(NSXPCConnection.suspend))
+                // P5: bỏ private API NSXPCConnection.suspend (rủi ro App Store reject).
+                // Chỉ exit(0) — hệ thống tự về home screen.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     exit(0)
                 }
@@ -156,14 +156,23 @@ struct DashboardView: View {
                     // Connection status badge
                     ConnectionStatusBadge(isConnected: viewModel.isConnected, isStandby: viewModel.connectionState == .standby)
 
-                    // LỚP 3: badge trạng thái tạm dừng (đã ngắt BLE, không auto-reconnect)
+                    // LỚP 3 + §4 (P3): badge manualOnly — 2 reason cùng cơ chế
                     if viewModel.isPaused {
-                        Text("Đã tạm dừng")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Capsule().fill(Color.orange.opacity(0.15)))
+                        if viewModel.isNearbyNotInUse {
+                            Text("Ở gần xe, chưa dùng")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.cyan)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Color.cyan.opacity(0.15)))
+                        } else {
+                            Text("Đã tạm dừng")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Capsule().fill(Color.orange.opacity(0.15)))
+                        }
                     }
 
                     // Signal strength indicator
@@ -179,14 +188,13 @@ struct DashboardView: View {
             Spacer()
             
             HStack(spacing: 12) {
-                // LỚP 3: Tạm dừng / Tiếp tục kết nối
-                // Pause: ngắt BLE hoàn toàn + chặn auto-reconnect (dẹp code=6).
-                // Resume: mở lại auto-reconnect.
+                // LỚP 3 + §4 (P3): Tạm dừng / Tiếp tục — khi nearbyNotInUse thì nút này
+                // cũng thoát manualOnly (một cơ chế, quyết định #2).
                 Button(action: {
                     let generator = UIImpactFeedbackGenerator(style: .medium)
                     generator.impactOccurred()
                     if viewModel.isPaused {
-                        viewModel.resumeConnection()
+                        viewModel.isNearbyNotInUse ? viewModel.connectForRide() : viewModel.resumeConnection()
                     } else {
                         viewModel.pauseConnection()
                     }

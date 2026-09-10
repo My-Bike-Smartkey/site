@@ -10,6 +10,9 @@ class BLEPollingEngine {
     
     private var pollingTask: Task<Void, Never>?
     
+    /// Callback cập nhật toàn diện thông số xe định kỳ (Pin SOC, ODO, Nhiệt độ motor)
+    var onPeriodicTelemetryPoll: (() -> Void)?
+    
     // Publishers
     @Published private(set) var currentRSSI: Double = 0.0
     
@@ -23,7 +26,7 @@ class BLEPollingEngine {
         pollingTask = Task { [weak self] in
             guard let self = self else { return }
             
-            // Chạy 2 vòng lặp bất đồng bộ song song cho RSSI và Keep-Alive
+            // Chạy 2 vòng lặp bất đồng bộ song song cho RSSI và Keep-Alive / Telemetry
             await withTaskGroup(of: Void.self) { group in
                 
                 // Vòng lặp 1: RSSI Polling (Mỗi 1s)
@@ -37,18 +40,21 @@ class BLEPollingEngine {
                     }
                 }
                 
-                // Vòng lặp 2: Keep-Alive / Telemetry (Mỗi 10s)
+                // Vòng lặp 2: Keep-Alive & Periodic Telemetry (Mỗi 10s)
                 group.addTask { [weak self] in
                     while !Task.isCancelled {
                         do {
                             try await Task.sleep(nanoseconds: 10_000_000_000) // Sleep 10s
                             guard let self = self else { break }
                             
-                            // ĐẨY VÀO QUEUE ĐỂ ĐẢM BẢO KHÔNG XUNG ĐỘT (GATT COLLISION)
+                            // 1. ĐẨY VÀO QUEUE ĐỂ ĐẢM BẢO KHÔNG XUNG ĐỘT (GATT COLLISION)
                             let _ = try await self.context.queue.enqueue {
                                 let echoChar = try self.context.requireCharacteristic(BLECharacteristic.smartkeyEcho)
                                 return try await self.context.io.readValue(from: echoChar)
                             }
+                            
+                            // 2. Kích hoạt cập nhật Telemetry định kỳ (Pin SOC, Odo, Nhiệt độ motor)
+                            self.onPeriodicTelemetryPoll?()
                         } catch {
                             // Bỏ qua lỗi huỷ hoặc kẹt BLE
                             if error is CancellationError { break }
@@ -64,8 +70,10 @@ class BLEPollingEngine {
         pollingTask = nil
     }
     
-    // Được Delegate CBPeripheralDelegate gọi lại
+    // Được Delegate CBPeripheralDelegate gọi lại (CoreBluetooth queue).
+    // P5: @Published phải mutate trên main — hop main để tránh runtime warning
+    // và race với SwiftUI subscriber.
     func didReadRSSI(value: Double) {
-        self.currentRSSI = value
+        DispatchQueue.main.async { self.currentRSSI = value }
     }
 }
