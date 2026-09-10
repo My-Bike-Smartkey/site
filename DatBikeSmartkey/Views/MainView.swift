@@ -246,7 +246,10 @@ struct ConnectingSplashView: View {
                 // active có 1 dòng hint duy nhất.
                 if currentStage != nil {
                     stageTimeline
-                        .padding(.horizontal, 8)
+                        // §UX: khối timeline hẹp (~300pt), căn giữa dưới tên xe —
+                        // không dàn full-width khiến node chếch sát lề trái.
+                        .frame(maxWidth: 300, alignment: .leading)
+                        .padding(.horizontal, 12)
                         .onReceive(dotTimer) { _ in
                             dotCount += 1
                         }
