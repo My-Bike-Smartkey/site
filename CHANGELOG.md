@@ -34,7 +34,7 @@ Bản viết lại nền tảng ổn định: concurrency, background/reconnect,
 - `README.md` viết lại theo chuẩn opensource: trạng thái tính năng theo bằng chứng, giới hạn đã biết (force-quit, MIC, pending connect không phải proximity sensor).
 - `docs/ARCHITECTURE_BLE_AND_ASK.md`: mô tả đúng code hiện tại + §7 "Hạng mục chưa nghiệm thu".
 - `docs/TEST_AND_DEPLOYMENT_GUIDE.md`: ma trận nghiệm thu 10 kịch bản TN, protocol đo 20 lượt tiếp cận, nguyên tắc pass/skip/fail.
-- Mới: `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, `docs/PROTOCOL.md`, CI workflow.
+- Mới: `LICENSE` (MIT), `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CHANGELOG.md`, `docs/PROTOCOL.md`.
 
 ### Tests
 
