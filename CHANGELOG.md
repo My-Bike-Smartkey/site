@@ -3,7 +3,7 @@
 Định dạng [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning [SemVer](https://semver.org/).
 Mỗi mục ghi **bằng chứng kèm theo** — những gì chưa nghiệm thu trên xe thật được ghi rõ là "field-test pending".
 
-## [2.0.0] — 2026 (unreleased, dev build 3+)
+## [2.0.0] — 2026 (unreleased, dev build 4)
 
 Bản viết lại nền tảng ổn định: concurrency, background/reconnect, proximity gating, và docs trung thực. Nguyên tắc xuyên suốt: không tuyên bố gì không đo được.
 
