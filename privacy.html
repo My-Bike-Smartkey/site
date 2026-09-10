@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chính sách quyền riêng tư — D-SmartKey</title>
+<style>
+    :root { color-scheme: dark; }
+    body {
+        background-color: #05050a;
+        color: #e2e8f0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.7;
+        margin: 0;
+        padding: 0;
+    }
+    .container { max-width: 760px; margin: 0 auto; padding: 48px 20px 80px; }
+    h1 {
+        font-size: 28px; color: #fff; margin: 0 0 4px;
+        letter-spacing: -0.02em;
+    }
+    .meta { color: #64748b; font-size: 13px; margin-bottom: 32px; }
+    .meta strong { color: #94a3b8; }
+    .badge {
+        display: inline-block; background: rgba(34,211,238,.12); color: #22d3ee;
+        border: 1px solid rgba(34,211,238,.35); border-radius: 999px;
+        padding: 3px 12px; font-size: 12px; font-weight: 600; margin-bottom: 24px;
+    }
+    h2 {
+        font-size: 18px; color: #fff; margin: 40px 0 12px;
+        padding-top: 24px; border-top: 1px solid #1e293b;
+        letter-spacing: -0.01em;
+    }
+    p { margin: 0 0 14px; font-size: 15px; }
+    ul { margin: 0 0 14px; padding-left: 22px; }
+    li { margin-bottom: 8px; font-size: 15px; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+    th, td { text-align: left; padding: 10px 12px; border: 1px solid #1e293b; vertical-align: top; }
+    th { background: #0c1424; color: #94a3b8; font-weight: 600; white-space: nowrap; }
+    a { color: #22d3ee; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .en {
+        margin-top: 48px; padding: 20px; border: 1px solid #1e293b;
+        border-radius: 12px; background: #0a0f1c; color: #94a3b8; font-size: 13.5px;
+    }
+    .en h2 { border: none; padding: 0; margin: 0 0 8px; font-size: 15px; color: #cbd5e1; }
+    footer { margin-top: 48px; color: #475569; font-size: 12.5px; border-top: 1px solid #1e293b; padding-top: 20px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="badge">Không thu thập dữ liệu</div>
+    <h1>Chính sách quyền riêng tư</h1>
+    <div class="meta">D-SmartKey · <strong>Phiên bản 1.0</strong> · Hiệu lực <strong>10/09/2026</strong></div>
+
+    <p>D-SmartKey ("ứng dụng") được xây dựng theo nguyên tắc <strong>không thu thập dữ liệu</strong>. Ứng dụng hoạt động hoàn toàn trên thiết bị của bạn và kết nối trực tiếp với xe của bạn qua Bluetooth — không qua bất kỳ máy chủ nào của chúng tôi.</p>
+
+    <h2>1. Dữ liệu chúng tôi thu thập</h2>
+    <p><strong>Không có.</strong> Ứng dụng không gửi bất kỳ dữ liệu nào đến máy chủ của chúng tôi hay bên thứ ba:</p>
+    <ul>
+        <li>Không tài khoản, không đăng ký, không email</li>
+        <li>Không phân tích hành vi (analytics), không quảng cáo, không theo dõi</li>
+        <li>Không báo lỗi tự động (crash report) đến dịch vụ bên thứ ba</li>
+        <li>Ứng dụng không kết nối internet cho chức năng nào — mọi giao tiếp là Bluetooth trực tiếp với xe</li>
+    </ul>
+
+    <h2>2. Dữ liệu lưu trên thiết bị của bạn</h2>
+    <p>Các thông tin sau được lưu <strong>chỉ trong không gian riêng (sandbox) của ứng dụng</strong> trên iPhone của bạn, và chỉ rời khỏi thiết bị nếu bạn chủ động xuất chúng:</p>
+    <table>
+        <tr><th>Loại dữ liệu</th><th>Nơi lưu</th><th>Mục đích</th></tr>
+        <tr><td>PIN ghép đôi xe</td><td>App sandbox</td><td>Xác thực với xe mỗi phiên</td></tr>
+        <tr><td>Tuỳ chọn (ngưỡng khoảng cách, tự mở khóa…)</td><td>UserDefaults</td><td>Ghi nhớ cấu hình của bạn</td></tr>
+        <tr><td>Nhật ký Bluetooth (BLE logs)</td><td>File trong Documents/ble_logs/</td><td>Debug khi bạn yêu cầu hỗ trợ</td></tr>
+        <tr><td>Số liệu xe (pin, trạng thái khóa)</td><td>Bộ nhớ trong sandbox</td><td>Hiển thị trong ứng dụng</td></tr>
+    </table>
+    <p>Gỡ cài đặt ứng dụng = toàn bộ dữ liệu trên bị xoá vĩnh viễn khỏi thiết bị.</p>
+
+    <h2>3. Quyền hệ thống ứng dụng yêu cầu</h2>
+    <ul>
+        <li><strong>Bluetooth</strong>: kết nối và điều khiển xe — đây là chức năng cốt lõi</li>
+        <li><strong>Thông báo (tuỳ chọn)</strong>: báo trạng thái kết nối / cảnh báo pin</li>
+    </ul>
+
+    <h2>4. Bên thứ ba</h2>
+    <p>Ứng dụng không chia sẻ dữ liệu với bên thứ ba nào vì không có dữ liệu nào rời thiết bị. Ứng dụng là sản phẩm của bên thứ ba, không liên kết với hãng sản xuất xe.</p>
+
+    <h2>5. Quyền của bạn</h2>
+    <p>Vì dữ liệu chỉ nằm trên thiết bị, bạn toàn quyền kiểm soát: xoá ứng dụng để xoá toàn bộ; không yêu cầu "xuất/xoá dữ liệu khỏi server" vì không tồn tại server.</p>
+
+    <h2>6. Liên hệ</h2>
+    <p>Báo cáo lỗi &amp; yêu cầu hỗ trợ: <a href="https://github.com/My-Bike-Smartkey/ios-app/issues">github.com/My-Bike-Smartkey/ios-app/issues</a></p>
+
+    <div class="en">
+        <h2>English summary</h2>
+        D-SmartKey collects no data. There is no server, no account, no analytics, no ads, and no tracking. All data (pairing PIN, preferences, BLE logs, vehicle metrics) stays in the app's on-device sandbox and is permanently deleted when the app is uninstalled. The app only uses Bluetooth (core function) and optional notifications.
+    </div>
+
+    <footer>
+        <a href="/">← D-SmartKey</a> · Mã nguồn: <a href="https://github.com/My-Bike-Smartkey/ios-app">GitHub</a>
+    </footer>
+</div>
+</body>
+</html>
