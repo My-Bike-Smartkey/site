@@ -87,6 +87,41 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
         cycleDidConnectAt = nil
         cycleGattReadyAt = nil
     }
+
+    // ═══ §FG_HEAL: FOREGROUND SELF-HEAL WATCHDOG ═══
+    // Yêu cầu bắt buộc: "mở app đang gần xe → kết nối ngay". Nếu sau 10s foreground
+    // mà vẫn chưa đến trạng thái ổn (active/standby/nearby/pairing), TỰ force-reconnect
+    // sạch (đường user vẫn phải bấm "Kết nối lại" trước đây). Tối đa 2 lần/mỗi phiên
+    // foreground — hết quota thì dừng để không loop, trạng thái lỗi hiện lên UI.
+    private var foregroundHealAttempts = 0
+    private var foregroundHealWorkItem: DispatchWorkItem?
+
+    private func beginForegroundHealWatchdog() {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.isAppInBackground,
+                  !self.preferences.isManualOnly, !self.isUserPaused else { return }
+            // Trạng thái "đã ổn" — không can thiệp
+            switch self.stateMachine.state {
+            case .active, .standby, .nearby, .pairingRequired, .idle:
+                return
+            default:
+                break
+            }
+            if self.foregroundHealAttempts >= 2 {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                    message: "[FG_HEAL] Đã tự reconnect \(self.foregroundHealAttempts) lần vẫn chưa kết nối (state=\(self.stateMachine.state.displayText)) → dừng, chờ user"))
+                return
+            }
+            self.foregroundHealAttempts += 1
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
+                message: "[FG_HEAL] 10s foreground chưa kết nối (state=\(self.stateMachine.state.displayText)) → tự force-reconnect lần \(self.foregroundHealAttempts)/2"))
+            self.performForceReconnect()
+        }
+        foregroundHealWorkItem?.cancel()
+        foregroundHealWorkItem = work
+        foregroundHealAttempts = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10.0, execute: work)
+    }
     
     /// Danh sách xe tìm thấy trong quá trình scan
     @Published private(set) var discoveredBikes: [DiscoveredBike] = []
@@ -381,6 +416,8 @@ class DatBikeCore: NSObject, IoTCoordinatorProtocol, @unchecked Sendable {
             CBCentralManagerOptionRestoreIdentifierKey: "DatBikeCentralManagerRestoreID",
             CBCentralManagerOptionShowPowerAlertKey: true
         ])
+        // §FG_HEAL: cold open cũng cần canh 10s (willEnterForeground không fire lần đầu)
+        beginForegroundHealWatchdog()
         
         NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
@@ -2505,6 +2542,19 @@ extension DatBikeCore: CBPeripheralDelegate {
             return
         }
         
+        // ═══ FG-OPEN GUARANTEE: mở app = ý định dùng xe ═══
+        // Foreground (user đang cầm máy, nhìn vào app) → KHÔNG chờ ngưỡng RSSI,
+        // auth NGAY. Gate RSSI chỉ còn ý nghĩa ở background (đi ngang qua xe).
+        // Đây là điều kiện "mở app gần xe là kết nối ngay, bắt buộc": sau khi link
+        // + GATT lên (≤ vài giây), auth chạy thẳng không qua standby-wait.
+        if !isAppInBackground && !preferences.isManualOnly {
+            PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                message: "[FG_OPEN_AUTH] Foreground mở app → auth ngay, bỏ qua chờ ngưỡng RSSI (rssiThreshold=\(preferences.rssiThreshold))"))
+            isAuthenticating = true
+            executeAuthProtocol(ctx: ctx, pin: pin)
+            return
+        }
+        
         // ═══ FAST PATH: Nếu không dùng chế độ "Chỉ kết nối khi gần" ═══
         // Không cần poll RSSI → auth ngay, không qua standby waiting.
         if !preferences.connectOnlyWhenNear {
@@ -3068,6 +3118,8 @@ extension DatBikeCore: CBPeripheralDelegate {
     
     @objc private func appWillEnterForeground() {
         isAppInBackground = false
+        // §FG_HEAL: mở lại app → reset quota + bắt đầu canh 10s
+        beginForegroundHealWatchdog()
         // End BG task khi về foreground — tránh leak (81 leaked tasks/28 ngày).
         // BLE callbacks chạy trên queue riêng (core.ble), không bị race với main queue.
         stopBackgroundExecutionTime()
@@ -3111,13 +3163,20 @@ extension DatBikeCore: CBPeripheralDelegate {
             disconnectFallbackTimer?.cancel()
             disconnectFallbackTimer = nil
             
-            // Cancel pending connect stale (nếu có) rồi connect mới
+            // ═══ FG-OPEN GUARANTEE: KHÔNG cancel link đang thương lượng ═══
+            // peripheral .connecting = hệ thống ĐANG hoàn tất link (pending connect
+            // sau force-quit/suspend). Cancel ở đây = tự tay giết kết nối sắp xong
+            // → "mở app lúc được lúc không". Chỉ cancel peripheral thực sự stale
+            // (.disconnected/.disconnecting).
             if let ctx = activeContext, let central = centralManager,
-               ctx.peripheral.state != .connected {
+               ctx.peripheral.state == .disconnected || ctx.peripheral.state == .disconnecting {
                 central.cancelPeripheralConnection(ctx.peripheral)
                 activeContext = nil
                 commandDispatcher = nil
                 pollingEngine = nil
+            } else if let ctx = activeContext, ctx.peripheral.state == .connecting {
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "[LIFECYCLE] Foreground: peripheral đang .connecting (link đang lên) → GIỮ, không cancel"))
             }
             
             connect()
@@ -3133,6 +3192,12 @@ extension DatBikeCore: CBPeripheralDelegate {
                 // Chỉ cancel timer phantom, không hủy connection
                 timer.cancel()
                 self.connectingTimer = nil
+            } else if let ctx = self.activeContext, ctx.peripheral.state == .connecting {
+                // ═══ FG-OPEN GUARANTEE: link đang thương lượng → GIỮ NGUYÊN ═══
+                // Watchdog (connectingTimer) tiếp tục chạy — nếu là phantom nó sẽ tự
+                // teardown sau 5s. Không cancel link thật đang lên.
+                PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .info,
+                    message: "[LIFECYCLE] Đang connecting + peripheral .connecting (link đang lên) → GIỮ, watchdog tiếp tục canh"))
             } else {
                 PersistentLogger.shared.append(BLELogEntry(timestamp: Date(), level: .warning,
                     message: "[LIFECYCLE] Đang connecting + peripheral stale → force timeout + scan mới"))

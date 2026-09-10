@@ -3,7 +3,17 @@
 Định dạng [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning [SemVer](https://semver.org/).
 Mỗi mục ghi **bằng chứng kèm theo** — những gì chưa nghiệm thu trên xe thật được ghi rõ là "field-test pending".
 
-## [2.1.0] — 2026-09-10 (unreleased, build 5)
+## [2.1.0] — 2026-09-10 (unreleased, build 6)
+
+### Added — FG-OPEN GUARANTEE: "mở app đang gần xe → kết nối ngay"
+
+Yêu cầu bắt buộc từ chủ dự án. Ba lỗ hổng đã bịt:
+
+- **Không cancel link đang thương lượng**: cả 2 nhánh foreground (scanning-aggressive + connecting-timeout) trước đây cancel peripheral `.connecting` — tự tay giết link hệ thống đang hoàn tất (pending connect sau force-quit/suspend) → nguyên nhân "mở app lúc được lúc không". Giờ chỉ cancel peripheral thực sự stale (`.disconnected`/`.disconnecting`); link `.connecting` được giữ, phantom watchdog tiếp tục canh.
+- **`[FG_OPEN_AUTH]` — foreground bỏ qua chờ ngưỡng RSSI**: trước đây mở app khi `connectOnlyWhenNear` bật → standby chờ RSSI ≥ ngưỡng (2 mẫu + hysteresis) → nếu sóng dao động quanh ngưỡng thì đứng cạnh xe vẫn không auth. Giờ foreground = ý định dùng xe → auth ngay sau GATT; gate RSSI chỉ còn cho background. Chế độ manualOnly không bị ảnh hưởng.
+- **`[FG_HEAL]` — watchdog tự chữa 10s**: mở app (cold + warm) mà sau 10s chưa đến trạng thái ổn → tự `forceReconnect` sạch (đường user vẫn phải bấm tay trước đây). Tối đa 2 lượt/phiên foreground, hết quota dừng để tránh loop.
+
+Ranh giới vật lý (không thể app sửa được): xe tắt/ngủ sâu không quảng bá BLE thì không kết nối được — khi đó app fail-fast với thông báo "Không tìm thấy xe, kiểm tra xe đã bật chưa".
 
 ### Changed — UI màn hình kết nối
 

@@ -43,6 +43,7 @@ Install và launch là hai kết quả riêng. Nếu launch lỗi, đọc lỗi 
 
 Ghi phiên bản app/iOS/firmware, cấu hình auto, ngưỡng RSSI, intent, thời điểm và sessionID mỗi lượt.
 
+0. **FG-OPEN GUARANTEE (mới, ưu tiên cao)**: mở app khi đứng gần xe (xe đang bật) → kết nối + vào Dashboard trong ≤ ~5s, KHÔNG cần bấm gì. Log mong đợi: `[CKPT request]` → `[CKPT did-connect]` (req→dc ngắn) → `[CKPT gatt-ready]` → `[FG_OPEN_AUTH] Foreground mở app → auth ngay` → `[CYCLE] outcome=success`. Nếu 10s chưa xong: `[FG_HEAL]` tự force-reconnect (tối đa 2 lần). Ranh giới: xe tắt/không quảng bá → `[CYCLE] outcome=fail stage=connect` + thông báo "Không tìm thấy xe".
 1. App foreground: xa → gần, xe còn quảng bá BLE.
 2. App background/màn hình khóa: xa → gần sau thời gian ngắn và dài.
 3. Xe ngủ sâu: xác định còn quảng bá hay không; không quy mọi thất bại cho app.
